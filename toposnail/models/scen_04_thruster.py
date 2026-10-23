@@ -346,7 +346,7 @@ def build_scen_04_mesh(
 
         t0 = tangents[0]
         up = np.array([0.0, 0.0, 1.0]) if abs(t0[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
-        b1 = np.cross(t0, up)
+        b1 = np.cross(up, t0)
         b1 = b1 / (np.linalg.norm(b1) + 1e-12)
         b2 = np.cross(t0, b1)
 
@@ -362,7 +362,7 @@ def build_scen_04_mesh(
                 b1_norm = np.linalg.norm(b1)
                 if b1_norm < 1e-6:
                     up_alt = np.array([0.0, 1.0, 0.0]) if abs(ti[1]) < 0.85 else np.array([1.0, 0.0, 0.0])
-                    b1 = np.cross(ti, up_alt)
+                    b1 = np.cross(up_alt, ti)
                     b1_norm = np.linalg.norm(b1) + 1e-12
                 b1 = b1 / b1_norm
                 b2 = np.cross(ti, b1)
@@ -385,8 +385,8 @@ def build_scen_04_mesh(
             row1 = base_idx + ((i + 1) % n_pts) * n_sides
             for j in range(n_sides):
                 jn = (j + 1) % n_sides
-                faces.append([row0 + j, row1 + j, row1 + jn])
-                faces.append([row0 + j, row1 + jn, row0 + jn])
+                faces.append([row0 + j, row0 + jn, row1 + jn])
+                faces.append([row0 + j, row1 + jn, row1 + j])
 
         if cap_ends and not closed_loop:
             c_start_idx = len(verts)
@@ -420,7 +420,7 @@ def build_scen_04_mesh(
         ax = np.array(axis, dtype=np.float64)
         ax = ax / (np.linalg.norm(ax) + 1e-12)
         up = np.array([0.0, 0.0, 1.0]) if abs(ax[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
-        u = np.cross(ax, up)
+        u = np.cross(up, ax)
         u = u / (np.linalg.norm(u) + 1e-12)
         v = np.cross(ax, u)
         c_pt = np.array(center, dtype=np.float64)
@@ -878,11 +878,11 @@ def build_scen_04_mesh(
         add_joint_sphere((0.66 * ca, 0.66 * sa, 0.56), 0.054, 0.54)
 
     # =========================================================================
-    # 7. Post-Rounding Non-Degenerate Manifold Verification & Filtering
+    # 7. Post-Rounding Non-Degenerate Manifold Verification, Outward Orientation & Normal Blending
     # =========================================================================
     rounded_verts = [[round(float(c), 4) for c in v] for v in verts]
     rounded_colors = [[round(float(c), 4) for c in clr] for clr in colors]
-    rounded_normals = [[round(float(c), 4) for c in n] for n in normals]
+    n_arr = np.asarray(normals, dtype=np.float64)
 
     v_np = np.asarray(rounded_verts, dtype=np.float64)
     clean_faces: List[List[int]] = []
@@ -895,6 +895,54 @@ def build_scen_04_mesh(
         cross_norm = float(np.linalg.norm(np.cross(e1, e2)))
         if cross_norm > 1e-8:
             clean_faces.append([i0, i1, i2])
+
+    from collections import defaultdict, deque
+
+    undir_adj: Dict[Tuple[int, int], List[int]] = defaultdict(list)
+    for fi, (a, b, c) in enumerate(clean_faces):
+        for u_e, v_e in ((a, b), (b, c), (c, a)):
+            undir_adj[(min(u_e, v_e), max(u_e, v_e))].append(fi)
+
+    visited_f = [False] * len(clean_faces)
+    for f_seed in range(len(clean_faces)):
+        if visited_f[f_seed]:
+            continue
+        visited_f[f_seed] = True
+        queue = deque([f_seed])
+        comp = [f_seed]
+        while queue:
+            curr_f = queue.popleft()
+            ca, cb, cc = clean_faces[curr_f]
+            for u_e, v_e in ((ca, cb), (cb, cc), (cc, ca)):
+                for nb_f in undir_adj[(min(u_e, v_e), max(u_e, v_e))]:
+                    if nb_f != curr_f and not visited_f[nb_f]:
+                        na, nb_v, nc = clean_faces[nb_f]
+                        if (u_e, v_e) in ((na, nb_v), (nb_v, nc), (nc, na)):
+                            clean_faces[nb_f] = [na, nc, nb_v]
+                        visited_f[nb_f] = True
+                        queue.append(nb_f)
+                        comp.append(nb_f)
+        sub_f = np.asarray([clean_faces[idx_c] for idx_c in comp], dtype=np.int64)
+        fn_comp = np.cross(v_np[sub_f[:, 1]] - v_np[sub_f[:, 0]], v_np[sub_f[:, 2]] - v_np[sub_f[:, 0]])
+        vn_comp = n_arr[sub_f[:, 0]] + n_arr[sub_f[:, 1]] + n_arr[sub_f[:, 2]]
+        if float(np.sum(fn_comp * vn_comp)) < 0.0:
+            for idx_c in comp:
+                fa, fb, fc = clean_faces[idx_c]
+                clean_faces[idx_c] = [fa, fc, fb]
+
+    f_arr = np.asarray(clean_faces, dtype=np.int64)
+    fn_raw = np.cross(v_np[f_arr[:, 1]] - v_np[f_arr[:, 0]], v_np[f_arr[:, 2]] - v_np[f_arr[:, 0]])
+    fn_unit = fn_raw / (np.linalg.norm(fn_raw, axis=1, keepdims=True) + 1e-12)
+    v_fn_sum = np.zeros_like(n_arr)
+    for k_corner in range(3):
+        np.add.at(v_fn_sum, f_arr[:, k_corner], fn_unit)
+    v_fn_avg = v_fn_sum / (np.linalg.norm(v_fn_sum, axis=1, keepdims=True) + 1e-12)
+    n_blend = 0.45 * n_arr + 0.55 * v_fn_avg
+    n_blend /= np.linalg.norm(n_blend, axis=1, keepdims=True) + 1e-12
+    rounded_normals = [[round(float(c), 4) for c in row] for row in n_blend]
+    for idx_n, row in enumerate(rounded_normals):
+        nl = math.hypot(row[0], row[1], row[2]) + 1e-12
+        rounded_normals[idx_n] = [round(row[0] / nl, 4), round(row[1] / nl, 4), round(row[2] / nl, 4)]
 
     return rounded_verts, clean_faces, rounded_colors, rounded_normals
 

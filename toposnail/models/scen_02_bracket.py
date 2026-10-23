@@ -707,58 +707,52 @@ def build_scen_02_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[
             p_in_1 = c_pt + h_len * ax + r_inner * rad_dir
             p_in_0 = c_pt - h_len * ax + r_inner * rad_dir
 
-            # Outer wall vertices (outward radial normal)
+            n_out_0 = rad_dir - 0.35 * ax
+            n_out_0 = n_out_0 / (np.linalg.norm(n_out_0) + 1e-12)
+            n_out_1 = rad_dir + 0.35 * ax
+            n_out_1 = n_out_1 / (np.linalg.norm(n_out_1) + 1e-12)
+            n_in_1 = -rad_dir + 0.35 * ax
+            n_in_1 = n_in_1 / (np.linalg.norm(n_in_1) + 1e-12)
+            n_in_0 = -rad_dir - 0.35 * ax
+            n_in_0 = n_in_0 / (np.linalg.norm(n_in_0) + 1e-12)
+
+            # 0: -ax outer rim
             verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
-            normals.append([float(rad_dir[0]), float(rad_dir[1]), float(rad_dir[2])])
+            normals.append([float(n_out_0[0]), float(n_out_0[1]), float(n_out_0[2])])
             colors.append(clr_out)
 
+            # 1: +ax outer rim
             verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
-            normals.append([float(rad_dir[0]), float(rad_dir[1]), float(rad_dir[2])])
+            normals.append([float(n_out_1[0]), float(n_out_1[1]), float(n_out_1[2])])
             colors.append(clr_out)
 
-            # Inner bore wall vertices (inward radial normal)
+            # 2: +ax inner bore rim
             verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
-            normals.append([float(-rad_dir[0]), float(-rad_dir[1]), float(-rad_dir[2])])
+            normals.append([float(n_in_1[0]), float(n_in_1[1]), float(n_in_1[2])])
             colors.append(clr_in)
 
+            # 3: -ax inner bore rim
             verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
-            normals.append([float(-rad_dir[0]), float(-rad_dir[1]), float(-rad_dir[2])])
+            normals.append([float(n_in_0[0]), float(n_in_0[1]), float(n_in_0[2])])
             colors.append(clr_in)
 
-            # Front/back annular cap vertices (axial normals)
-            verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
-            normals.append([float(ax[0]), float(ax[1]), float(ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
-            normals.append([float(ax[0]), float(ax[1]), float(ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
-            normals.append([float(-ax[0]), float(-ax[1]), float(-ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
-            normals.append([float(-ax[0]), float(-ax[1]), float(-ax[2])])
-            colors.append(clr_cap)
-
-        stride = 8
+        stride = 4
         for j in range(n_sides):
             jn = (j + 1) % n_sides
             b0 = base_idx + j * stride
             b1 = base_idx + jn * stride
-            # Outer cylinder
+            # Outer cylinder (0 -> 1)
             faces.append([b0 + 0, b1 + 0, b1 + 1])
             faces.append([b0 + 0, b1 + 1, b0 + 1])
-            # Inner bore cylinder
+            # +ax annular face (1 -> 2)
+            faces.append([b0 + 1, b1 + 1, b1 + 2])
+            faces.append([b0 + 1, b1 + 2, b0 + 2])
+            # Inner bore cylinder (2 -> 3)
             faces.append([b0 + 2, b1 + 2, b1 + 3])
             faces.append([b0 + 2, b1 + 3, b0 + 3])
-            # +ax annular face
-            faces.append([b0 + 4, b1 + 4, b1 + 5])
-            faces.append([b0 + 4, b1 + 5, b0 + 5])
-            # -ax annular face
-            faces.append([b0 + 6, b1 + 7, b1 + 6])
-            faces.append([b0 + 6, b0 + 7, b1 + 7])
+            # -ax annular face (3 -> 0)
+            faces.append([b0 + 3, b1 + 3, b1 + 0])
+            faces.append([b0 + 3, b1 + 0, b0 + 0])
 
     # -------------------------------------------------------------------------
     # 1. 4 Precision Machined Counterbored Corner Bolt Bosses at (±0.58, ±0.58)
@@ -831,7 +825,9 @@ def build_scen_02_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[
     # Central circular actuator keep-out framing ring at base (R = 0.38, z = -0.73)
     ring_angles = np.linspace(0.0, 2.0 * math.pi, 29)
     ring_pts = [(0.38 * math.cos(a), 0.38 * math.sin(a), -0.73) for a in ring_angles]
-    add_tube_along_curve(ring_pts, [0.036] * 29, [0.46] * 29, n_sides=14, ry_scale=1.15, rz_scale=0.85)
+    add_tube_along_curve(
+        ring_pts, [0.036] * 29, [0.46] * 29, n_sides=14, ry_scale=1.15, rz_scale=0.85, cap_start=True, cap_end=True
+    )
 
     # -------------------------------------------------------------------------
     # 4. Bifurcated Organic A-Frame Load-Path Ribs (GE Bracket Signature Design)

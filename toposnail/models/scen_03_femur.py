@@ -1057,6 +1057,22 @@ def build_scen_03_mesh(
                         visited_f[nb_f] = True
                         queue.append(nb_f)
 
+    f_arr = np.asarray(faces, dtype=np.int64)
+    v_arr = np.asarray(verts, dtype=np.float64)
+    n_arr = np.asarray(normals, dtype=np.float64)
+    fn_raw = np.cross(v_arr[f_arr[:, 1]] - v_arr[f_arr[:, 0]], v_arr[f_arr[:, 2]] - v_arr[f_arr[:, 0]])
+    fn_unit = fn_raw / (np.linalg.norm(fn_raw, axis=1, keepdims=True) + 1e-12)
+    v_fn_sum = np.zeros_like(n_arr)
+    for k_corner in range(3):
+        np.add.at(v_fn_sum, f_arr[:, k_corner], fn_unit)
+    v_fn_avg = v_fn_sum / (np.linalg.norm(v_fn_sum, axis=1, keepdims=True) + 1e-12)
+    n_blend = 0.45 * n_arr + 0.55 * v_fn_avg
+    n_blend /= np.linalg.norm(n_blend, axis=1, keepdims=True) + 1e-12
+    normals = []
+    for row in n_blend:
+        nl = math.hypot(float(row[0]), float(row[1]), float(row[2])) + 1e-12
+        normals.append([round(float(row[0]) / nl, 4), round(float(row[1]) / nl, 4), round(float(row[2]) / nl, 4)])
+
     return verts, faces, colors, normals
 
 
@@ -1162,8 +1178,8 @@ def build_scen_03_data(
 
     # Hip Joint Reaction Force F_joint on Superior Femoral Head dome + Abductor pull on Greater Trochanter
     force_info: Dict[str, Any] = {
-        "origin": [-0.45, 0.0, 0.83],
-        "extra_origins": [[0.42, 0.0, 0.54]],
+        "origin": [-0.50, 0.02, 1.03],
+        "extra_origins": [[0.30, 0.02, 0.53]],
         "dir": [0.34, 0.0, -0.82],
         "extra_dirs": [[0.34, 0.0, -0.82], [-0.36, 0.0, 0.72]],
         "label": "F_joint = 2.4 kN [Hip + Abductor]",

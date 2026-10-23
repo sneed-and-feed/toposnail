@@ -724,51 +724,45 @@ def build_scen_05_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[
             p_in_1 = c_pt + h_len * ax + r_inner * rad_dir
             p_in_0 = c_pt - h_len * ax + r_inner * rad_dir
 
+            n_out_0 = rad_dir - 0.35 * ax
+            n_out_0 = n_out_0 / (np.linalg.norm(n_out_0) + 1e-12)
+            n_out_1 = rad_dir + 0.35 * ax
+            n_out_1 = n_out_1 / (np.linalg.norm(n_out_1) + 1e-12)
+            n_in_1 = ax if cap_bore_top else (-rad_dir + 0.35 * ax)
+            n_in_1 = n_in_1 / (np.linalg.norm(n_in_1) + 1e-12)
+            n_in_0 = (-ax) if cap_bore_top else (-rad_dir - 0.35 * ax)
+            n_in_0 = n_in_0 / (np.linalg.norm(n_in_0) + 1e-12)
+
             verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
-            normals.append([float(rad_dir[0]), float(rad_dir[1]), float(rad_dir[2])])
+            normals.append([float(n_out_0[0]), float(n_out_0[1]), float(n_out_0[2])])
             colors.append(clr_out)
 
             verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
-            normals.append([float(rad_dir[0]), float(rad_dir[1]), float(rad_dir[2])])
+            normals.append([float(n_out_1[0]), float(n_out_1[1]), float(n_out_1[2])])
             colors.append(clr_out)
 
             verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
-            normals.append([float(-rad_dir[0]), float(-rad_dir[1]), float(-rad_dir[2])])
-            colors.append(clr_in)
+            normals.append([float(n_in_1[0]), float(n_in_1[1]), float(n_in_1[2])])
+            colors.append(clr_cap if cap_bore_top else clr_in)
 
             verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
-            normals.append([float(-rad_dir[0]), float(-rad_dir[1]), float(-rad_dir[2])])
-            colors.append(clr_in)
+            normals.append([float(n_in_0[0]), float(n_in_0[1]), float(n_in_0[2])])
+            colors.append(clr_cap if cap_bore_top else clr_in)
 
-            verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
-            normals.append([float(ax[0]), float(ax[1]), float(ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
-            normals.append([float(ax[0]), float(ax[1]), float(ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
-            normals.append([float(-ax[0]), float(-ax[1]), float(-ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
-            normals.append([float(-ax[0]), float(-ax[1]), float(-ax[2])])
-            colors.append(clr_cap)
-
-        stride = 8
+        stride = 4
         for j in range(n_sides):
             jn = (j + 1) % n_sides
             b0 = base_idx + j * stride
             b1 = base_idx + jn * stride
             faces.append([b0 + 0, b1 + 0, b1 + 1])
             faces.append([b0 + 0, b1 + 1, b0 + 1])
-            faces.append([b0 + 2, b1 + 2, b1 + 3])
-            faces.append([b0 + 2, b1 + 3, b0 + 3])
-            faces.append([b0 + 4, b1 + 4, b1 + 5])
-            faces.append([b0 + 4, b1 + 5, b0 + 5])
-            faces.append([b0 + 6, b0 + 7, b1 + 7])
-            faces.append([b0 + 6, b1 + 7, b1 + 6])
+            faces.append([b0 + 1, b1 + 1, b1 + 2])
+            faces.append([b0 + 1, b1 + 2, b0 + 2])
+            if not cap_bore_top:
+                faces.append([b0 + 2, b1 + 2, b1 + 3])
+                faces.append([b0 + 2, b1 + 3, b0 + 3])
+            faces.append([b0 + 3, b1 + 3, b1 + 0])
+            faces.append([b0 + 3, b1 + 0, b0 + 0])
 
         if cap_bore_top:
             top_center = c_pt + h_len * ax
@@ -776,11 +770,17 @@ def build_scen_05_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[
             verts.append([float(top_center[0]), float(top_center[1]), float(top_center[2])])
             normals.append([float(ax[0]), float(ax[1]), float(ax[2])])
             colors.append(clr_in)
+            bot_center = c_pt - h_len * ax
+            c_bot_idx = len(verts)
+            verts.append([float(bot_center[0]), float(bot_center[1]), float(bot_center[2])])
+            normals.append([float(-ax[0]), float(-ax[1]), float(-ax[2])])
+            colors.append(clr_in)
             for j in range(n_sides):
                 jn = (j + 1) % n_sides
                 b0 = base_idx + j * stride
                 b1 = base_idx + jn * stride
-                faces.append([c_top_idx, b0 + 5, b1 + 5])
+                faces.append([c_top_idx, b0 + 2, b1 + 2])
+                faces.append([c_bot_idx, b1 + 3, b0 + 3])
 
     # --- Maillart / Michell Funicular Parabolic Arch Bridge Geometry ---
     span_half = 1.18

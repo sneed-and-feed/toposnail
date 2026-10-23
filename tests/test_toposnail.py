@@ -695,7 +695,9 @@ class TestStudioInteractiveAndFirefoxFix:
             assert token in html, f"Missing CAD control token in studio HTML: {token}"
 
     def test_blender_verified_models_and_manifold_integrity(self):
+        from collections import defaultdict
         from toposnail.models import SCENARIO_DATA_BUILDERS
+        from toposnail.studio import generate_studio_html
 
         assert len(SCENARIO_DATA_BUILDERS) == 5
         for s_id, builder in SCENARIO_DATA_BUILDERS.items():
@@ -711,7 +713,7 @@ class TestStudioInteractiveAndFirefoxFix:
             assert colors.shape == verts.shape
             assert normals.shape == verts.shape
 
-            # Verify zero degenerate triangles and outward normal consistency
+            # Verify zero degenerate triangles and strict outward normal consistency (no np.abs masking)
             v0 = verts[faces[:, 0]]
             v1 = verts[faces[:, 1]]
             v2 = verts[faces[:, 2]]
@@ -723,8 +725,28 @@ class TestStudioInteractiveAndFirefoxFix:
             vn_norms = np.linalg.norm(normals, axis=1)
             assert np.all(vn_norms > 0.5), f"{s_id}: zero-length vertex normal detected"
             vn_avg = (normals[faces[:, 0]] + normals[faces[:, 1]] + normals[faces[:, 2]]) / 3.0
-            dots = np.abs(np.sum(fn_unit * vn_avg, axis=1))
-            assert float(np.mean(dots > 1e-4)) >= 0.99, f"{s_id}: degenerate face/vertex normal alignment"
+            vn_avg /= np.linalg.norm(vn_avg, axis=1, keepdims=True) + 1e-12
+            dots = np.sum(fn_unit * vn_avg, axis=1)
+            assert np.all(dots > 0.05), (
+                f"{s_id}: inverted or orthogonal face winding detected (min dot={float(np.min(dots)):.4f}, "
+                f"count <=0: {int(np.sum(dots <= 0))})"
+            )
+
+            # Verify 100% watertight 2-manifold paired half-edge topology
+            undir_counts = defaultdict(int)
+            dir_counts = defaultdict(int)
+            for a, b, c in faces:
+                ia, ib, ic = int(a), int(b), int(c)
+                for u_e, v_e in ((ia, ib), (ib, ic), (ic, ia)):
+                    undir_counts[(min(u_e, v_e), max(u_e, v_e))] += 1
+                    dir_counts[(u_e, v_e)] += 1
+            boundary_edges = sum(1 for cnt in undir_counts.values() if cnt == 1)
+            non_manifold_edges = sum(
+                1 for (u_e, v_e), cnt in undir_counts.items()
+                if cnt != 2 or dir_counts[(u_e, v_e)] != 1 or dir_counts[(v_e, u_e)] != 1
+            )
+            assert boundary_edges == 0, f"{s_id}: expected 0 open boundary edges, got {boundary_edges}"
+            assert non_manifold_edges == 0, f"{s_id}: expected 0 non-manifold edges, got {non_manifold_edges}"
 
             # Verify fields_b64, supports, force, baselines
             assert "toposnail_rho" in payload["fields_b64"]
@@ -736,5 +758,15 @@ class TestStudioInteractiveAndFirefoxFix:
             if s_id == "03_trabecular_femur_anisotropic_so6":
                 # Verify coronal cutaway and multi-vector anatomical loading
                 assert "extra_dirs" in payload["force"] and len(payload["force"]["extra_dirs"]) == 2
+                assert payload["force"]["extra_dirs"][0][2] < 0.0, "Hip joint force must point downward-medially"
+                assert payload["force"]["extra_dirs"][1][2] > 0.0, "Abductor pull force must point upward-medially"
                 cutaway_mask = (verts[:, 1] >= -0.02) & (verts[:, 1] <= 0.08)
                 assert int(np.sum(cutaway_mask)) > 500, "Femur must expose anterior coronal cutaway"
+
+        # Verify studio HTML bundle on disk is in sync with generate_studio_html()
+        studio_path = Path("studio/toposnail_portable_studio.html")
+        if studio_path.exists():
+            assert studio_path.read_text(encoding="utf-8") == generate_studio_html(), (
+                "studio/toposnail_portable_studio.html is out of sync with generate_studio_html()"
+            )
+

@@ -1553,6 +1553,12 @@ function updateUIValues() {{
     const elSO6 = document.getElementById("kpiSO6");
     if (elSO6) elSO6.innerText = so6Resid.toExponential(2);
 
+    // Solver Throughput
+    const elThru = document.getElementById("kpiThroughput");
+    if (elThru && activeRow.throughput_its) {{
+        elThru.innerText = activeRow.throughput_its + " it/s";
+    }}
+
     populateBaselineTable();
 }}
 
@@ -2278,7 +2284,7 @@ function renderQuadA() {{
                 const p2 = project(qf[2][0], qf[2][1], qf[2][2]);
                 const p3 = project(qf[3][0], qf[3][1], qf[3][2]);
                 const nx = qf[4][0], ny = qf[4][1], nz = qf[4][2];
-                const rnx = nx * cosY - ny * sinY;
+                const rnx = xSign * (nx * cosY - ny * sinY);
                 const rnyDepth = nx * sinY + ny * cosY;
                 const rny = nz * cosX - rnyDepth * sinX;
                 const rnz2 = nz * sinX + rnyDepth * cosX;
@@ -2370,7 +2376,7 @@ function renderQuadA() {{
             nx /= nlen; ny /= nlen; nz /= nlen;
 
             // Rotate normal into Z-up camera space
-            const rnx = nx * cosY - ny * sinY;
+            const rnx = xSign * (nx * cosY - ny * sinY);
             const rnyDepth = nx * sinY + ny * cosY;
             const rny = nz * cosX - rnyDepth * sinX;
             const rnz2 = nz * sinX + rnyDepth * cosX;
@@ -2599,10 +2605,12 @@ function renderQuadA() {{
         const allOrigins = [scen.force.origin].concat(scen.force.extra_origins || []);
         allOrigins.forEach((fo, idx) => {{
             let fd = fd0;
-            if (idx > 0 && extraDirs[idx - 1]) {{
+            if (extraDirs.length >= allOrigins.length && extraDirs[idx]) {{
+                fd = extraDirs[idx];
+            }} else if (idx > 0 && extraDirs[idx - 1]) {{
                 fd = extraDirs[idx - 1];
             }} else if (idx > 0 && STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") {{
-                fd = [-0.25, 0.0, 0.58];
+                fd = [-0.36, 0.0, 0.72];
             }}
             const pStart = project(fo[0], fo[1], fo[2]);
             const pEnd = project(fo[0] + fd[0] * 0.32, fo[1] + fd[1] * 0.32, fo[2] + fd[2] * 0.32);
@@ -2630,8 +2638,9 @@ function renderQuadA() {{
                 ctx.font = "bold 11px sans-serif";
                 ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
                 ctx.shadowBlur = 4;
-                const lblX = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? (pStart[0] - 125) : (pStart[0] + 10);
-                ctx.fillText(scen.force.label || "F_ext", lblX, pStart[1] - 6);
+                const lblX = pStart[0] + 10;
+                const lblY = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? (pStart[1] + 24) : (pStart[1] - 6);
+                ctx.fillText(scen.force.label || "F_ext", lblX, lblY);
                 ctx.shadowBlur = 0;
             }}
         }});
@@ -2871,10 +2880,13 @@ function renderQuadB() {{
     // 1. Draw Floor Cut Plane (Z = zSlice)
     const stepX = 2.0 / (X - 1);
     const stepY = 2.0 / (Y - 1);
+    const isFemurB = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6");
+    const xSliceVox = isFemurB ? (X - 1 - xSlice) : xSlice;
 
     for (let y = 0; y < Y - 1; y++) {{
         for (let x = 0; x < X - 1; x++) {{
-            const idx = zSlice * (Y * X) + y * X + x;
+            const xVox = isFemurB ? (X - 1 - x) : x;
+            const idx = zSlice * (Y * X) + y * X + xVox;
             const gx = (x / (X - 1)) * 2.0 - 1.0;
             const gy = (y / (Y - 1)) * 2.0 - 1.0;
 
@@ -2898,7 +2910,7 @@ function renderQuadB() {{
     const stepZ = 2.0 / (Z - 1);
     for (let z = 0; z < Z - 1; z++) {{
         for (let y = 0; y < ySlice; y++) {{
-            const idx = z * (Y * X) + y * X + xSlice;
+            const idx = z * (Y * X) + y * X + xSliceVox;
             const gz = (z / (Z - 1)) * 2.0 - 1.0;
             const gy = (y / (Y - 1)) * 2.0 - 1.0;
 
@@ -2921,7 +2933,8 @@ function renderQuadB() {{
     // 3. Draw Coronal Wall Cut Plane (Y = ySlice)
     for (let z = 0; z < Z - 1; z++) {{
         for (let x = 0; x < xSlice; x++) {{
-            const idx = z * (Y * X) + ySlice * X + x;
+            const xVox = isFemurB ? (X - 1 - x) : x;
+            const idx = z * (Y * X) + ySlice * X + xVox;
             const gz = (z / (Z - 1)) * 2.0 - 1.0;
             const gx = (x / (X - 1)) * 2.0 - 1.0;
 
@@ -2945,7 +2958,8 @@ function renderQuadB() {{
     if (STATE.quadBShowFibers) {{
         for (let y = 1; y < Y; y += 2) {{
             for (let x = 1; x < X; x += 2) {{
-                const idx = zSlice * (Y * X) + y * X + x;
+                const xVox = isFemurB ? (X - 1 - x) : x;
+                const idx = zSlice * (Y * X) + y * X + xVox;
                 const rhoTarget = flatRho[idx];
                 const rhoVal = (1.0 - progress) * 0.92 + progress * Math.min(1.0, rhoTarget * volScale);
                 if (rhoVal < 0.28) continue;
@@ -2985,7 +2999,8 @@ function renderQuadB() {{
         const ringPositions = [];
         for (let y = 2; y < Y - 2; y++) {{
             for (let x = 2; x < X - 2; x++) {{
-                const idx = zSlice * (Y * X) + y * X + x;
+                const xVox = isFemurB ? (X - 1 - x) : x;
+                const idx = zSlice * (Y * X) + y * X + xVox;
                 const curlVal = flatCurl ? flatCurl[idx] : 0.0;
                 const rhoVal = flatRho[idx];
 
