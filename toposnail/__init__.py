@@ -12,6 +12,16 @@ Key Modules:
 
 from __future__ import annotations
 
+from .blind_cad_benchmark import (
+    audit_blind_cad_part_intrinsic,
+    run_blind_cad_corpus_benchmark,
+    run_blind_cad_part_benchmark,
+)
+from .blind_cad_corpus import (
+    generate_blind_cad_corpus,
+    load_blind_cad_mesh,
+    recognize_blind_cad_features,
+)
 from .elasticity import (
     EBERelaxationResult,
     ElasticMaterialProperties,
@@ -27,6 +37,8 @@ from .optimizer import (
     TopoSnailOptimizer,
 )
 
+run_blind_cad_benchmark_suite = run_blind_cad_corpus_benchmark
+
 __version__ = "0.2.0"
 
 __all__ = [
@@ -41,4 +53,11 @@ __all__ = [
     "BeltramiMorseStrutFilter",
     "JordanCavityEnforcer",
     "TopoSnailOptimizer",
+    "generate_blind_cad_corpus",
+    "load_blind_cad_mesh",
+    "recognize_blind_cad_features",
+    "run_blind_cad_benchmark_suite",
+    "run_blind_cad_corpus_benchmark",
+    "run_blind_cad_part_benchmark",
+    "audit_blind_cad_part_intrinsic",
 ]

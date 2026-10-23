@@ -764,9 +764,13 @@ class TestStudioInteractiveAndFirefoxFix:
                 assert int(np.sum(cutaway_mask)) > 500, "Femur must expose anterior coronal cutaway"
 
         # Verify studio HTML bundle on disk is in sync with generate_studio_html()
+        # (Compare SHA-256 digests so pytest never runs O(N^2) difflib on 18 MB strings)
+        import hashlib
         studio_path = Path("studio/toposnail_portable_studio.html")
         if studio_path.exists():
-            assert studio_path.read_text(encoding="utf-8") == generate_studio_html(), (
+            disk_bytes = studio_path.read_text(encoding="utf-8").encode("utf-8")
+            gen_bytes = generate_studio_html().encode("utf-8")
+            assert len(disk_bytes) == len(gen_bytes) and hashlib.sha256(disk_bytes).hexdigest() == hashlib.sha256(gen_bytes).hexdigest(), (
                 "studio/toposnail_portable_studio.html is out of sync with generate_studio_html()"
             )
 

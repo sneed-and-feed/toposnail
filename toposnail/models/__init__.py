@@ -104,14 +104,17 @@ def audit_mesh_2manifold(
     areas = 0.5 * np.linalg.norm(cross, axis=1)
     degen_count = int(np.sum(areas <= 1e-8))
 
-    edge_counts: Dict[Tuple[int, int], int] = {}
-    for tri in f:
-        for i in range(3):
-            e = (int(min(tri[i], tri[(i + 1) % 3])), int(max(tri[i], tri[(i + 1) % 3])))
-            edge_counts[e] = edge_counts.get(e, 0) + 1
-
-    boundary_edges = sum(1 for c in edge_counts.values() if c == 1)
-    non_manifold_edges = sum(1 for c in edge_counts.values() if c != 2)
+    if len(f) > 0:
+        edges = np.vstack((f[:, [0, 1]], f[:, [1, 2]], f[:, [2, 0]]))
+        u_min = np.minimum(edges[:, 0], edges[:, 1])
+        v_max = np.maximum(edges[:, 0], edges[:, 1])
+        undir_keys = (u_min << np.int64(32)) | (v_max & np.int64(0xFFFFFFFF))
+        _, counts = np.unique(undir_keys, return_counts=True)
+        boundary_edges = int(np.sum(counts == 1))
+        non_manifold_edges = int(np.sum(counts != 2))
+    else:
+        boundary_edges = 0
+        non_manifold_edges = 0
     vol = float(np.sum(np.sum(cross * v2, axis=1)) / 6.0)
 
     min_normal_dot = 1.0

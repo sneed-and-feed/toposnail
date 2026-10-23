@@ -1222,7 +1222,7 @@ def build_scen_05_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     Stage 2 (V~0.60): Under-arch vault carved out beneath the roadway deck, leaving thick
     continuous solid funicular spandrel arch walls spanning the 4 abutments.
     """
-    from toposnail.models.scen_01_cantilever import _add_watertight_box
+    from toposnail.models.scen_01_cantilever import _add_warped_brick, _add_watertight_box
 
     verts: List[List[float]] = []
     faces: List[List[int]] = []
@@ -1238,21 +1238,26 @@ def build_scen_05_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     _add_watertight_box(verts, faces, colors, normals, -1.21, -0.92, -0.32, 0.32, -0.55, 0.32, sc(0.72))
     _add_watertight_box(verts, faces, colors, normals, 0.92, 1.21, -0.32, 0.32, -0.55, 0.32, sc(0.72))
 
-    # Spandrel arch walls
+    # Smooth continuous parabolic spandrel arch walls (_add_warped_brick)
     span_half = 1.18
     z_crown = 0.30
     z_spring = -0.55
-    n_slices = 20
-    xs = np.linspace(-0.92, 0.92, n_slices + 1)
-    for k in range(n_slices):
-        x_mid = 0.5 * (xs[k] + xs[k + 1])
-        z_vault = z_crown - (z_crown - z_spring) * ((x_mid / span_half) ** 2)
-        z_bottom = max(-0.55, z_vault - 0.08)
-        s_val = 0.45 + 0.35 * (1.0 - abs(x_mid / span_half))
-        # Front spandrel wall
-        _add_watertight_box(verts, faces, colors, normals, xs[k], xs[k + 1], -0.32, -0.10, z_bottom, 0.32, sc(s_val))
-        # Rear spandrel wall
-        _add_watertight_box(verts, faces, colors, normals, xs[k], xs[k + 1], 0.10, 0.32, z_bottom, 0.32, sc(s_val))
+    for y0_w, y1_w in [(-0.32, -0.10), (0.10, 0.32)]:
+        def spandrel_eval(u: float, v: float, w: float, _y0: float = y0_w, _y1: float = y1_w) -> Tuple[float, float, float]:
+            x = 0.92 * u
+            y = 0.5 * (_y0 + _y1) + 0.5 * (_y1 - _y0) * v
+            z_vault = z_crown - (z_crown - z_spring) * ((x / span_half) ** 2)
+            z_bot = max(-0.55, z_vault - 0.08)
+            z_top = 0.32
+            z = 0.5 * (z_bot + z_top) + 0.5 * (z_top - z_bot) * w
+            return x, y, z
+
+        def spandrel_color(u: float, v: float, w: float) -> List[float]:
+            x = 0.92 * u
+            s_val = 0.45 + 0.35 * (1.0 - abs(x / span_half)) - 0.06 * (1.0 - w)
+            return sc(s_val)
+
+        _add_warped_brick(verts, faces, colors, normals, spandrel_eval, spandrel_color, nx=28, ny=4, nz=10, decimals=4)
 
     # Central keel arch tie
     _add_watertight_box(verts, faces, colors, normals, -0.50, 0.50, -0.10, 0.10, 0.22, 0.32, sc(0.60))

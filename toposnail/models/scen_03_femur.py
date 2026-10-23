@@ -483,6 +483,12 @@ def _project_trabecular_control_points(
     return px, pz
 
 
+from toposnail.models.scen_01_cantilever import (
+    _add_warped_brick,
+    _add_watertight_box as _base_watertight_box,
+)
+
+
 def _add_watertight_box(
     verts: List[List[float]],
     faces: List[List[int]],
@@ -492,30 +498,11 @@ def _add_watertight_box(
     y0: float, y1: float,
     z0: float, z1: float,
     clr: List[float],
+    max_edge: float = 0.08,
 ) -> None:
-    """Watertight 2-manifold rectangular box with outward normals and 0 boundary edges."""
-    base_idx = len(verts)
-    corners = np.array([
-        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
-        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
-    ], dtype=np.float64)
-    center = np.array([(x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5])
-    v_dirs = corners - center
-    v_norms = v_dirs / (np.linalg.norm(v_dirs, axis=1, keepdims=True) + 1e-12)
-    for i in range(8):
-        verts.append([round(float(corners[i, 0]), 4), round(float(corners[i, 1]), 4), round(float(corners[i, 2]), 4)])
-        normals.append([round(float(v_norms[i, 0]), 4), round(float(v_norms[i, 1]), 4), round(float(v_norms[i, 2]), 4)])
-        colors.append(clr)
-    box_faces = [
-        [0, 3, 2], [0, 2, 1],
-        [4, 5, 6], [4, 6, 7],
-        [0, 4, 7], [0, 7, 3],
-        [1, 2, 6], [1, 6, 5],
-        [0, 1, 5], [0, 5, 4],
-        [3, 7, 6], [3, 6, 2],
-    ]
-    for bf in box_faces:
-        faces.append([base_idx + bf[0], base_idx + bf[1], base_idx + bf[2]])
+    """Watertight 2-manifold subdivided rectangular box with outward normals and 0 boundary edges."""
+    _base_watertight_box(verts, faces, colors, normals, x0, x1, y0, y1, z0, z1, clr, max_edge=max_edge, decimals=4)
+
 
 
 def _add_joint_sphere(
@@ -585,6 +572,7 @@ def build_scen_03_mesh(
     vm: Optional[np.ndarray] = None,
     trabecular_scale: float = 1.0,
     coarse_stage_3: bool = False,
+    closed_stage_2: bool = False,
 ) -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
     Construct the 100% watertight 2-manifold (`boundary_edges == 0`, `non_manifold_edges == 0`)
@@ -797,18 +785,28 @@ def build_scen_03_mesh(
         ])
         return idx_v
 
-    # --- 2A. Polished Coronal Cutaway Cortical Rim (at y = y_cut) ---
+    # --- 2A. Polished Coronal Cutaway Cortical Rim (or Anterior Periosteal Shoulder when closed_stage_2=True) ---
     rim_rings: List[List[int]] = []
     for r_frac in (0.0, 0.5, 1.0):
         ring_ids: List[int] = []
         for k in range(M_arch):
             px_k = (1.0 - r_frac) * p_in_arch[k, 0] + r_frac * p_out_arch[k, 0]
             pz_k = (1.0 - r_frac) * p_in_arch[k, 1] + r_frac * p_out_arch[k, 1]
-            py_k = float(y_cut_fn(px_k, pz_k))
-            s_val = float(cortical_stress_ratio(px_k, pz_k))
-            base_c = _turbo_colormap(s_val)
-            rim_c = [min(1.0, c * 1.02) for c in base_c]
-            ring_ids.append(add_vert((px_k, py_k, pz_k), (0.0, 1.0, 0.0), rim_c))
+            if closed_stage_2:
+                alpha_a = (1.0 - r_frac) * (0.28 * math.pi)
+                ca_a, sa_a = math.cos(alpha_a), math.sin(alpha_a)
+                d_ap = float(ap_half_depth(px_k, pz_k))
+                py_k = float(y_cut_fn(px_k, pz_k)) + sa_a * (0.65 * d_ap)
+                s_val = float(cortical_stress_ratio(px_k, pz_k)) * 0.86
+                rim_c = _turbo_colormap(s_val)
+                n_vec = (norms_out[k, 0] * ca_a, max(0.20, sa_a), norms_out[k, 1] * ca_a)
+            else:
+                py_k = float(y_cut_fn(px_k, pz_k))
+                s_val = float(cortical_stress_ratio(px_k, pz_k))
+                base_c = _turbo_colormap(s_val)
+                rim_c = [min(1.0, c * 1.02) for c in base_c]
+                n_vec = (0.0, 1.0, 0.0)
+            ring_ids.append(add_vert((px_k, py_k, pz_k), n_vec, rim_c))
         rim_rings.append(ring_ids)
 
     for r_idx in range(2):
@@ -817,7 +815,7 @@ def build_scen_03_mesh(
             faces.append([r0[k], r1[k], r1[k + 1]])
             faces.append([r0[k], r1[k + 1], r0[k + 1]])
 
-    # --- 2B. 3D Inner Endosteal Cortical Step Wall (sharing rim_rings[0] at top!) ---
+    # --- 2B. 3D Inner Endosteal Cortical Step Wall (or Anterior Periosteal Arch Transition when closed_stage_2=True) ---
     step_rings: List[List[int]] = [rim_rings[0]]
     for step_idx, (y_drop, in_shift, ny_w, atten) in enumerate(
         [
@@ -830,18 +828,29 @@ def build_scen_03_mesh(
             nx_in, nz_in = -norms_out[k, 0], -norms_out[k, 1]
             px_k = p_in_arch[k, 0] + in_shift * nx_in
             pz_k = max(-0.820, p_in_arch[k, 1] + in_shift * nz_in)
-            py_k = float(y_cut_fn(p_in_arch[k, 0], p_in_arch[k, 1])) - y_drop
-            s_val = float(cortical_stress_ratio(px_k, pz_k))
-            base_c = _turbo_colormap(s_val)
-            if step_idx == 0:
-                col_k = [c * atten + 0.02 for c in base_c]
+            if closed_stage_2:
+                alpha_s = (0.39 if step_idx == 0 else 0.50) * math.pi
+                ca_s, sa_s = math.cos(alpha_s), math.sin(alpha_s)
+                d_ap = float(ap_half_depth(px_k, pz_k))
+                py_k = float(y_cut_fn(p_in_arch[k, 0], p_in_arch[k, 1])) + sa_s * (0.65 * d_ap)
+                s_val = float(cortical_stress_ratio(px_k, pz_k)) * (0.84 - 0.03 * step_idx)
+                col_k = _turbo_colormap(s_val)
+                n_step = (norms_out[k, 0] * ca_s, sa_s, norms_out[k, 1] * ca_s)
             else:
-                col_k = [
-                    min(0.24, base_c[0] * 0.18 + 0.09),
-                    min(0.21, base_c[1] * 0.16 + 0.08),
-                    min(0.18, base_c[2] * 0.15 + 0.07),
-                ]
-            ring_ids.append(add_vert((px_k, py_k, pz_k), (nx_in * (1.0 - ny_w), ny_w, nz_in * (1.0 - ny_w)), col_k))
+                y_drop_eff = y_drop * (0.65 if coarse_stage_3 else 1.0)
+                py_k = float(y_cut_fn(p_in_arch[k, 0], p_in_arch[k, 1])) - y_drop_eff
+                s_val = float(cortical_stress_ratio(px_k, pz_k))
+                base_c = _turbo_colormap(s_val)
+                if step_idx == 0:
+                    col_k = [c * atten + 0.02 for c in base_c]
+                else:
+                    col_k = [
+                        min(0.24, base_c[0] * 0.18 + 0.09),
+                        min(0.21, base_c[1] * 0.16 + 0.08),
+                        min(0.18, base_c[2] * 0.15 + 0.07),
+                    ]
+                n_step = (nx_in * (1.0 - ny_w), ny_w, nz_in * (1.0 - ny_w))
+            ring_ids.append(add_vert((px_k, py_k, pz_k), n_step, col_k))
         step_rings.append(ring_ids)
 
     for s_idx in range(2):
@@ -850,7 +859,7 @@ def build_scen_03_mesh(
             faces.append([r0[k], r0[k + 1], r1[k + 1]])
             faces.append([r0[k], r1[k + 1], r1[k]])
 
-    # --- 2C. Recessed 3D Concave Endosteal Cavity & Medullary Bowl (sharing step_rings[-1]!) ---
+    # --- 2C. Recessed 3D Concave Endosteal Cavity (or Convex Anterior Periosteal Dome when closed_stage_2=True) ---
     cav_vert_ids: List[int] = []
     d_in_all = np.maximum(0.0, -femur_inner_sdf(pts[:, 0], pts[:, 1]))
     u_in_all = np.minimum(1.0, d_in_all / 0.090)
@@ -865,20 +874,48 @@ def build_scen_03_mesh(
             px_i, pz_i = float(pts[i, 0]), float(pts[i, 1])
             u_i = float(u_in_all[i])
             prof = math.sqrt(max(0.0, 2.0 * u_i - u_i * u_i))
-            py_i = float(y_cut_fn(px_i, pz_i)) - 0.046 - 0.052 * prof
-            s_val = float(cortical_stress_ratio(px_i, pz_i))
-            base_c = _turbo_colormap(s_val)
-            d_ward = math.hypot(px_i - (-0.01), pz_i - 0.25)
-            ward_darken = 0.65 if d_ward < 0.088 else 1.0
-            atten = (0.16 - 0.05 * prof) * ward_darken
-            cav_c = [
-                min(0.24, base_c[0] * atten + 0.09 * ward_darken),
-                min(0.20, base_c[1] * atten + 0.08 * ward_darken),
-                min(0.17, base_c[2] * atten + 0.07 * ward_darken),
-            ]
-            nx_c = -float(gx_in[i]) * 0.38 * (1.0 - 0.6 * prof)
-            nz_c = -float(gz_in[i]) * 0.38 * (1.0 - 0.6 * prof)
-            ny_c = 0.85 + 0.15 * prof
+            if closed_stage_2:
+                d_ap = float(ap_half_depth(px_i, pz_i))
+                py_i = float(y_cut_fn(px_i, pz_i)) + (0.65 + 0.35 * prof) * d_ap
+                s_val = float(cortical_stress_ratio(px_i, pz_i)) * (0.82 - 0.08 * prof)
+                cav_c = _turbo_colormap(s_val)
+                nx_c = float(gx_in[i]) * 0.35 * (1.0 - prof)
+                nz_c = float(gz_in[i]) * 0.35 * (1.0 - prof)
+                ny_c = 1.0
+            elif coarse_stage_3:
+                # Stage 3: Thick endosteal cancellous web shelf with newly fenestrated Ward's Triangle
+                # and distal medullary canal weight-relief windows
+                d_ward = math.hypot(px_i - (-0.01), pz_i - 0.25)
+                w_ward = math.exp(-((d_ward / 0.115) ** 2))
+                w_med = 1.0 / (1.0 + math.exp((pz_i - (-0.18)) / 0.075))
+                w_pocket = max(w_ward, w_med)
+                py_i = float(y_cut_fn(px_i, pz_i)) - (0.022 + 0.014 * prof + 0.048 * prof * w_pocket)
+                s_val = float(cortical_stress_ratio(px_i, pz_i))
+                base_c = _turbo_colormap(s_val)
+                shelf_w = 1.0 - 0.78 * w_pocket
+                cav_c = [
+                    min(0.68, base_c[0] * (0.48 * shelf_w + 0.10) + 0.06),
+                    min(0.68, base_c[1] * (0.48 * shelf_w + 0.09) + 0.05),
+                    min(0.68, base_c[2] * (0.48 * shelf_w + 0.08) + 0.05),
+                ]
+                nx_c = -float(gx_in[i]) * 0.34 * (1.0 - 0.5 * prof)
+                nz_c = -float(gz_in[i]) * 0.34 * (1.0 - 0.5 * prof)
+                ny_c = 0.86 + 0.14 * prof
+            else:
+                py_i = float(y_cut_fn(px_i, pz_i)) - 0.046 - 0.052 * prof
+                s_val = float(cortical_stress_ratio(px_i, pz_i))
+                base_c = _turbo_colormap(s_val)
+                d_ward = math.hypot(px_i - (-0.01), pz_i - 0.25)
+                ward_darken = 0.65 if d_ward < 0.088 else 1.0
+                atten = (0.16 - 0.05 * prof) * ward_darken
+                cav_c = [
+                    min(0.24, base_c[0] * atten + 0.09 * ward_darken),
+                    min(0.20, base_c[1] * atten + 0.08 * ward_darken),
+                    min(0.17, base_c[2] * atten + 0.07 * ward_darken),
+                ]
+                nx_c = -float(gx_in[i]) * 0.38 * (1.0 - 0.6 * prof)
+                nz_c = -float(gz_in[i]) * 0.38 * (1.0 - 0.6 * prof)
+                ny_c = 0.85 + 0.15 * prof
             cav_vert_ids.append(add_vert((px_i, py_i, pz_i), (nx_c, ny_c, nz_c), cav_c))
 
     for a, b, c in tris:
@@ -897,7 +934,7 @@ def build_scen_03_mesh(
             d_ap = float(ap_half_depth(px_k, pz_k))
             b_lt = float(lesser_trochanter_posterior_bulge(px_k, pz_k))
             py_k = float(y_cut_fn(px_k, pz_k)) - sa * (0.65 * d_ap + b_lt)
-            s_val = float(cortical_stress_ratio(px_k, pz_k))
+            s_val = float(cortical_stress_ratio(px_k, pz_k)) * (0.86 if closed_stage_2 else 1.0)
             col_k = _turbo_colormap(s_val)
             nx_o = norms_out[k, 0] * ca
             nz_o = norms_out[k, 1] * ca
@@ -922,7 +959,7 @@ def build_scen_03_mesh(
             d_ap = float(ap_half_depth(px_i, pz_i))
             b_lt = float(lesser_trochanter_posterior_bulge(px_i, pz_i))
             py_i = float(y_cut_fn(px_i, pz_i)) - (0.65 + 0.35 * prof) * d_ap - b_lt
-            s_val = float(cortical_stress_ratio(px_i, pz_i))
+            s_val = float(cortical_stress_ratio(px_i, pz_i)) * (0.84 if closed_stage_2 else 1.0)
             col_i = _turbo_colormap(s_val)
             nx_b = float(gx_in[i]) * 0.35 * (1.0 - prof)
             nz_b = float(gz_in[i]) * 0.35 * (1.0 - prof)
@@ -933,7 +970,6 @@ def build_scen_03_mesh(
         faces.append([back_vert_ids[a], back_vert_ids[b], back_vert_ids[c]])
 
     # --- 2E. Watertight Bottom Closure of the Posterior Coronal Shell at z = -0.820 ---
-    # Right side (k = 0) and Left side (k = M_arch - 1) end-cap fans + bottom chord strip
     faces.append([rim_rings[0][0], rim_rings[1][0], step_rings[1][0]])
     faces.append([rim_rings[1][0], rim_rings[2][0], step_rings[1][0]])
     faces.append([step_rings[1][0], rim_rings[2][0], step_rings[2][0]])
@@ -955,196 +991,194 @@ def build_scen_03_mesh(
         faces.append([c_a, c_b, k_b])
         faces.append([c_a, k_b, k_a])
 
-    # --- 2F. Closed 2-Manifold Anterior Distal Shaft Collar (z in [-0.82, -0.36]) ---
-    n_col_z = 8
-    n_col_th = 20
-    thetas_ant = np.linspace(0.0, math.pi, n_col_th)
-    ant_o_rows: List[List[int]] = []
-    ant_i_rows: List[List[int]] = []
-    y_base_cut = float(y_cut_fn(0.14, -0.60))
+    if not closed_stage_2:
+        # --- 2F. Closed 2-Manifold Anterior Distal Shaft Collar (z in [-0.82, -0.36]) ---
+        n_col_z = 8
+        n_col_th = 20
+        thetas_ant = np.linspace(0.0, math.pi, n_col_th)
+        ant_o_rows: List[List[int]] = []
+        ant_i_rows: List[List[int]] = []
+        y_base_cut = float(y_cut_fn(0.14, -0.60))
 
-    for iz_c in range(n_col_z):
-        v_frac = iz_c / float(n_col_z - 1)
-        o_r: List[int] = []
-        i_r: List[int] = []
-        for th in thetas_ant:
-            ct, st_a = math.cos(th), math.sin(th)
-            z_top_th = -0.36 - 0.12 * st_a
-            cz = -0.820 + v_frac * (z_top_th - (-0.820))
-            px_o, py_o = 0.140 + ct * 0.138, y_base_cut + st_a * 0.132
-            px_i, py_i = 0.140 + ct * 0.080, y_base_cut + st_a * 0.076
-            s_val = float(cortical_stress_ratio(px_o, cz))
-            c_out = _turbo_colormap(s_val)
-            c_in = [min(0.24, c * 0.20 + 0.08) for c in c_out]
-            o_r.append(add_vert((px_o, py_o, cz), (ct, st_a, 0.0), c_out))
-            i_r.append(add_vert((px_i, py_i, cz), (-ct, -st_a, 0.0), c_in))
-        ant_o_rows.append(o_r)
-        ant_i_rows.append(i_r)
+        for iz_c in range(n_col_z):
+            v_frac = iz_c / float(n_col_z - 1)
+            o_r: List[int] = []
+            i_r: List[int] = []
+            for th in thetas_ant:
+                ct, st_a = math.cos(th), math.sin(th)
+                z_top_th = -0.36 - 0.12 * st_a
+                cz = -0.820 + v_frac * (z_top_th - (-0.820))
+                px_o, py_o = 0.140 + ct * 0.138, y_base_cut + st_a * 0.132
+                px_i, py_i = 0.140 + ct * 0.080, y_base_cut + st_a * 0.076
+                s_val = float(cortical_stress_ratio(px_o, cz))
+                c_out = _turbo_colormap(s_val)
+                c_in = [min(0.24, c * 0.20 + 0.08) for c in c_out]
+                o_r.append(add_vert((px_o, py_o, cz), (ct, st_a, 0.0), c_out))
+                i_r.append(add_vert((px_i, py_i, cz), (-ct, -st_a, 0.0), c_in))
+            ant_o_rows.append(o_r)
+            ant_i_rows.append(i_r)
 
-    for i in range(n_col_z - 1):
+        for i in range(n_col_z - 1):
+            for j in range(n_col_th - 1):
+                faces.append([ant_o_rows[i][j], ant_o_rows[i + 1][j], ant_o_rows[i + 1][j + 1]])
+                faces.append([ant_o_rows[i][j], ant_o_rows[i + 1][j + 1], ant_o_rows[i][j + 1]])
+                faces.append([ant_i_rows[i][j], ant_i_rows[i + 1][j + 1], ant_i_rows[i + 1][j]])
+                faces.append([ant_i_rows[i][j], ant_i_rows[i][j + 1], ant_i_rows[i + 1][j + 1]])
+
         for j in range(n_col_th - 1):
-            faces.append([ant_o_rows[i][j], ant_o_rows[i + 1][j], ant_o_rows[i + 1][j + 1]])
-            faces.append([ant_o_rows[i][j], ant_o_rows[i + 1][j + 1], ant_o_rows[i][j + 1]])
-            faces.append([ant_i_rows[i][j], ant_i_rows[i + 1][j + 1], ant_i_rows[i + 1][j]])
-            faces.append([ant_i_rows[i][j], ant_i_rows[i][j + 1], ant_i_rows[i + 1][j + 1]])
+            faces.append([ant_o_rows[-1][j], ant_i_rows[-1][j], ant_i_rows[-1][j + 1]])
+            faces.append([ant_o_rows[-1][j], ant_i_rows[-1][j + 1], ant_o_rows[-1][j + 1]])
+            faces.append([ant_o_rows[0][j], ant_i_rows[0][j + 1], ant_i_rows[0][j]])
+            faces.append([ant_o_rows[0][j], ant_o_rows[0][j + 1], ant_i_rows[0][j + 1]])
 
-    for j in range(n_col_th - 1):
-        faces.append([ant_o_rows[-1][j], ant_i_rows[-1][j], ant_i_rows[-1][j + 1]])
-        faces.append([ant_o_rows[-1][j], ant_i_rows[-1][j + 1], ant_o_rows[-1][j + 1]])
-        faces.append([ant_o_rows[0][j], ant_i_rows[0][j + 1], ant_i_rows[0][j]])
-        faces.append([ant_o_rows[0][j], ant_o_rows[0][j + 1], ant_i_rows[0][j + 1]])
+        for i in range(n_col_z - 1):
+            faces.append([ant_o_rows[i][0], ant_i_rows[i][0], ant_i_rows[i + 1][0]])
+            faces.append([ant_o_rows[i][0], ant_i_rows[i + 1][0], ant_o_rows[i + 1][0]])
+            jm = n_col_th - 1
+            faces.append([ant_o_rows[i][jm], ant_i_rows[i + 1][jm], ant_i_rows[i][jm]])
+            faces.append([ant_o_rows[i][jm], ant_o_rows[i + 1][jm], ant_i_rows[i + 1][jm]])
 
-    for i in range(n_col_z - 1):
-        faces.append([ant_o_rows[i][0], ant_i_rows[i][0], ant_i_rows[i + 1][0]])
-        faces.append([ant_o_rows[i][0], ant_i_rows[i + 1][0], ant_o_rows[i + 1][0]])
-        jm = n_col_th - 1
-        faces.append([ant_o_rows[i][jm], ant_i_rows[i + 1][jm], ant_i_rows[i][jm]])
-        faces.append([ant_o_rows[i][jm], ant_o_rows[i + 1][jm], ant_i_rows[i + 1][jm]])
+        # --- 2G. Capped 2-Manifold 3D Internal Wolff's Law Trabecular Arches ---
+        def add_spline_trabecula(
+            ctrl_xz: Sequence[Tuple[float, float]],
+            y_offset: float,
+            radii_ctrl: Sequence[float],
+            stress_ctrl: Sequence[float],
+            subdiv: int = 4,
+            n_sides: int = 8,
+            flare: float = 0.28,
+            snap_ends: bool = True,
+        ) -> None:
+            m = len(ctrl_xz)
+            if snap_ends:
+                px_ctrl, pz_ctrl = _project_trabecular_control_points(ctrl_xz, end_target=0.005, inner_margin=-0.008)
+            else:
+                px_ctrl = np.array([p[0] for p in ctrl_xz], dtype=np.float64)
+                pz_ctrl = np.array([p[1] for p in ctrl_xz], dtype=np.float64)
+            py_ctrl = y_cut_fn(px_ctrl, pz_ctrl) - y_offset
+            pts_arr = np.column_stack([px_ctrl, py_ctrl, pz_ctrl])
+            ext_pts = np.vstack([2.0 * pts_arr[0] - pts_arr[1], pts_arr, 2.0 * pts_arr[-1] - pts_arr[-2]])
 
-    # --- 2G. Capped 2-Manifold 3D Internal Wolff's Law Trabecular Arches ---
-    def add_spline_trabecula(
-        ctrl_xz: Sequence[Tuple[float, float]],
-        y_offset: float,
-        radii_ctrl: Sequence[float],
-        stress_ctrl: Sequence[float],
-        subdiv: int = 4,
-        n_sides: int = 8,
-        flare: float = 0.28,
-        snap_ends: bool = True,
-    ) -> None:
-        m = len(ctrl_xz)
-        if snap_ends:
-            px_ctrl, pz_ctrl = _project_trabecular_control_points(ctrl_xz, end_target=0.005, inner_margin=-0.008)
-        else:
-            px_ctrl = np.array([p[0] for p in ctrl_xz], dtype=np.float64)
-            pz_ctrl = np.array([p[1] for p in ctrl_xz], dtype=np.float64)
-        py_ctrl = y_cut_fn(px_ctrl, pz_ctrl) - y_offset
-        pts_arr = np.column_stack([px_ctrl, py_ctrl, pz_ctrl])
-        ext_pts = np.vstack([2.0 * pts_arr[0] - pts_arr[1], pts_arr, 2.0 * pts_arr[-1] - pts_arr[-2]])
+            curve_pts: List[np.ndarray] = []
+            curve_r: List[float] = []
+            curve_s: List[float] = []
+            for idx_s in range(m - 1):
+                p0, p1, p2, p3 = ext_pts[idx_s], ext_pts[idx_s + 1], ext_pts[idx_s + 2], ext_pts[idx_s + 3]
+                r1, r2 = radii_ctrl[idx_s], radii_ctrl[idx_s + 1]
+                s1, s2 = stress_ctrl[idx_s], stress_ctrl[idx_s + 1]
+                steps = subdiv if idx_s < m - 2 else subdiv + 1
+                for k in range(steps):
+                    t = k / float(subdiv)
+                    t2, t3 = t * t, t * t * t
+                    pos = 0.5 * (
+                        (2.0 * p1)
+                        + (-p0 + p2) * t
+                        + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                        + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+                    )
+                    u_global = (idx_s + t) / float(m - 1)
+                    end_flare = 1.0 + flare * ((2.0 * u_global - 1.0) ** 4)
+                    curve_pts.append(pos)
+                    curve_r.append(float((r1 * (1.0 - t) + r2 * t) * end_flare))
+                    curve_s.append(float(s1 * (1.0 - t) + s2 * t))
 
-        curve_pts: List[np.ndarray] = []
-        curve_r: List[float] = []
-        curve_s: List[float] = []
-        for idx_s in range(m - 1):
-            p0, p1, p2, p3 = ext_pts[idx_s], ext_pts[idx_s + 1], ext_pts[idx_s + 2], ext_pts[idx_s + 3]
-            r1, r2 = radii_ctrl[idx_s], radii_ctrl[idx_s + 1]
-            s1, s2 = stress_ctrl[idx_s], stress_ctrl[idx_s + 1]
-            steps = subdiv if idx_s < m - 2 else subdiv + 1
-            for k in range(steps):
-                t = k / float(subdiv)
-                t2, t3 = t * t, t * t * t
-                pos = 0.5 * (
-                    (2.0 * p1)
-                    + (-p0 + p2) * t
-                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
-                )
-                u_global = (idx_s + t) / float(m - 1)
-                end_flare = 1.0 + flare * ((2.0 * u_global - 1.0) ** 4)
-                curve_pts.append(pos)
-                curve_r.append(float((r1 * (1.0 - t) + r2 * t) * end_flare))
-                curve_s.append(float(s1 * (1.0 - t) + s2 * t))
+            pts_c = np.array(curve_pts, dtype=np.float64)
+            if len(pts_c) > 2:
+                xs_c, zs_c = pts_c[1:-1, 0].copy(), pts_c[1:-1, 2].copy()
+                for _ in range(2):
+                    val = femur_inner_sdf(xs_c, zs_c)
+                    over = val > 0.002
+                    if not np.any(over):
+                        break
+                    gx, gz, _ = sdf_grad_2d(femur_inner_sdf, xs_c, zs_c)
+                    xs_c = np.where(over, xs_c - (val - 0.002) * gx, xs_c)
+                    zs_c = np.where(over, zs_c - (val - 0.002) * gz, zs_c)
+                pts_c[1:-1, 0], pts_c[1:-1, 2] = xs_c, zs_c
+                pts_c[:, 1] = y_cut_fn(pts_c[:, 0], pts_c[:, 2]) - y_offset
 
-        pts_c = np.array(curve_pts, dtype=np.float64)
-        if len(pts_c) > 2:
-            xs_c, zs_c = pts_c[1:-1, 0].copy(), pts_c[1:-1, 2].copy()
-            for _ in range(2):
-                val = femur_inner_sdf(xs_c, zs_c)
-                over = val > 0.002
-                if not np.any(over):
-                    break
-                gx, gz, _ = sdf_grad_2d(femur_inner_sdf, xs_c, zs_c)
-                xs_c = np.where(over, xs_c - (val - 0.002) * gx, xs_c)
-                zs_c = np.where(over, zs_c - (val - 0.002) * gz, zs_c)
-            pts_c[1:-1, 0], pts_c[1:-1, 2] = xs_c, zs_c
-            pts_c[:, 1] = y_cut_fn(pts_c[:, 0], pts_c[:, 2]) - y_offset
+            n_c = len(pts_c)
+            tans = np.zeros_like(pts_c)
+            tans[0] = pts_c[1] - pts_c[0]
+            tans[-1] = pts_c[-1] - pts_c[-2]
+            tans[1:-1] = pts_c[2:] - pts_c[:-2]
+            tans /= np.linalg.norm(tans, axis=1, keepdims=True) + 1e-12
 
-        n_c = len(pts_c)
-        tans = np.zeros_like(pts_c)
-        tans[0] = pts_c[1] - pts_c[0]
-        tans[-1] = pts_c[-1] - pts_c[-2]
-        tans[1:-1] = pts_c[2:] - pts_c[:-2]
-        tans /= np.linalg.norm(tans, axis=1, keepdims=True) + 1e-12
+            b1 = np.array([0.0, 1.0, 0.0], dtype=np.float64)
+            angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
+            base_i = len(verts)
+            for i in range(n_c):
+                ti = tans[i]
+                b1_p = b1 - np.dot(b1, ti) * ti
+                b1_p /= np.linalg.norm(b1_p) + 1e-12
+                b2_p = np.cross(ti, b1_p)
+                r_i = curve_r[i]
+                col_i = _turbo_colormap(curve_s[i])
+                for a in angles:
+                    ca, sa = math.cos(a), math.sin(a)
+                    n_v = ca * b1_p * 0.88 + sa * b2_p * 1.05
+                    v_p = pts_c[i] + r_i * n_v
+                    add_vert(v_p, n_v, col_i)
+            for i in range(n_c - 1):
+                r0 = base_i + i * n_sides
+                r1 = base_i + (i + 1) * n_sides
+                for j in range(n_sides):
+                    jn = (j + 1) % n_sides
+                    faces.append([r0 + j, r1 + j, r1 + jn])
+                    faces.append([r0 + j, r1 + jn, r0 + jn])
 
-        b1 = np.array([0.0, 1.0, 0.0], dtype=np.float64)
-        angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
-        base_i = len(verts)
-        for i in range(n_c):
-            ti = tans[i]
-            b1_p = b1 - np.dot(b1, ti) * ti
-            b1_p /= np.linalg.norm(b1_p) + 1e-12
-            b2_p = np.cross(ti, b1_p)
-            r_i = curve_r[i]
-            col_i = _turbo_colormap(curve_s[i])
-            for a in angles:
-                ca, sa = math.cos(a), math.sin(a)
-                n_v = ca * b1_p * 0.88 + sa * b2_p * 1.05
-                v_p = pts_c[i] + r_i * n_v
-                add_vert(v_p, n_v, col_i)
-        for i in range(n_c - 1):
-            r0 = base_i + i * n_sides
-            r1 = base_i + (i + 1) * n_sides
+            # Cap both ends so every trabecular tube is a closed 2-manifold
+            c_start = add_vert(pts_c[0], -tans[0], _turbo_colormap(curve_s[0]))
+            c_end = add_vert(pts_c[-1], tans[-1], _turbo_colormap(curve_s[-1]))
+            r_first = base_i
+            r_last = base_i + (n_c - 1) * n_sides
             for j in range(n_sides):
                 jn = (j + 1) % n_sides
-                faces.append([r0 + j, r1 + j, r1 + jn])
-                faces.append([r0 + j, r1 + jn, r0 + jn])
+                faces.append([c_start, r_first + jn, r_first + j])
+                faces.append([c_end, r_last + j, r_last + jn])
 
-        # Cap both ends so every trabecular tube is a closed 2-manifold
-        c_start = add_vert(pts_c[0], -tans[0], _turbo_colormap(curve_s[0]))
-        c_end = add_vert(pts_c[-1], tans[-1], _turbo_colormap(curve_s[-1]))
-        r_first = base_i
-        r_last = base_i + (n_c - 1) * n_sides
-        for j in range(n_sides):
-            jn = (j + 1) % n_sides
-            faces.append([c_start, r_first + jn, r_first + j])
-            faces.append([c_end, r_last + j, r_last + jn])
+        comp_fan, tens_bundle, sec_arches, head_cross = _get_wolff_trabecular_groups()
+        if coarse_stage_3:
+            # Stage 3: Only the primary coarse compressive calcar and tensile arcuate bands framing
+            # the newly fenestrated Ward's Triangle window (before splitting into Stage 4's 18-arch filigree)
+            for y_off, r_sc_base in [(0.018, 1.0), (0.036, 0.90)]:
+                r_sc = r_sc_base * trabecular_scale
+                for idx_c in (1, 3, 5):
+                    traj = comp_fan[idx_c]
+                    r_list = [0.0112 * r_sc * (1.04 - 0.02 * k) for k in range(len(traj))]
+                    s_list = [float(np.clip(0.76 + 0.032 * k - 0.012 * idx_c, 0.70, 0.94)) for k in range(len(traj))]
+                    add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=10, flare=0.10, snap_ends=True)
+                for idx_t in (0, 2):
+                    traj = tens_bundle[idx_t]
+                    r_list = [0.0102 * r_sc] * len(traj)
+                    s_list = [float(np.clip(0.50 + 0.052 * k + 0.012 * idx_t, 0.44, 0.82)) for k in range(len(traj))]
+                    add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=10, flare=0.10, snap_ends=True)
+                for idx_s in (1,):
+                    traj = sec_arches[idx_s]
+                    r_list = [0.0095 * r_sc] * len(traj)
+                    s_list = [0.38 + 0.060 * k for k in range(len(traj))]
+                    add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=3, n_sides=10, flare=0.10, snap_ends=True)
+        else:
+            for y_off, r_sc_base in [(0.013, 1.0), (0.032, 0.86)]:
+                r_sc = r_sc_base * trabecular_scale
+                for idx_c, traj in enumerate(comp_fan):
+                    r_list = [0.0108 * r_sc * (1.06 - 0.02 * k) for k in range(len(traj))]
+                    s_list = [float(np.clip(0.80 + 0.032 * k - 0.012 * idx_c, 0.74, 0.96)) for k in range(len(traj))]
+                    add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=8, snap_ends=True)
 
-    comp_fan, tens_bundle, sec_arches, head_cross = _get_wolff_trabecular_groups()
-    if coarse_stage_3:
-        # Stage 3: Only 4 coarse, thick primary load-bearing trabecular bands framing the newly opened Ward's window
-        # plus solid epiphyseal/metaphyseal gusset blocks before refining into Stage 4's 18-arch filigree
-        for y_off, r_sc_base in [(0.014, 1.0), (0.034, 0.92)]:
-            r_sc = r_sc_base * trabecular_scale
-            for idx_c in (1, 4):
-                traj = comp_fan[idx_c]
-                r_list = [0.0115 * r_sc * (1.06 - 0.02 * k) for k in range(len(traj))]
-                s_list = [float(np.clip(0.76 + 0.032 * k - 0.012 * idx_c, 0.70, 0.94)) for k in range(len(traj))]
-                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=10, snap_ends=True)
-            for idx_t in (0, 2):
-                traj = tens_bundle[idx_t]
-                r_list = [0.0105 * r_sc] * len(traj)
-                s_list = [float(np.clip(0.50 + 0.052 * k + 0.012 * idx_t, 0.44, 0.82)) for k in range(len(traj))]
-                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=10, snap_ends=True)
-            for idx_s in (1, 3):
-                traj = sec_arches[idx_s]
-                r_list = [0.0098 * r_sc] * len(traj)
-                s_list = [0.38 + 0.060 * k for k in range(len(traj))]
-                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=3, n_sides=10, snap_ends=True)
-        # Solid un-eroded epiphyseal dome core & distal metaphyseal plug in Stage 3
-        _add_joint_sphere(verts, faces, colors, normals, (-0.38, 0.06, 0.56), 0.088, 0.82, n_lat=8, n_lon=14)
-        _add_watertight_box(verts, faces, colors, normals, 0.04, 0.24, -0.02, 0.09, -0.42, -0.08, _turbo_colormap(0.38))
-    else:
-        for y_off, r_sc_base in [(0.013, 1.0), (0.032, 0.86)]:
-            r_sc = r_sc_base * trabecular_scale
-            for idx_c, traj in enumerate(comp_fan):
-                r_list = [0.0108 * r_sc * (1.06 - 0.02 * k) for k in range(len(traj))]
-                s_list = [float(np.clip(0.80 + 0.032 * k - 0.012 * idx_c, 0.74, 0.96)) for k in range(len(traj))]
-                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=8, snap_ends=True)
+                for idx_t, traj in enumerate(tens_bundle):
+                    r_list = [0.0094 * r_sc] * len(traj)
+                    s_list = [float(np.clip(0.52 + 0.052 * k + 0.012 * idx_t, 0.46, 0.84)) for k in range(len(traj))]
+                    add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=8, snap_ends=True)
 
-            for idx_t, traj in enumerate(tens_bundle):
-                r_list = [0.0094 * r_sc] * len(traj)
-                s_list = [float(np.clip(0.52 + 0.052 * k + 0.012 * idx_t, 0.46, 0.84)) for k in range(len(traj))]
-                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=8, snap_ends=True)
+                for traj in sec_arches:
+                    r_list = [0.0086 * r_sc] * len(traj)
+                    s_list = [0.36 + 0.062 * k for k in range(len(traj))]
+                    add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=3, n_sides=8, snap_ends=True)
 
-            for traj in sec_arches:
-                r_list = [0.0086 * r_sc] * len(traj)
-                s_list = [0.36 + 0.062 * k for k in range(len(traj))]
-                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=3, n_sides=8, snap_ends=True)
-
-            for idx_h, traj in enumerate(head_cross):
-                r_list = [0.0080 * r_sc] * len(traj)
-                s_list = [0.84 - 0.03 * idx_h - 0.02 * k for k in range(len(traj))]
-                add_spline_trabecula(traj, y_off + 0.005, r_list, s_list, subdiv=3, n_sides=8, flare=0.18, snap_ends=True)
+                for idx_h, traj in enumerate(head_cross):
+                    r_list = [0.0080 * r_sc] * len(traj)
+                    s_list = [0.84 - 0.03 * idx_h - 0.02 * k for k in range(len(traj))]
+                    add_spline_trabecula(traj, y_off + 0.005, r_list, s_list, subdiv=3, n_sides=8, flare=0.18, snap_ends=True)
 
     # Ensure 100% contiguous half-edge orientation across all 2-manifold components
     from collections import deque
@@ -1192,6 +1226,16 @@ def build_scen_03_mesh(
     v_fn_avg = v_fn_sum / (np.linalg.norm(v_fn_sum, axis=1, keepdims=True) + 1e-12)
     n_blend = 0.45 * n_arr + 0.55 * v_fn_avg
     n_blend /= np.linalg.norm(n_blend, axis=1, keepdims=True) + 1e-12
+    for _ in range(10):
+        dots = np.sum(n_blend[f_arr] * fn_unit[:, None, :], axis=2)
+        bad = dots < 0.22
+        if not np.any(bad):
+            break
+        for k_c in range(3):
+            mask_k = bad[:, k_c]
+            if np.any(mask_k):
+                np.add.at(n_blend, f_arr[mask_k, k_c], (0.26 - dots[mask_k, k_c])[:, None] * fn_unit[mask_k])
+        n_blend /= np.linalg.norm(n_blend, axis=1, keepdims=True) + 1e-12
     normals = []
     for row in n_blend:
         nl = math.hypot(float(row[0]), float(row[1]), float(row[2])) + 1e-12
@@ -1203,11 +1247,9 @@ def build_scen_03_mesh(
 def build_scen_03_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
     Stage 1 (V=1.00): Fresh Stepped Prismatic CNC Stock Billet.
-    Blocky rough-machined rectangular stock slabs enclosing the distal diaphyseal shaft,
-    intertrochanteric block, greater trochanter shoulder, and femoral neck/head blank.
+    Clean non-overlapping rectangular CNC stock slabs enclosing the distal diaphyseal shaft,
+    intertrochanteric block, greater trochanter shoulder, and angled femoral neck/head blank.
     """
-    from toposnail.models.scen_01_cantilever import _add_spline_tube
-
     verts: List[List[float]] = []
     faces: List[List[int]] = []
     colors: List[List[float]] = []
@@ -1216,36 +1258,28 @@ def build_scen_03_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     def sc(s: float) -> List[float]:
         return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
 
-    # 1. Stepped Prismatic CNC Billet Slabs (blocky stock envelope covering the proximal femur)
-    # Distal clamping base block and lower diaphyseal rectangular stock
-    _add_watertight_box(verts, faces, colors, normals, -0.04, 0.34, -0.16, 0.16, -0.820, -0.680, sc(0.16))
-    _add_watertight_box(verts, faces, colors, normals, -0.02, 0.32, -0.15, 0.15, -0.680, -0.320, sc(0.20))
-    # Subtrochanteric & lesser trochanter rectangular billet block
-    _add_watertight_box(verts, faces, colors, normals, -0.08, 0.36, -0.16, 0.15, -0.320, 0.020, sc(0.26))
-    # Intertrochanteric & greater trochanter rectangular shoulder block
-    _add_watertight_box(verts, faces, colors, normals, -0.16, 0.44, -0.16, 0.16, 0.020, 0.360, sc(0.34))
-    _add_watertight_box(verts, faces, colors, normals, 0.10, 0.44, -0.15, 0.15, 0.360, 0.560, sc(0.42))
-    # Stepped femoral neck & head stock blocks
-    _add_watertight_box(verts, faces, colors, normals, -0.38, 0.14, -0.15, 0.15, 0.280, 0.540, sc(0.52))
-    _add_watertight_box(verts, faces, colors, normals, -0.62, -0.18, -0.17, 0.17, 0.420, 0.780, sc(0.68))
+    # 1. Distal clamping base flange & lower diaphyseal CNC stock block
+    _add_watertight_box(verts, faces, colors, normals, -0.04, 0.34, -0.17, 0.17, -0.820, -0.680, sc(0.15))
+    _add_watertight_box(verts, faces, colors, normals, -0.01, 0.31, -0.15, 0.15, -0.680, -0.320, sc(0.20))
+    # 2. Subtrochanteric & lesser trochanter stepped rectangular billet block
+    _add_watertight_box(verts, faces, colors, normals, -0.06, 0.36, -0.16, 0.15, -0.320, 0.020, sc(0.26))
+    # 3. Intertrochanteric & greater trochanter rectangular shoulder blocks
+    _add_watertight_box(verts, faces, colors, normals, -0.12, 0.44, -0.16, 0.16, 0.020, 0.340, sc(0.34))
+    _add_watertight_box(verts, faces, colors, normals, 0.08, 0.44, -0.15, 0.15, 0.340, 0.560, sc(0.42))
+    # 4. Angled prismatic CNC femoral neck & head stock billet (_add_warped_brick)
+    def neck_billet_eval(u: float, v: float, w: float) -> Tuple[float, float, float]:
+        ux = 0.5 * (u + 1.0)
+        x = 0.08 - 0.68 * ux
+        z_mid = 0.24 + 0.36 * ux
+        zh = 0.15 + 0.04 * ux
+        yh = 0.145 + 0.025 * ux
+        return x, v * yh, z_mid + w * zh
 
-    # 2. Rough-machined cylindrical stock bosses (providing smooth high-resolution mesh density > 2000 faces)
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.15, 0.0, -0.78), (0.16, 0.0, -0.45), (0.17, 0.0, -0.10), (0.18, 0.0, 0.25)],
-        [0.148, 0.146, 0.152, 0.162],
-        [0.20, 0.24, 0.30, 0.36],
-        subdiv=5, n_sides=18, ry_scale=0.95, rz_scale=1.0, cap_ends=True,
-    )
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.14, 0.0, 0.34), (-0.08, 0.0, 0.46), (-0.28, 0.0, 0.56), (-0.45, 0.0, 0.64)],
-        [0.150, 0.146, 0.144, 0.148],
-        [0.44, 0.54, 0.64, 0.74],
-        subdiv=5, n_sides=18, ry_scale=0.95, rz_scale=1.05, cap_ends=True,
-    )
-    _add_joint_sphere(verts, faces, colors, normals, (-0.44, 0.0, 0.62), 0.185, 0.76, n_lat=12, n_lon=20)
-    _add_joint_sphere(verts, faces, colors, normals, (0.30, 0.0, 0.46), 0.145, 0.44, n_lat=10, n_lon=16)
+    def neck_billet_color(u: float, v: float, w: float) -> List[float]:
+        ux = 0.5 * (u + 1.0)
+        return sc(0.44 + 0.30 * ux + 0.04 * w)
+
+    _add_warped_brick(verts, faces, colors, normals, neck_billet_eval, neck_billet_color, nx=12, ny=8, nz=8, decimals=4)
 
     return verts, faces, colors, normals
 
@@ -1253,65 +1287,10 @@ def build_scen_03_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], Li
 def build_scen_03_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
     Stage 2 (V=0.68): Sculpted Closed Anatomical Periosteal Hull (Solid Outer Cortex before Cutaway).
-    Features smooth anatomical waisting of the diaphyseal shaft and femoral neck, contoured
-    greater and lesser trochanters, intertrochanteric crest, and spherical femoral head
-    with zero anterior cutaway or internal cavities exposed yet.
+    Uses the exact anatomical femur coronal contour (`femur_coronal_sdf` & `ap_half_depth`) with a
+    smooth convex anterior periosteal dome (`closed_stage_2=True`) before the coronal cutaway is opened.
     """
-    from toposnail.models.scen_01_cantilever import _add_spline_tube
-
-    verts: List[List[float]] = []
-    faces: List[List[int]] = []
-    colors: List[List[float]] = []
-    normals: List[List[float]] = []
-
-    def sc(s: float) -> List[float]:
-        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
-
-    # Distal resection base collar at z in [-0.820, -0.775]
-    _add_watertight_box(verts, faces, colors, normals, 0.02, 0.26, -0.10, 0.10, -0.820, -0.775, sc(0.22))
-
-    # Smoothly waisted anatomical diaphyseal shaft
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.14, 0.0, -0.78), (0.145, 0.0, -0.50), (0.155, 0.0, -0.20), (0.165, 0.0, 0.08)],
-        [0.114, 0.102, 0.106, 0.122],
-        [0.26, 0.30, 0.36, 0.42],
-        subdiv=6, n_sides=18, ry_scale=0.90, rz_scale=1.0, cap_ends=True,
-    )
-
-    # Medial calcar flare & metaphyseal transition
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.14, 0.0, -0.12), (0.08, 0.0, 0.12), (-0.04, 0.0, 0.32), (-0.22, 0.0, 0.48)],
-        [0.095, 0.102, 0.096, 0.092],
-        [0.48, 0.62, 0.74, 0.80],
-        subdiv=5, n_sides=16, ry_scale=0.88, rz_scale=1.02, cap_ends=True,
-    )
-
-    # Greater trochanter lateral prominence & intertrochanteric crest
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.18, 0.0, 0.06), (0.25, 0.0, 0.26), (0.31, 0.0, 0.42), (0.28, 0.0, 0.52)],
-        [0.108, 0.114, 0.106, 0.088],
-        [0.36, 0.42, 0.48, 0.52],
-        subdiv=5, n_sides=16, ry_scale=0.90, rz_scale=1.05, cap_ends=True,
-    )
-    _add_joint_sphere(verts, faces, colors, normals, (0.29, 0.0, 0.46), 0.102, 0.48, n_lat=10, n_lon=16)
-
-    # Waisted femoral neck
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.12, 0.0, 0.32), (-0.06, 0.0, 0.42), (-0.22, 0.0, 0.50), (-0.38, 0.0, 0.57)],
-        [0.108, 0.092, 0.088, 0.105],
-        [0.52, 0.64, 0.72, 0.80],
-        subdiv=5, n_sides=18, ry_scale=0.88, rz_scale=1.02, cap_ends=True,
-    )
-
-    # Spherical femoral head & posteromedial lesser trochanter prominence
-    _add_joint_sphere(verts, faces, colors, normals, (-0.41, 0.0, 0.58), 0.148, 0.86, n_lat=12, n_lon=20)
-    _add_joint_sphere(verts, faces, colors, normals, (0.02, -0.07, -0.14), 0.068, 0.36, n_lat=8, n_lon=14)
-
-    return verts, faces, colors, normals
+    return build_scen_03_mesh(closed_stage_2=True)
 
 
 def build_scen_03_stage_3_mesh(
@@ -1320,11 +1299,10 @@ def build_scen_03_stage_3_mesh(
 ) -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
     Stage 3 (V=0.45): Fenestrated Shell (Coronal Cutaway & Initial Ward's Window Opened).
-    Exposes the anterior coronal cutaway and recessed endosteal cavity with only 6 coarse,
-    thick primary load-bearing trabecular bands and solid epiphyseal/metaphyseal gussets
-    before refining into Stage 4's full 18-arch dual-layer Wolff's Law trabecular network.
+    Exposes the anterior coronal cutaway with a thick endosteal cancellous shelf where Ward's Triangle
+    and the medullary canal have newly opened, bridged by 6 primary coarse compressive/tensile bands.
     """
-    return build_scen_03_mesh(rho=rho, vm=vm, trabecular_scale=1.85, coarse_stage_3=True)
+    return build_scen_03_mesh(rho=rho, vm=vm, trabecular_scale=1.16, coarse_stage_3=True)
 
 
 build_scen_03_stage_4_mesh = build_scen_03_mesh

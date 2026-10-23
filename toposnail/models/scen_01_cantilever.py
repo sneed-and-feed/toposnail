@@ -244,6 +244,271 @@ def build_scen_01_baselines() -> List[Dict[str, Any]]:
     ]
 
 
+def _add_warped_brick(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    *args: Any,
+    decimals: int = 4,
+    **kwargs: Any,
+) -> None:
+    """
+    Construct a 100% watertight, genus-0 2-manifold surface by mapping the subdivided
+    boundary grid of [-1, 1]^3 through a smooth orientation-preserving map.
+    Supports both `(nx, ny, nz, eval_fn)` where `eval_fn(u,v,w) -> (pos, clr)` and
+    `(pos_fn, color_fn, nx=..., ny=..., nz=...)`.
+    """
+    if len(args) == 4 and not callable(args[0]):
+        nx, ny, nz, eval_fn = int(args[0]), int(args[1]), int(args[2]), args[3]
+        color_fn = None
+    elif len(args) >= 2 and callable(args[0]) and callable(args[1]):
+        eval_fn, color_fn = args[0], args[1]
+        nx = int(kwargs.get("nx", 12))
+        ny = int(kwargs.get("ny", 12))
+        nz = int(kwargs.get("nz", 12))
+    elif "eval_fn" in kwargs:
+        eval_fn = kwargs["eval_fn"]
+        color_fn = kwargs.get("color_fn", None)
+        nx = int(kwargs.get("nx", 12))
+        ny = int(kwargs.get("ny", 12))
+        nz = int(kwargs.get("nz", 12))
+    else:
+        raise ValueError(f"Unsupported arguments to _add_warped_brick: {args} {kwargs}")
+
+    nx = max(2, int(nx))
+    ny = max(2, int(ny))
+    nz = max(2, int(nz))
+    us = np.linspace(-1.0, 1.0, nx + 1)
+    vs = np.linspace(-1.0, 1.0, ny + 1)
+    ws = np.linspace(-1.0, 1.0, nz + 1)
+
+    local_verts: List[List[float]] = []
+    local_colors: List[List[float]] = []
+    vid_map: Dict[Tuple[int, int, int], int] = {}
+
+    for ix in range(nx + 1):
+        for iy in range(ny + 1):
+            for iz in range(nz + 1):
+                if ix in (0, nx) or iy in (0, ny) or iz in (0, nz):
+                    u_v, v_v, w_v = float(us[ix]), float(vs[iy]), float(ws[iz])
+                    if color_fn is not None:
+                        pos = eval_fn(u_v, v_v, w_v)
+                        clr = color_fn(u_v, v_v, w_v)
+                    else:
+                        pos, clr = eval_fn(u_v, v_v, w_v)
+                    vid_map[(ix, iy, iz)] = len(local_verts)
+                    local_verts.append([
+                        round(float(pos[0]), decimals),
+                        round(float(pos[1]), decimals),
+                        round(float(pos[2]), decimals),
+                    ])
+                    local_colors.append([
+                        round(float(clr[0]), decimals),
+                        round(float(clr[1]), decimals),
+                        round(float(clr[2]), decimals),
+                    ])
+
+    local_faces: List[List[int]] = []
+    # -Z and +Z faces
+    for ix in range(nx):
+        for iy in range(ny):
+            v00 = vid_map[(ix, iy, 0)]
+            v10 = vid_map[(ix + 1, iy, 0)]
+            v11 = vid_map[(ix + 1, iy + 1, 0)]
+            v01 = vid_map[(ix, iy + 1, 0)]
+            local_faces.append([v00, v01, v11])
+            local_faces.append([v00, v11, v10])
+
+            t00 = vid_map[(ix, iy, nz)]
+            t10 = vid_map[(ix + 1, iy, nz)]
+            t11 = vid_map[(ix + 1, iy + 1, nz)]
+            t01 = vid_map[(ix, iy + 1, nz)]
+            local_faces.append([t00, t10, t11])
+            local_faces.append([t00, t11, t01])
+
+    # -X and +X faces
+    for iy in range(ny):
+        for iz in range(nz):
+            l00 = vid_map[(0, iy, iz)]
+            l10 = vid_map[(0, iy + 1, iz)]
+            l11 = vid_map[(0, iy + 1, iz + 1)]
+            l01 = vid_map[(0, iy, iz + 1)]
+            local_faces.append([l00, l01, l11])
+            local_faces.append([l00, l11, l10])
+
+            r00 = vid_map[(nx, iy, iz)]
+            r10 = vid_map[(nx, iy + 1, iz)]
+            r11 = vid_map[(nx, iy + 1, iz + 1)]
+            r01 = vid_map[(nx, iy, iz + 1)]
+            local_faces.append([r00, r10, r11])
+            local_faces.append([r00, r11, r01])
+
+    # -Y and +Y faces
+    for ix in range(nx):
+        for iz in range(nz):
+            f00 = vid_map[(ix, 0, iz)]
+            f10 = vid_map[(ix + 1, 0, iz)]
+            f11 = vid_map[(ix + 1, 0, iz + 1)]
+            f01 = vid_map[(ix, 0, iz + 1)]
+            local_faces.append([f00, f10, f11])
+            local_faces.append([f00, f11, f01])
+
+            b00 = vid_map[(ix, ny, iz)]
+            b10 = vid_map[(ix + 1, ny, iz)]
+            b11 = vid_map[(ix + 1, ny, iz + 1)]
+            b01 = vid_map[(ix, ny, iz + 1)]
+            local_faces.append([b00, b01, b11])
+            local_faces.append([b00, b11, b10])
+
+    v_np = np.asarray(local_verts, dtype=np.float64)
+    f_np = np.asarray(local_faces, dtype=np.int64)
+    cross = np.cross(v_np[f_np[:, 1]] - v_np[f_np[:, 0]], v_np[f_np[:, 2]] - v_np[f_np[:, 0]])
+    vol = float(np.sum(cross * v_np[f_np[:, 2]]) / 6.0)
+    if vol < 0.0:
+        local_faces = [[a, c, b] for a, b, c in local_faces]
+        f_np = np.asarray(local_faces, dtype=np.int64)
+        cross = -cross
+
+    fn_unit = cross / (np.linalg.norm(cross, axis=1, keepdims=True) + 1e-12)
+    vn = np.zeros_like(v_np)
+    for k in range(3):
+        np.add.at(vn, f_np[:, k], fn_unit)
+    vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
+    for _ in range(12):
+        dots = np.sum(vn[f_np] * fn_unit[:, None, :], axis=2)
+        bad = dots < 0.22
+        if not np.any(bad):
+            break
+        for k in range(3):
+            mask_k = bad[:, k]
+            if np.any(mask_k):
+                np.add.at(vn, f_np[mask_k, k], (0.26 - dots[mask_k, k])[:, None] * fn_unit[mask_k])
+        vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
+
+    base_idx = len(verts)
+    verts.extend(local_verts)
+    colors.extend(local_colors)
+    for row in vn:
+        nl = math.hypot(float(row[0]), float(row[1]), float(row[2])) + 1e-12
+        normals.append([
+            round(float(row[0]) / nl, decimals),
+            round(float(row[1]) / nl, decimals),
+            round(float(row[2]) / nl, decimals),
+        ])
+    for a, b, c in local_faces:
+        faces.append([base_idx + a, base_idx + b, base_idx + c])
+
+
+def _add_toroidal_shell(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    *args: Any,
+    decimals: int = 4,
+    **kwargs: Any,
+) -> None:
+    """
+    Construct a 100% watertight genus-1 toroidal shell (a 3D sculpted plate/wall with a
+    smooth central weight-relief window) parameterized by `(theta, phi) in [0, 2*pi)^2`.
+    Supports both `(n_theta, n_phi, eval_fn)` and `(pos_fn, color_fn, nu=..., nv=...)`.
+    """
+    if len(args) == 3 and not callable(args[0]):
+        n_theta, n_phi, eval_fn = int(args[0]), int(args[1]), args[2]
+        color_fn = None
+    elif len(args) >= 2 and callable(args[0]) and callable(args[1]):
+        eval_fn, color_fn = args[0], args[1]
+        n_theta = int(kwargs.get("nu", kwargs.get("n_theta", 36)))
+        n_phi = int(kwargs.get("nv", kwargs.get("n_phi", 16)))
+    elif "eval_fn" in kwargs:
+        eval_fn = kwargs["eval_fn"]
+        color_fn = kwargs.get("color_fn", None)
+        n_theta = int(kwargs.get("nu", kwargs.get("n_theta", 36)))
+        n_phi = int(kwargs.get("nv", kwargs.get("n_phi", 16)))
+    else:
+        raise ValueError(f"Unsupported arguments to _add_toroidal_shell: {args} {kwargs}")
+
+    n_theta = max(8, int(n_theta))
+    n_phi = max(6, int(n_phi))
+    thetas = np.linspace(0.0, 2.0 * math.pi, n_theta, endpoint=False)
+    phis = np.linspace(0.0, 2.0 * math.pi, n_phi, endpoint=False)
+
+    local_verts: List[List[float]] = []
+    local_colors: List[List[float]] = []
+    vid_map: Dict[Tuple[int, int], int] = {}
+
+    for it, th in enumerate(thetas):
+        for ip, ph in enumerate(phis):
+            th_v, ph_v = float(th), float(ph)
+            if color_fn is not None:
+                pos = eval_fn(th_v, ph_v)
+                clr = color_fn(th_v, ph_v)
+            else:
+                pos, clr = eval_fn(th_v, ph_v)
+            vid_map[(it, ip)] = len(local_verts)
+            local_verts.append([
+                round(float(pos[0]), decimals),
+                round(float(pos[1]), decimals),
+                round(float(pos[2]), decimals),
+            ])
+            local_colors.append([
+                round(float(clr[0]), decimals),
+                round(float(clr[1]), decimals),
+                round(float(clr[2]), decimals),
+            ])
+
+    local_faces: List[List[int]] = []
+    for it in range(n_theta):
+        it_n = (it + 1) % n_theta
+        for ip in range(n_phi):
+            ip_n = (ip + 1) % n_phi
+            v00 = vid_map[(it, ip)]
+            v10 = vid_map[(it_n, ip)]
+            v11 = vid_map[(it_n, ip_n)]
+            v01 = vid_map[(it, ip_n)]
+            local_faces.append([v00, v10, v11])
+            local_faces.append([v00, v11, v01])
+
+    v_np = np.asarray(local_verts, dtype=np.float64)
+    f_np = np.asarray(local_faces, dtype=np.int64)
+    cross = np.cross(v_np[f_np[:, 1]] - v_np[f_np[:, 0]], v_np[f_np[:, 2]] - v_np[f_np[:, 0]])
+    vol = float(np.sum(cross * v_np[f_np[:, 2]]) / 6.0)
+    if vol < 0.0:
+        local_faces = [[a, c, b] for a, b, c in local_faces]
+        f_np = np.asarray(local_faces, dtype=np.int64)
+        cross = -cross
+
+    fn_unit = cross / (np.linalg.norm(cross, axis=1, keepdims=True) + 1e-12)
+    vn = np.zeros_like(v_np)
+    for k in range(3):
+        np.add.at(vn, f_np[:, k], fn_unit)
+    vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
+    for _ in range(12):
+        dots = np.sum(vn[f_np] * fn_unit[:, None, :], axis=2)
+        bad = dots < 0.22
+        if not np.any(bad):
+            break
+        for k in range(3):
+            mask_k = bad[:, k]
+            if np.any(mask_k):
+                np.add.at(vn, f_np[mask_k, k], (0.26 - dots[mask_k, k])[:, None] * fn_unit[mask_k])
+        vn /= np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12
+
+    base_idx = len(verts)
+    verts.extend(local_verts)
+    colors.extend(local_colors)
+    for row in vn:
+        nl = math.hypot(float(row[0]), float(row[1]), float(row[2])) + 1e-12
+        normals.append([
+            round(float(row[0]) / nl, decimals),
+            round(float(row[1]) / nl, decimals),
+            round(float(row[2]) / nl, decimals),
+        ])
+    for a, b, c in local_faces:
+        faces.append([base_idx + a, base_idx + b, base_idx + c])
+
+
 def _add_watertight_box(
     verts: List[List[float]],
     faces: List[List[int]],
@@ -253,36 +518,22 @@ def _add_watertight_box(
     y0: float, y1: float,
     z0: float, z1: float,
     clr: List[float],
+    max_edge: float = 0.09,
+    decimals: int = 4,
 ) -> None:
-    """Watertight 2-manifold rectangular box with outward normals and 0 boundary edges."""
-    base_idx = len(verts)
-    corners = np.array([
-        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
-        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
-    ], dtype=np.float64)
-    center = np.array([(x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5])
-    v_dirs = corners - center
-    v_norms = v_dirs / (np.linalg.norm(v_dirs, axis=1, keepdims=True) + 1e-12)
-    for i in range(8):
-        verts.append([float(corners[i, 0]), float(corners[i, 1]), float(corners[i, 2])])
-        normals.append([float(v_norms[i, 0]), float(v_norms[i, 1]), float(v_norms[i, 2])])
-        colors.append(clr)
-    box_faces = [
-        # -Z (normal (0,0,-1))
-        [0, 3, 2], [0, 2, 1],
-        # +Z (normal (0,0,+1))
-        [4, 5, 6], [4, 6, 7],
-        # -X (normal (-1,0,0))
-        [0, 4, 7], [0, 7, 3],
-        # +X (normal (+1,0,0))
-        [1, 2, 6], [1, 6, 5],
-        # -Y (normal (0,-1,0))
-        [0, 1, 5], [0, 5, 4],
-        # +Y (normal (0,+1,0))
-        [3, 7, 6], [3, 6, 2],
-    ]
-    for bf in box_faces:
-        faces.append([base_idx + bf[0], base_idx + bf[1], base_idx + bf[2]])
+    """Watertight 2-manifold subdivided rectangular box with uniform small triangles and 0 boundary edges."""
+    nx = max(2, int(math.ceil(abs(x1 - x0) / max_edge)))
+    ny = max(2, int(math.ceil(abs(y1 - y0) / max_edge)))
+    nz = max(2, int(math.ceil(abs(z1 - z0) / max_edge)))
+    cx, hx = 0.5 * (x0 + x1), 0.5 * (x1 - x0)
+    cy, hy = 0.5 * (y0 + y1), 0.5 * (y1 - y0)
+    cz, hz = 0.5 * (z0 + z1), 0.5 * (z1 - z0)
+
+    def box_eval(u: float, v: float, w: float) -> Tuple[Tuple[float, float, float], List[float]]:
+        return (cx + hx * u, cy + hy * v, cz + hz * w), clr
+
+    _add_warped_brick(verts, faces, colors, normals, nx, ny, nz, box_eval, decimals=decimals)
+
 
 
 def _add_tube_along_curve(
@@ -859,11 +1110,11 @@ def build_scen_01_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], Li
 
     # 3. Root Bulkhead Blocks connecting the base bosses (Y in [-0.46, 0.46] to leave bores open!)
     clr_root = stress_color(0.32)
-    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, -0.36, 0.36, -0.74, 0.74, clr_root)
-    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, -0.46, -0.36, 0.60, 0.74, clr_root)
-    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, 0.36, 0.46, 0.60, 0.74, clr_root)
-    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, -0.46, -0.36, -0.74, -0.60, clr_root)
-    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, 0.36, 0.46, -0.74, -0.60, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.852, -0.36, 0.36, -0.74, 0.74, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.852, -0.46, -0.362, 0.60, 0.74, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.852, 0.362, 0.46, 0.60, 0.74, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.852, -0.46, -0.362, -0.74, -0.60, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.852, 0.362, 0.46, -0.74, -0.60, clr_root)
 
     # 4. Top Flange (solid rectangular slab from root to tip)
     clr_top = stress_color(0.24)
@@ -873,20 +1124,19 @@ def build_scen_01_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     clr_bot = stress_color(0.24)
     _add_watertight_box(verts, faces, colors, normals, -0.85, 0.82, -0.46, 0.46, -0.74, -0.58, clr_bot)
 
-    # 6. Central Solid Vertical Web (connecting top and bottom flanges)
+    # 6. Central Solid Vertical Web (strictly between top and bottom flanges, Z in [-0.576, 0.576])
     clr_web = stress_color(0.20)
-    _add_watertight_box(verts, faces, colors, normals, -0.85, 0.82, -0.10, 0.10, -0.58, 0.58, clr_web)
+    _add_watertight_box(verts, faces, colors, normals, -0.85, 0.82, -0.15, 0.15, -0.576, 0.576, clr_web)
 
-    # 7. Transverse Web-Flange Stiffeners at 3 intermediate stations
-    _add_watertight_box(verts, faces, colors, normals, -0.45, -0.39, -0.46, 0.46, -0.58, 0.58, stress_color(0.18))
-    _add_watertight_box(verts, faces, colors, normals, -0.03, 0.03, -0.46, 0.46, -0.58, 0.58, stress_color(0.18))
-    _add_watertight_box(verts, faces, colors, normals, 0.39, 0.45, -0.46, 0.46, -0.58, 0.58, stress_color(0.22))
+    # 7. Left & Right Transverse Web Stiffeners (strictly outside central web |Y| in [0.154, 0.455] so 0 internal overlap!)
+    for x0_s, x1_s, s_stiff in [(-0.46, -0.38, 0.18), (-0.04, 0.04, 0.18), (0.38, 0.46, 0.22)]:
+        _add_watertight_box(verts, faces, colors, normals, x0_s, x1_s, -0.455, -0.154, -0.576, 0.576, stress_color(s_stiff))
+        _add_watertight_box(verts, faces, colors, normals, x0_s, x1_s, 0.154, 0.455, -0.576, 0.576, stress_color(s_stiff))
 
     # 8. Tip Clevis Lug Mounting Head
     clr_tip = stress_color(0.68)
-    _add_watertight_box(verts, faces, colors, normals, 0.82, 0.92, -0.22, -0.12, -0.18, 0.18, clr_tip)
-    _add_watertight_box(verts, faces, colors, normals, 0.82, 0.92, 0.12, 0.22, -0.18, 0.18, clr_tip)
-    _add_watertight_box(verts, faces, colors, normals, 0.82, 0.84, -0.12, 0.12, -0.18, 0.18, clr_tip)
+    _add_watertight_box(verts, faces, colors, normals, 0.822, 0.92, -0.22, -0.122, -0.18, 0.18, clr_tip)
+    _add_watertight_box(verts, faces, colors, normals, 0.822, 0.92, 0.122, 0.22, -0.18, 0.18, clr_tip)
 
     return verts, faces, colors, normals
 
@@ -895,8 +1145,9 @@ def build_scen_01_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     """
     Stage 2 (V=0.62): Solid, continuous, un-perforated tapered parabolic cantilever hull
     after outer dead-corner carving above/below Z(x) = +/-(0.14 + 0.56*(1 - u_x)^0.7).
-    Features solid continuous web walls with zero internal diamond holes, thick parabolic
-    top/bottom flanges, 4 preserved root bolt bosses, and preserved tip clevis lug.
+    Features a single smooth lofted parabolic I-hull with solid continuous web walls
+    (zero internal diamond holes, zero pipes), thick parabolic top/bottom flanges,
+    4 preserved root bolt bosses, and preserved tip clevis lug.
     """
     verts: List[List[float]] = []
     faces: List[List[int]] = []
@@ -919,105 +1170,62 @@ def build_scen_01_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     # 2. Tip Shear Clevis Pin Boss at (0.90, 0.0, 0.0) with bore along Y (open bore r = 0.056)
     _add_annular_boss(verts, faces, colors, normals, (0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.240, 0.78, 0.86, n_sides=24)
 
-    # 3. Root Bulkhead Backing Plate (X in [-0.93, -0.85], Y in [-0.45, +0.45] keeping bolt bores open)
-    clr_root = stress_color(0.46)
-    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, -0.38, 0.38, -0.70, 0.70, clr_root)
-    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, -0.45, -0.38, 0.58, 0.72, clr_root)
-    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, 0.38, 0.45, 0.58, 0.72, clr_root)
-    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, -0.45, -0.38, -0.72, -0.58, clr_root)
-    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, 0.38, 0.45, -0.72, -0.58, clr_root)
+    # 3. Root Bulkhead Backing Plate (X in [-0.93, -0.862], keeping bolt bores open)
+    clr_root = stress_color(0.48)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.862, -0.38, 0.38, -0.70, 0.70, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.862, -0.45, -0.382, 0.58, 0.72, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.862, 0.382, 0.45, 0.58, 0.72, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.862, -0.45, -0.382, -0.72, -0.58, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.862, 0.382, 0.45, -0.72, -0.58, clr_root)
 
-    # 4. Smooth Continuous Un-Perforated Tapered Parabolic Hull (X from -0.86 to +0.84)
-    #    No internal diamond holes exist in Stage 2: overlapping Catmull-Rom parabolic spline ribbons
-    #    form a 100% smooth, continuous, un-perforated web and tapered parabolic flange deck without stair-steps.
-    x_ctrl = [-0.86, -0.44, -0.02, 0.41, 0.83]
-    z_prof_ctrl = [0.66, 0.52, 0.38, 0.25, 0.13]
-    y_flange_ctrl = [0.44, 0.35, 0.26, 0.18, 0.11]
+    # 4. Single Continuous Un-Perforated Tapered Parabolic I-Hull (X from -0.86 to +0.83)
+    #    Exact parabolic envelope Z(x) = +/-(0.14 + 0.56*(1 - u_x)^0.7) with recessed solid web cheeks and zero holes!
+    def parabolic_hull_eval(u: float, v: float, w: float) -> Tuple[Tuple[float, float, float], List[float]]:
+        ux = 0.5 * (u + 1.0)
+        x = -0.86 + 1.69 * ux
+        z_env = 0.14 + 0.56 * ((1.0 - ux) ** 0.70)
+        y_flange = 0.46 * (1.0 - ux) + 0.118 * ux
+        y_web = 0.205 * (1.0 - ux) + 0.088 * ux
 
-    # 4a. Smooth Tapered Parabolic Top (+Z) and Bottom (-Z) Flange Decks
-    for sz in [-1.0, 1.0]:
-        for fy in [-0.62, 0.0, 0.62]:
-            deck_pts = [
-                (x_ctrl[k], fy * y_flange_ctrl[k], sz * z_prof_ctrl[k])
-                for k in range(len(x_ctrl))
-            ]
-            deck_radii = [0.072, 0.066, 0.060, 0.052, 0.044]
-            deck_stress = [0.82, 0.72, 0.62, 0.56, 0.74]
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                deck_pts, deck_radii, deck_stress,
-                subdiv=7, n_sides=16, ry_scale=2.10, rz_scale=0.85, cap_ends=True,
-            )
+        # Smooth I-beam cross-section: wide parabolic flanges at |w| >= 0.64, recessed solid web at |w| < 0.64
+        t_fl = float(np.clip((abs(w) - 0.58) / 0.28, 0.0, 1.0))
+        s_fl = t_fl * t_fl * (3.0 - 2.0 * t_fl)
+        y_half = y_web + (y_flange - y_web) * s_fl
+        y = v * y_half
+        z = w * z_env
 
-    # 4b. Smooth Solid Continuous Central Shear Web Sheet (7 overlapping parabolic longitudinal ribbons, zero holes!)
-    for fz in [-0.75, -0.50, -0.25, 0.0, 0.25, 0.50, 0.75]:
-        web_pts = [
-            (x_ctrl[k], 0.0, fz * (z_prof_ctrl[k] - 0.03))
-            for k in range(len(x_ctrl))
-        ]
-        web_radii = [0.095, 0.084, 0.074, 0.064, 0.052]
-        s_base = 0.28 + 0.36 * abs(fz)
-        web_stress = [
-            float(np.clip(s_base + 0.18, 0.22, 0.78)),
-            float(np.clip(s_base + 0.10, 0.22, 0.78)),
-            float(np.clip(s_base + 0.02, 0.22, 0.78)),
-            float(np.clip(s_base + 0.04, 0.22, 0.78)),
-            float(np.clip(s_base + 0.16, 0.22, 0.78)),
-        ]
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            web_pts, web_radii, web_stress,
-            subdiv=7, n_sides=16, ry_scale=1.65, rz_scale=1.35, cap_ends=True,
-        )
+        s_val = float(np.clip(
+            0.28 + 0.50 * (1.0 - 0.62 * ux) * (0.30 + 0.70 * abs(w)) + 0.22 * max(0.0, ux - 0.62),
+            0.22,
+            0.86,
+        ))
+        return (x, y, z), stress_color(s_val)
 
-    # 4c. 3 Smooth Exterior Transverse Stiffening Bulkhead Ribs along the solid web
-    for xm_rib, y_rib, z_rib, s_rib in [
-        (-0.46, 0.33, 0.50, 0.58),
-        (-0.02, 0.25, 0.37, 0.50),
-        (0.42, 0.17, 0.24, 0.54),
-    ]:
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            [(xm_rib, 0.0, -z_rib), (xm_rib, 0.0, 0.0), (xm_rib, 0.0, z_rib)],
-            [0.052, 0.056, 0.052],
-            [s_rib + 0.10, s_rib, s_rib + 0.10],
-            subdiv=5, n_sides=16, ry_scale=y_rib / 0.054, rz_scale=1.0, cap_ends=True,
-        )
+    _add_warped_brick(verts, faces, colors, normals, nx=32, ny=14, nz=22, eval_fn=parabolic_hull_eval)
 
-    # 5. Smooth Parabolic Perimeter Rim Moldings along the 4 Outer Flange Edges
-    stations = [
-        (-0.880, 0.465, 0.640),
-        (-0.425, 0.370, 0.505),
-        (0.020, 0.275, 0.370),
-        (0.440, 0.185, 0.240),
-        (0.832, 0.105, 0.115),
-    ]
-    chord_radii_s2 = [0.052, 0.056, 0.052, 0.048, 0.042]
-    chord_stress_s2 = [0.78, 0.70, 0.60, 0.56, 0.74]
-    for sy in [-1.0, 1.0]:
-        for sz in [-1.0, 1.0]:
-            chord_pts = [(xs, sy * ys, sz * zs) for (xs, ys, zs) in stations]
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                chord_pts, chord_radii_s2, chord_stress_s2,
-                subdiv=5, n_sides=14, ry_scale=1.25, rz_scale=0.85, cap_ends=True,
-            )
+    # 5. Recessed Transverse Web Stiffening Ribs (tucked strictly in the recessed web cheeks so 0 overlap!)
+    for xm_rib, ux_r, s_rib in [(-0.42, 0.26, 0.48), (0.04, 0.53, 0.44)]:
+        z_r = (0.14 + 0.56 * ((1.0 - ux_r) ** 0.70)) * 0.56
+        yw_r = 0.205 * (1.0 - ux_r) + 0.088 * ux_r + 0.004
+        yf_r = (0.46 * (1.0 - ux_r) + 0.118 * ux_r) * 0.92
+        _add_watertight_box(verts, faces, colors, normals, xm_rib - 0.032, xm_rib + 0.032, -yf_r, -yw_r, -z_r, z_r, stress_color(s_rib))
+        _add_watertight_box(verts, faces, colors, normals, xm_rib - 0.032, xm_rib + 0.032, yw_r, yf_r, -z_r, z_r, stress_color(s_rib))
 
     # 6. Tip Clevis Lug Mounting Cheeks (stopping outside r_inner = 0.056 bore at X=0.90, Z=0.0)
-    clr_tip = stress_color(0.74)
-    _add_watertight_box(verts, faces, colors, normals, 0.80, 0.91, -0.18, -0.11, -0.14, 0.14, clr_tip)
-    _add_watertight_box(verts, faces, colors, normals, 0.80, 0.91, 0.11, 0.18, -0.14, 0.14, clr_tip)
+    clr_tip = stress_color(0.76)
+    _add_watertight_box(verts, faces, colors, normals, 0.832, 0.91, -0.18, -0.115, -0.14, 0.14, clr_tip)
+    _add_watertight_box(verts, faces, colors, normals, 0.832, 0.91, 0.115, 0.18, -0.14, 0.14, clr_tip)
 
     return verts, faces, colors, normals
 
 
 def build_scen_01_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
-    Stage 3 (V=0.38): Thick Fenestrated Web Shell with initial mid-span weight-relief cutouts.
+    Stage 3 (V=0.38): Thick Fenestrated Web Shell with initial central shear-web windows punched open.
     Visually distinct intermediate topology between the solid parabolic hull (Stage 2) and the
-    slender 4-bay space-frame Michell truss (Stage 4): retains wide plate-like parabolic top/bottom
-    flange slabs, solid root & tip shear web gusset plates, and thick flat diagonal web bands
-    framing 3 initial central weight-relief pockets (without Stage 4's fine lateral X-bracing).
+    slender 4-bay space-frame Michell truss (Stage 4): features thick continuous parabolic top/bottom
+    flange plates, thick solid root & tip web gusset zones, and 2 newly opened central shear-web
+    windows framed by broad flat diagonal web plates (strictly between the inner flange surfaces).
     """
     verts: List[List[float]] = []
     faces: List[List[int]] = []
@@ -1026,6 +1234,21 @@ def build_scen_01_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], Li
 
     def stress_color(ratio: float) -> List[float]:
         return turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
+
+    def z_outer_fn(x: float) -> float:
+        ux = float(np.clip((x - (-0.86)) / 1.69, 0.0, 1.0))
+        return 0.14 + 0.56 * ((1.0 - ux) ** 0.70)
+
+    def t_flange_fn(x: float) -> float:
+        ux = float(np.clip((x - (-0.86)) / 1.69, 0.0, 1.0))
+        return 0.102 * (1.0 - 0.42 * ux)
+
+    def z_inner_fn(x: float) -> float:
+        return z_outer_fn(x) - t_flange_fn(x)
+
+    def y_flange_fn(x: float) -> float:
+        ux = float(np.clip((x - (-0.86)) / 1.69, 0.0, 1.0))
+        return 0.455 * (1.0 - ux) + 0.112 * ux
 
     # 1. 4 Clamped Bulkhead Mounting Annular Bolt Bosses at X = -0.92
     anchor_coords = [
@@ -1040,89 +1263,81 @@ def build_scen_01_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     # 2. Tip Shear Clevis Pin Boss at (0.90, 0.0, 0.0) with bore along Y
     _add_annular_boss(verts, faces, colors, normals, (0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.240, 0.84, 0.92, n_sides=24)
 
-    # 3. Solid Root Bulkhead Gusset Web Plate (X in [-0.90, -0.68]) & Solid Tip Shear Web Gusset (X in [0.56, 0.83])
-    _add_watertight_box(verts, faces, colors, normals, -0.90, -0.68, -0.36, 0.36, -0.58, 0.58, stress_color(0.68))
-    _add_watertight_box(verts, faces, colors, normals, 0.56, 0.83, -0.11, 0.11, -0.16, 0.16, stress_color(0.76))
+    # 3. Root Bulkhead Backing Plate (X in [-0.93, -0.862]) & Tip Clevis Cheeks
+    clr_root = stress_color(0.64)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.862, -0.38, 0.38, -0.68, 0.68, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, 0.832, 0.91, -0.18, -0.115, -0.14, 0.14, stress_color(0.80))
+    _add_watertight_box(verts, faces, colors, normals, 0.832, 0.91, 0.115, 0.18, -0.14, 0.14, stress_color(0.80))
 
-    # 4. Wide Plate-Like Parabolic Top & Bottom Flange Shells (spanning X from -0.88 to +0.83)
-    stations = [
-        (-0.880, 0.472, 0.592),
-        (-0.425, 0.378, 0.465),
-        (0.020, 0.284, 0.340),
-        (0.440, 0.190, 0.215),
-        (0.832, 0.092, 0.088),
-    ]
-    # Thick outer flange rims + wide central flange plates (ry_scale=2.2 gives flat plate cross-section)
-    chord_radii_s3 = [0.054, 0.054, 0.050, 0.046, 0.042]
-    chord_stress_s3 = [0.86, 0.76, 0.64, 0.60, 0.82]
-    for sy in [-1.0, 1.0]:
-        for sz in [-1.0, 1.0]:
-            chord_pts = [(xs, sy * ys, sz * zs) for (xs, ys, zs) in stations]
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                chord_pts, chord_radii_s3, chord_stress_s3,
-                subdiv=5, n_sides=14, ry_scale=1.35, rz_scale=0.85, cap_ends=True,
-            )
-    # Continuous top and bottom parabolic flange deck plates bridging -Y to +Y
-    for sz in [-1.0, 1.0]:
-        deck_pts = [(xs, 0.0, sz * zs) for (xs, ys, zs) in stations]
-        deck_radii = [0.115, 0.098, 0.080, 0.058, 0.036]
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            deck_pts, deck_radii, chord_stress_s3,
-            subdiv=6, n_sides=16, ry_scale=2.6, rz_scale=0.38, cap_ends=True,
-        )
+    # 4. Thick Continuous Parabolic Top (+Z) and Bottom (-Z) Flange Plates (X from -0.86 to +0.83)
+    for sz in (-1.0, 1.0):
+        def flange_eval(u: float, v: float, w: float, _sz: float = sz) -> Tuple[Tuple[float, float, float], List[float]]:
+            ux = 0.5 * (u + 1.0)
+            x = -0.86 + 1.69 * ux
+            zo = z_outer_fn(x)
+            zi = z_inner_fn(x)
+            yf = y_flange_fn(x)
+            z_mid = 0.5 * (zi + zo)
+            z_half = 0.5 * (zo - zi)
+            y = v * yf
+            z = _sz * (z_mid + w * z_half)
+            s_val = float(np.clip(0.60 + 0.28 * (1.0 - ux) + 0.18 * max(0.0, ux - 0.65), 0.52, 0.90))
+            return (x, y, z), stress_color(s_val)
 
-    # 5. Thick Vertical Web Bulkhead Pillars & Broad Plate-Like Shear Web Bands framing 3 Initial Cutout Windows
-    def st_stress(xv: float, zv: float) -> float:
-        xn = (xv + 1.0) * 0.5
-        return float(np.clip(0.28 + 0.62 * (1.0 - xn) * (0.45 + 0.55 * abs(zv)) + 0.16 * max(0.0, xn - 0.60), 0.22, 0.92))
+        _add_warped_brick(verts, faces, colors, normals, nx=28, ny=10, nz=4, eval_fn=flange_eval)
 
-    # Solid vertical web pillars at stations 1, 2, 3 separating the 3 initial mid-span windows
-    for b_idx in (1, 2, 3):
-        xs_i, ys_i, zs_i = stations[b_idx]
-        _add_watertight_box(
-            verts, faces, colors, normals,
-            xs_i - 0.045, xs_i + 0.045,
-            -ys_i * 0.88, ys_i * 0.88,
-            -zs_i * 0.92, zs_i * 0.92,
-            stress_color(st_stress(xs_i, zs_i * 0.6)),
-        )
+    # 5. Thick Solid Root Shear-Web Zone (X in [-0.86, -0.54]) & Solid Tip Shear-Web Zone (X in [0.40, 0.83])
+    #    Strictly bounded by |Z| <= z_inner_fn(x) - 0.004 so web plates NEVER poke through outer flange surfaces!
+    def root_web_eval(u: float, v: float, w: float) -> Tuple[Tuple[float, float, float], List[float]]:
+        x = -0.70 + 0.16 * u
+        zi = z_inner_fn(x) - 0.004
+        yw = 0.72 * y_flange_fn(x)
+        s_val = float(np.clip(0.46 + 0.26 * abs(w), 0.38, 0.76))
+        return (x, v * yw, w * zi), stress_color(s_val)
 
-    # Thick plate-like diagonal shear bands across the 3 central bays
-    for b_idx in range(len(stations) - 1):
-        x0, y0, z0 = stations[b_idx]
-        x1, y1, z1 = stations[b_idx + 1]
-        w0 = z0 / (z0 + z1)
-        xm = x0 + w0 * (x1 - x0)
-        ym = y0 + w0 * (y1 - y0)
-        r_web_s3 = 0.050 - 0.003 * b_idx
+    _add_warped_brick(verts, faces, colors, normals, nx=8, ny=8, nz=12, eval_fn=root_web_eval)
 
-        for sy in [-1.0, 1.0]:
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                [(x0, sy * y0 * 0.82, z0), (xm, sy * ym * 0.82, 0.0), (x1, sy * y1 * 0.82, -z1)],
-                [r_web_s3, r_web_s3 * 1.05, r_web_s3 * 0.96],
-                [st_stress(x0, z0), st_stress(xm, 0.15), st_stress(x1, z1)],
-                subdiv=4, n_sides=12, ry_scale=1.55, rz_scale=1.05, cap_ends=True,
-            )
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                [(x0, sy * y0 * 0.82, -z0), (xm, sy * ym * 0.82, 0.0), (x1, sy * y1 * 0.82, z1)],
-                [r_web_s3, r_web_s3 * 1.05, r_web_s3 * 0.96],
-                [st_stress(x0, z0), st_stress(xm, 0.15), st_stress(x1, z1)],
-                subdiv=4, n_sides=12, ry_scale=1.55, rz_scale=1.05, cap_ends=True,
-            )
-        # Thick central neutral-axis web hub at each diagonal crossing
-        _add_watertight_box(
-            verts, faces, colors, normals,
-            xm - 0.055, xm + 0.055,
-            -ym * 0.92, ym * 0.92,
-            -0.065, 0.065,
-            stress_color(st_stress(xm, 0.10)),
-        )
+    def tip_web_eval(u: float, v: float, w: float) -> Tuple[Tuple[float, float, float], List[float]]:
+        x = 0.615 + 0.215 * u
+        zi = max(0.035, z_inner_fn(x) - 0.004)
+        yw = 0.76 * y_flange_fn(x)
+        s_val = float(np.clip(0.58 + 0.24 * abs(w), 0.48, 0.84))
+        return (x, v * yw, w * zi), stress_color(s_val)
+
+    _add_warped_brick(verts, faces, colors, normals, nx=8, ny=6, nz=8, eval_fn=tip_web_eval)
+
+    # 6. Central Vertical Web Pillar at X in [-0.10, +0.04] separating the 2 Initial Central Shear-Web Windows
+    def mid_pillar_eval(u: float, v: float, w: float) -> Tuple[Tuple[float, float, float], List[float]]:
+        x = -0.03 + 0.07 * u
+        zi = z_inner_fn(x) - 0.004
+        yw = 0.78 * y_flange_fn(x)
+        s_val = float(np.clip(0.42 + 0.28 * abs(w), 0.36, 0.74))
+        return (x, v * yw, w * zi), stress_color(s_val)
+
+    _add_warped_brick(verts, faces, colors, normals, nx=4, ny=8, nz=10, eval_fn=mid_pillar_eval)
+
+    # 7. Broad Plate-Like Diagonal Shear Web Bands across the 2 Open Central Windows
+    #    Window 1: X in [-0.53, -0.10], Window 2: X in [+0.04, +0.39]
+    for x0_w, x1_w, s_diag in [(-0.53, -0.10, 0.50), (0.04, 0.39, 0.46)]:
+        for diag_sign in (-1.0, 1.0):
+            def diag_plate_eval(
+                u: float, v: float, w: float,
+                _x0: float = x0_w, _x1: float = x1_w, _ds: float = diag_sign, _sd: float = s_diag
+            ) -> Tuple[Tuple[float, float, float], List[float]]:
+                t = 0.5 * (u + 1.0)
+                x = _x0 + (_x1 - _x0) * t
+                zi_lim = z_inner_fn(x) - 0.006
+                z_center = _ds * (1.0 - 2.0 * t) * (zi_lim * 0.72)
+                z_half = zi_lim * 0.26
+                z = float(np.clip(z_center + w * z_half, -zi_lim, zi_lim))
+                yw = 0.68 * y_flange_fn(x)
+                s_v = float(np.clip(_sd + 0.20 * abs(z / (zi_lim + 1e-6)), 0.34, 0.76))
+                return (x, v * yw, z), stress_color(s_v)
+
+            _add_warped_brick(verts, faces, colors, normals, nx=10, ny=6, nz=4, eval_fn=diag_plate_eval)
 
     return verts, faces, colors, normals
+
 
 
 build_scen_01_stage_4_mesh = build_scen_01_mesh

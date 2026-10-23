@@ -365,20 +365,19 @@ class StageMesh:
                 "min_area": 0.0, "min_dot": 0.0, "is_manifold_2d": False,
             }
 
-        # 1. Edge pairing counts
-        undir_counts = defaultdict(int)
-        dir_counts = defaultdict(int)
-        for a, b, c in faces:
-            ia, ib, ic = int(a), int(b), int(c)
-            for u_e, v_e in ((ia, ib), (ib, ic), (ic, ia)):
-                undir_counts[(min(u_e, v_e), max(u_e, v_e))] += 1
-                dir_counts[(u_e, v_e)] += 1
+        # 1. Vectorized edge pairing & half-edge orientation counts
+        f64 = faces.astype(np.int64, copy=False)
+        edges = np.vstack((f64[:, [0, 1]], f64[:, [1, 2]], f64[:, [2, 0]]))
+        u_min = np.minimum(edges[:, 0], edges[:, 1])
+        v_max = np.maximum(edges[:, 0], edges[:, 1])
+        undir_keys = (u_min << np.int64(32)) | (v_max & np.int64(0xFFFFFFFF))
+        uniq_keys, inv_idx, counts = np.unique(undir_keys, return_inverse=True, return_counts=True)
+        signs = np.where(edges[:, 0] < edges[:, 1], 1, np.where(edges[:, 0] > edges[:, 1], -1, 10))
+        sign_sums = np.bincount(inv_idx, weights=signs)
 
-        boundary_edges = sum(1 for cnt in undir_counts.values() if cnt == 1)
-        non_manifold_edges = sum(
-            1 for (u_e, v_e), cnt in undir_counts.items()
-            if cnt != 2 or dir_counts[(u_e, v_e)] != 1 or dir_counts[(v_e, u_e)] != 1
-        )
+        n_undir = int(len(uniq_keys))
+        boundary_edges = int(np.sum(counts == 1))
+        non_manifold_edges = int(np.sum((counts != 2) | (sign_sums != 0)))
 
         # 2. Triangle areas & normal alignment
         v0 = verts[faces[:, 0]]
@@ -399,13 +398,13 @@ class StageMesh:
         else:
             min_dot = 0.0
 
-        chi = len(verts) - len(undir_counts) + len(faces)
+        chi = len(verts) - n_undir + len(faces)
         genus = max(0, int(round((2 - chi) / 2.0)))
         is_closed = (boundary_edges == 0 and non_manifold_edges == 0)
 
         return {
             "V": int(len(verts)),
-            "E": int(len(undir_counts)),
+            "E": n_undir,
             "F": int(len(faces)),
             "chi": int(chi),
             "genus": int(genus),
@@ -2021,6 +2020,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         default="32,24,24",
         help="Grid dimensions as Z,Y,X (default: 32,24,24)",
     )
+    parser.add_argument(
+        "--blind-benchmark",
+        action="store_true",
+        help="Run the Reference-Free Blind CAD Ingestion & 8-Law Intrinsic Benchmark Suite",
+    )
+    parser.add_argument(
+        "--blind-input",
+        type=str,
+        default=None,
+        help="Path to an unseen .STL or .OBJ file (or folder) for reference-free blind CAD benchmarking",
+    )
 
     args = parser.parse_args(argv)
 
@@ -2030,6 +2040,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         grid_shape = (res_parts[0], res_parts[1], res_parts[2])
     except Exception:
         grid_shape = CANONICAL_GRID
+
+    if args.blind_benchmark or args.blind_input is not None:
+        from toposnail.blind_cad_benchmark import (
+            format_blind_cad_benchmark_tables,
+            run_blind_cad_corpus_benchmark,
+        )
+        summary = run_blind_cad_corpus_benchmark(
+            input_path=args.blind_input or args.input,
+            grid_shape=grid_shape,
+            v_budget=args.v_budget if args.v_budget is not None else 0.25,
+        )
+        print(format_blind_cad_benchmark_tables(summary))
+        return 0 if summary.get("all_passed", False) else 1
 
     config = CADToBionicConfig(
         grid_shape=grid_shape,

@@ -1553,11 +1553,29 @@ def build_scen_04_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], Li
         faces.append([ti0, to0, ti1])
         faces.append([ti1, to0, to1])
 
-    # Circumferential toroid manifold bands
-    for z_ring, r_ring in [(-0.72, 0.58), (0.20, 0.36), (0.52, 0.44)]:
-        ring_angles = np.linspace(0.0, 2.0 * math.pi, 25)
+    # Circumferential toroid manifold bands (cleanly outside r_out so zero partial burial)
+    for z_ring, r_ring, s_ring in [(-0.72, 0.625, 0.42), (0.20, 0.365, 0.72), (0.52, 0.445, 0.58)]:
+        ring_angles = np.linspace(0.0, 2.0 * math.pi, 29)
         pts = [(r_ring * math.cos(a), r_ring * math.sin(a), z_ring) for a in ring_angles]
-        _add_tube_along_curve(verts, faces, colors, normals, pts, [0.038] * 25, [0.55] * 25, n_sides=12, cap_ends=True)
+        _add_tube_along_curve(verts, faces, colors, normals, pts, [0.036] * 29, [s_ring] * 29, n_sides=14, cap_ends=True)
+
+    # 8 Primary Gimbal A-Frame Struts framing the newly opened gimbal windows (before splitting into Stage 4's helical lattice)
+    for k_g in range(8):
+        th_g = 2.0 * math.pi * k_g / 8.0
+        th_n = 2.0 * math.pi * (k_g + 0.5) / 8.0
+        p_gimbal = (0.72 * math.cos(th_g), 0.72 * math.sin(th_g), -0.15)
+        p_throat = (0.365 * math.cos(th_n), 0.365 * math.sin(th_n), 0.20)
+        p_skirt = (0.56 * math.cos(th_n), 0.56 * math.sin(th_n), -0.52)
+        _add_tube_along_curve(
+            verts, faces, colors, normals,
+            [p_gimbal, (0.52 * math.cos(0.5 * (th_g + th_n)), 0.52 * math.sin(0.5 * (th_g + th_n)), 0.04), p_throat],
+            [0.030, 0.028, 0.030], [0.46, 0.60, 0.72], n_sides=12, cap_ends=True,
+        )
+        _add_tube_along_curve(
+            verts, faces, colors, normals,
+            [p_gimbal, (0.62 * math.cos(0.5 * (th_g + th_n)), 0.62 * math.sin(0.5 * (th_g + th_n)), -0.34), p_skirt],
+            [0.028, 0.026, 0.028], [0.44, 0.42, 0.40], n_sides=12, cap_ends=True,
+        )
 
     _add_thruster_accessories(verts, faces, colors, normals, r_ring_tube=0.048)
     smooth_n = _smooth_normals(verts, faces)

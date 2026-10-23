@@ -1,6 +1,6 @@
 # TopoSnail Architecture & Technical Specification
 
-TopoSnail is an industrial-grade, zero-install 3D anisotropic continuum topology optimization engine, bare-metal `#[no_std]` Rust SIMD (`AVX2`/`NEON`) + WebAssembly kernel, and zero-dependency WebGL2 CAD/3D-printing workstation. This document provides the complete mathematical derivation, formal theorem mapping to `formalization/OcclusionTriad.lean` (Theorems 2.1--2.8), hardware SRAM memory layout, and solver benchmark specifications.
+TopoSnail is an industrial-grade, zero-install 3D anisotropic continuum topology optimization engine, bare-metal `#[no_std]` Rust SIMD (`AVX2`/`NEON`) + WebAssembly kernel, reference-free blind CAD ingestion engine, and zero-dependency WebGL2 CAD/3D-printing workstation. This document provides the complete mathematical derivation, formal theorem mapping to `formalization/OcclusionTriad.lean` (Theorems 2.1--2.8), hardware SRAM memory layout, and solver benchmark specifications.
 
 ---
 
@@ -285,23 +285,38 @@ Every stage mesh across all 5 scenarios (20 meshes total) satisfies strict 2-man
 V_{\mathrm{S1}} > V_{\mathrm{S2}} > V_{\mathrm{S3}} > V_{\mathrm{S4}}
 ```
 
+### 5.2 Reference-Free Blind CAD Ingestion & L2/L3 Cache-Tiled Sub-Voxel CSG (`v0.2.0`)
+
+`toposnail/blind_cad_corpus.py` and `toposnail/blind_cad_benchmark.py` extend the 4-stage pipeline to arbitrary cold-loaded binary `.STL` and `.OBJ` mechanical brackets with zero metadata or filename hints:
+
+1. **Vectorized 3-Axis Ray-Parity Voxelizer & Sub-Voxel SDF Extraction**:
+   Cold-loaded triangle meshes are voxelized via majority-voted $(X, Y, Z)$ ray-casting parity (`_voxelize_mesh_single_axis`) and Euclidean distance transforms (`scipy.ndimage.distance_transform_edt`) to construct a smooth Stage 1 Signed Distance Field $\phi_{\mathrm{S1}}(\mathbf x)$ while keeping the core hexahedral EBE solver strictly inside the $< 1.50\text{ MB}$ `TopoStateArena` (`chunk_z = 16` L2/L3 SRAM cache-resident $Z$-slabs).
+2. **Intrinsic Cylindrical Bore & Coaxial Boss Recognition**:
+   Surface face normals are clustered radially to identify cylindrical through-bores ($\Omega_{\mathrm{KOZ}}$) and coaxial mounting boss collars (`Omega_solid`), automatically partitioning anchors vs. loaded lugs by spatial moment arms.
+3. **Geodesic Boss-Graph & Annular Window-Collar CSG Sculpting**:
+   Active non-occluded inter-boss chords $(i, j) \in E_{\mathrm{boss}}$ and non-collinear boss triplets $(i, j, k)$ define in-stock geodesic waypoints, twin offset tension/compression arches, and orthogonal through-web window axes. Subtracting cylindrical window cutters inside annular window-reinforcing collars guarantees 100% unobstructed through-windows (`beta_1(S4) > beta_1(S1)`), 100% bore clearance, and strict 2-manifold watertightness across all 4 stages.
+
 ---
 
 ## 6. Verification and Test Gates
 
-TopoSnail (`v0.2.0`) is verified through a four-tier automated testing hierarchy:
+TopoSnail (`v0.2.0`) is verified through a five-tier automated testing hierarchy:
 
 ```bash
 # Tier 1: Unit tests, 20-stage 2-manifold audit, and formal theorem verification
-pytest tests/test_toposnail.py -v
+pytest tests/test_toposnail.py tests/test_blind_cad_benchmark.py -v
 
 # Tier 2: 5-scenario Mode B evaluation and official community benchmarks
 python scripts/evaluate_toposnail.py
 
-# Tier 3: 21-rule GFM and KaTeX math compliance audit
+# Tier 3: Reference-Free Blind CAD Ingestion & 8-Law Intrinsic Benchmark Suite
+python scripts/run_blind_cad_benchmark.py
+python -m toposnail --blind-benchmark
+
+# Tier 4: 21-rule GFM and KaTeX math compliance audit
 python scripts/audit_gfm_math.py README.md docs/ARCHITECTURE.md
 
-# Tier 4: Headless browser visual audit & 4-stage progression generation
+# Tier 5: Headless browser visual audit & 4-stage progression generation
 python -m toposnail.studio
 python -m toposnail.cad_to_bionic --scenario all --backend numpy --output-dir results/cad_to_bionic
 ```

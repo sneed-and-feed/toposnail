@@ -1,0 +1,1899 @@
+{
+  "benchmark_suite": "TopoSnail Reference-Free Blind CAD Ingestion & Intrinsic Physics/Manifold Benchmark",
+  "reference_free": true,
+  "zero_example_model_used": true,
+  "timestamp": "2026-10-23T16:51:32Z",
+  "grid_shape": [
+    32,
+    24,
+    24
+  ],
+  "v_budget": 0.25,
+  "num_parts_evaluated": 5,
+  "toposnail_parts_passed_8_of_8": 5,
+  "toposnail_pass_rate_pct": 100.0,
+  "all_passed": true,
+  "elapsed_sec": 49.983,
+  "solver_aggregates": {
+    "TopoSnail": {
+      "solver": "TopoSnail",
+      "num_parts": 5,
+      "mean_eta_stiff": 4.8735,
+      "mean_crispness_pct": 99.69,
+      "mean_checkerboard_pct": 0.0,
+      "total_trapped_beta2": 0,
+      "all_watertight_2manifold": true,
+      "mean_gates_passed": 8.0,
+      "all_parts_passed_8_of_8": true
+    },
+    "UnfilteredSIMP": {
+      "solver": "UnfilteredSIMP",
+      "num_parts": 5,
+      "mean_eta_stiff": 2.8232,
+      "mean_crispness_pct": 56.62,
+      "mean_checkerboard_pct": 14.8,
+      "total_trapped_beta2": 13909,
+      "all_watertight_2manifold": false,
+      "mean_gates_passed": 6.0,
+      "all_parts_passed_8_of_8": false
+    },
+    "GaussianFilteredSIMP": {
+      "solver": "GaussianFilteredSIMP",
+      "num_parts": 5,
+      "mean_eta_stiff": 3.4935,
+      "mean_crispness_pct": 50.48,
+      "mean_checkerboard_pct": 0.0,
+      "total_trapped_beta2": 0,
+      "all_watertight_2manifold": false,
+      "mean_gates_passed": 6.0,
+      "all_parts_passed_8_of_8": false
+    },
+    "HeavisideProjectedSIMP": {
+      "solver": "HeavisideProjectedSIMP",
+      "num_parts": 5,
+      "mean_eta_stiff": 3.5079,
+      "mean_crispness_pct": 99.67,
+      "mean_checkerboard_pct": 0.0,
+      "total_trapped_beta2": 5,
+      "all_watertight_2manifold": false,
+      "mean_gates_passed": 5.8,
+      "all_parts_passed_8_of_8": false
+    }
+  },
+  "parts": [
+    {
+      "part_id": "blind_01_asymmetric_l_bracket",
+      "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_01_asymmetric_l_bracket.stl",
+      "file_format": "STL",
+      "elapsed_sec": 10.618,
+      "input_mesh_stats": {
+        "vertices": 9080,
+        "faces": 18168,
+        "divergence_volume": 0.699818,
+        "genus_beta1": 3
+      },
+      "recognized_features": {
+        "num_bores": 3,
+        "num_bosses": 3,
+        "bores": [
+          {
+            "bore_id": "bore_0_X",
+            "center": [
+              -0.72,
+              0.3774,
+              0.3202
+            ],
+            "axis": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "radius": 0.1224,
+            "length": 0.3218,
+            "role": "anchor_bore"
+          },
+          {
+            "bore_id": "bore_1_X",
+            "center": [
+              -0.7198,
+              -0.3774,
+              0.32
+            ],
+            "axis": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "radius": 0.1224,
+            "length": 0.32210000000000005,
+            "role": "anchor_bore"
+          },
+          {
+            "bore_id": "bore_2_Y",
+            "center": [
+              0.6819,
+              0.0001,
+              -0.3503
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "radius": 0.1406,
+            "length": 0.5307,
+            "role": "load_pin_bore"
+          }
+        ],
+        "bosses": [
+          {
+            "boss_id": "boss_0_X",
+            "center": [
+              -0.72,
+              0.3774,
+              0.3202
+            ],
+            "axis": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "r_inner": 0.1224,
+            "r_outer": 0.2304,
+            "length": 0.3218,
+            "role": "support_boss"
+          },
+          {
+            "boss_id": "boss_1_X",
+            "center": [
+              -0.7198,
+              -0.3774,
+              0.32
+            ],
+            "axis": [
+              1.0,
+              0.0,
+              0.0
+            ],
+            "r_inner": 0.1224,
+            "r_outer": 0.2304,
+            "length": 0.32210000000000005,
+            "role": "support_boss"
+          },
+          {
+            "boss_id": "boss_2_Y",
+            "center": [
+              0.6819,
+              0.0001,
+              -0.3503
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "r_inner": 0.1406,
+            "r_outer": 0.2486,
+            "length": 0.5307,
+            "role": "load_boss"
+          }
+        ],
+        "stock_voxels": 18206,
+        "solid_boss_voxels": 832,
+        "koz_bore_voxels": 226,
+        "designable_voxels": 17374
+      },
+      "intrinsic_audit": {
+        "part_id": "blind_01_asymmetric_l_bracket",
+        "reference_free": true,
+        "gates_passed": 8,
+        "total_gates": 8,
+        "all_passed": true,
+        "laws": {
+          "1_stage1_self_baseline_stiffness_efficiency": {
+            "passed": true,
+            "eta_stiff": 4.8747,
+            "eta_simp_uniform": 78.0463,
+            "threshold": 1.35,
+            "j_stage1_baseline": 0.002391,
+            "j_stage4_bionic": 0.001962,
+            "mass_fraction_s4_s1": 0.2499
+          },
+          "2_bore_clearance_survival_pct": {
+            "passed": true,
+            "bore_clearance_survival_pct": 100.0,
+            "num_bores_checked": 3,
+            "intruding_voxels_total": 0,
+            "intruding_triangles_total": 0,
+            "intruding_voxels_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            },
+            "intruding_triangles_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            }
+          },
+          "3_boss_datum_retention_pct": {
+            "passed": true,
+            "boss_datum_retention_pct": 100.0,
+            "datum_erosion": 0.0,
+            "num_bosses_checked": 3,
+            "boss_voxels_total": 832,
+            "boss_voxels_preserved": 832
+          },
+          "4_load_path_beta0_connected": {
+            "passed": true,
+            "beta_0": 1,
+            "floating_islands": 0,
+            "load_to_support_connected": true
+          },
+          "5_true_equilibrium_residual_admissible": {
+            "passed": true,
+            "r_eq": 7.87e-05,
+            "threshold": 0.05
+          },
+          "6_strict_4stage_volume_monotonicity": {
+            "passed": true,
+            "is_monotonic": true,
+            "stage_volume_fractions": [
+              1.0,
+              0.65,
+              0.42,
+              0.2499
+            ],
+            "stage_divergence_volumes": [
+              0.699818,
+              0.533382,
+              0.688281,
+              0.560632
+            ],
+            "v_target": 0.25,
+            "v_s4_over_v_s1": 0.2499,
+            "stage4_volume_error": 0.0001,
+            "tolerance": 0.015
+          },
+          "7_intrinsic_voxel_quality": {
+            "passed": true,
+            "trapped_beta2_cavities": 0,
+            "checkerboard_pct": 0.0,
+            "crispness_pct": 99.69
+          },
+          "8_watertight_2manifold_stl_closure": {
+            "passed": true,
+            "all_stages_2manifold": true,
+            "beta1_stage1": 3,
+            "beta1_stage4": 13,
+            "beta1_non_decreasing": true,
+            "stages": {
+              "stage_1": {
+                "V": 9080,
+                "E": 27252,
+                "F": 18168,
+                "chi": -4,
+                "genus": 3,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 8.770237203312172e-05,
+                "min_dot": 0.7869581341339341,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.699818,
+                "stl_bytes": 908484,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_2": {
+                "V": 5296,
+                "E": 15900,
+                "F": 10600,
+                "chi": -4,
+                "genus": 3,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 8.387578972812669e-05,
+                "min_dot": 0.6165242479533488,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.533382,
+                "stl_bytes": 530084,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_3": {
+                "V": 8536,
+                "E": 25668,
+                "F": 17112,
+                "chi": -20,
+                "genus": 11,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 6.991381958231398e-05,
+                "min_dot": 0.5894997720337576,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.688281,
+                "stl_bytes": 855684,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_4": {
+                "V": 8026,
+                "E": 24150,
+                "F": 16100,
+                "chi": -24,
+                "genus": 13,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 7.344739125852378e-05,
+                "min_dot": 0.43555262525243865,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.560632,
+                "stl_bytes": 805084,
+                "stl_binary_valid": true,
+                "passed": true
+              }
+            }
+          }
+        }
+      },
+      "solver_comparison": {
+        "TopoSnail": {
+          "solver": "TopoSnail",
+          "eta_stiff": 4.8747,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 7.87e-05,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.69,
+          "is_watertight_2manifold": true,
+          "beta1_s1": 3,
+          "beta1_s4": 13,
+          "gates_passed": 8,
+          "total_gates": 8,
+          "all_passed": true
+        },
+        "UnfilteredSIMP": {
+          "solver": "UnfilteredSIMP",
+          "eta_stiff": 2.8132,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.00238,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 3510,
+          "checkerboard_pct": 14.8,
+          "crispness_pct": 56.55,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "GaussianFilteredSIMP": {
+          "solver": "GaussianFilteredSIMP",
+          "eta_stiff": 3.5173,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000797,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 43.23,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "HeavisideProjectedSIMP": {
+          "solver": "HeavisideProjectedSIMP",
+          "eta_stiff": 3.5361,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000444,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 1,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.69,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        }
+      }
+    },
+    {
+      "part_id": "blind_02_three_ear_bellcrank",
+      "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_02_three_ear_bellcrank.stl",
+      "file_format": "STL",
+      "elapsed_sec": 10.173,
+      "input_mesh_stats": {
+        "vertices": 8776,
+        "faces": 17560,
+        "divergence_volume": 0.608729,
+        "genus_beta1": 3
+      },
+      "recognized_features": {
+        "num_bores": 3,
+        "num_bosses": 3,
+        "bores": [
+          {
+            "bore_id": "bore_0_Z",
+            "center": [
+              -0.6167,
+              0.4813,
+              -0.0003
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1236,
+            "length": 0.46599999999999997,
+            "role": "anchor_bore"
+          },
+          {
+            "bore_id": "bore_1_Z",
+            "center": [
+              0.0,
+              -0.4519,
+              -0.0002
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1636,
+            "length": 0.5289999999999999,
+            "role": "load_pin_bore"
+          },
+          {
+            "bore_id": "bore_2_Z",
+            "center": [
+              0.6173,
+              0.3486,
+              0.0
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1235,
+            "length": 0.4658,
+            "role": "anchor_bore"
+          }
+        ],
+        "bosses": [
+          {
+            "boss_id": "boss_0_Z",
+            "center": [
+              -0.6167,
+              0.4813,
+              -0.0003
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1236,
+            "r_outer": 0.2316,
+            "length": 0.46599999999999997,
+            "role": "support_boss"
+          },
+          {
+            "boss_id": "boss_1_Z",
+            "center": [
+              0.0,
+              -0.4519,
+              -0.0002
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1636,
+            "r_outer": 0.2716,
+            "length": 0.5289999999999999,
+            "role": "load_boss"
+          },
+          {
+            "boss_id": "boss_2_Z",
+            "center": [
+              0.6173,
+              0.3486,
+              0.0
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1235,
+            "r_outer": 0.2315,
+            "length": 0.4658,
+            "role": "support_boss"
+          }
+        ],
+        "stock_voxels": 18085,
+        "solid_boss_voxels": 904,
+        "koz_bore_voxels": 347,
+        "designable_voxels": 17181
+      },
+      "intrinsic_audit": {
+        "part_id": "blind_02_three_ear_bellcrank",
+        "reference_free": true,
+        "gates_passed": 8,
+        "total_gates": 8,
+        "all_passed": true,
+        "laws": {
+          "1_stage1_self_baseline_stiffness_efficiency": {
+            "passed": true,
+            "eta_stiff": 4.8733,
+            "eta_simp_uniform": 77.9821,
+            "threshold": 1.35,
+            "j_stage1_baseline": 0.005615,
+            "j_stage4_bionic": 0.004609,
+            "mass_fraction_s4_s1": 0.25
+          },
+          "2_bore_clearance_survival_pct": {
+            "passed": true,
+            "bore_clearance_survival_pct": 100.0,
+            "num_bores_checked": 3,
+            "intruding_voxels_total": 0,
+            "intruding_triangles_total": 0,
+            "intruding_voxels_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            },
+            "intruding_triangles_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            }
+          },
+          "3_boss_datum_retention_pct": {
+            "passed": true,
+            "boss_datum_retention_pct": 100.0,
+            "datum_erosion": 0.0,
+            "num_bosses_checked": 3,
+            "boss_voxels_total": 904,
+            "boss_voxels_preserved": 904
+          },
+          "4_load_path_beta0_connected": {
+            "passed": true,
+            "beta_0": 1,
+            "floating_islands": 0,
+            "load_to_support_connected": true
+          },
+          "5_true_equilibrium_residual_admissible": {
+            "passed": true,
+            "r_eq": 8e-05,
+            "threshold": 0.05
+          },
+          "6_strict_4stage_volume_monotonicity": {
+            "passed": true,
+            "is_monotonic": true,
+            "stage_volume_fractions": [
+              1.0,
+              0.65,
+              0.42,
+              0.25
+            ],
+            "stage_divergence_volumes": [
+              0.608729,
+              0.493822,
+              0.560474,
+              0.486293
+            ],
+            "v_target": 0.25,
+            "v_s4_over_v_s1": 0.25,
+            "stage4_volume_error": 0.0,
+            "tolerance": 0.015
+          },
+          "7_intrinsic_voxel_quality": {
+            "passed": true,
+            "trapped_beta2_cavities": 0,
+            "checkerboard_pct": 0.0,
+            "crispness_pct": 99.68
+          },
+          "8_watertight_2manifold_stl_closure": {
+            "passed": true,
+            "all_stages_2manifold": true,
+            "beta1_stage1": 3,
+            "beta1_stage4": 10,
+            "beta1_non_decreasing": true,
+            "stages": {
+              "stage_1": {
+                "V": 8776,
+                "E": 26340,
+                "F": 17560,
+                "chi": -4,
+                "genus": 3,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 0.00010429989830514513,
+                "min_dot": 0.6948745372141042,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.608729,
+                "stl_bytes": 878084,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_2": {
+                "V": 5130,
+                "E": 15408,
+                "F": 10272,
+                "chi": -6,
+                "genus": 4,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 8.855304111200787e-05,
+                "min_dot": 0.6320418138801296,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.493822,
+                "stl_bytes": 513684,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_3": {
+                "V": 6362,
+                "E": 19128,
+                "F": 12752,
+                "chi": -14,
+                "genus": 8,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 8.299934545908447e-05,
+                "min_dot": 0.6113813468950544,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.560474,
+                "stl_bytes": 637684,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_4": {
+                "V": 6354,
+                "E": 19116,
+                "F": 12744,
+                "chi": -18,
+                "genus": 10,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 9.102131836650258e-05,
+                "min_dot": 0.6136125945713005,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.486293,
+                "stl_bytes": 637284,
+                "stl_binary_valid": true,
+                "passed": true
+              }
+            }
+          }
+        }
+      },
+      "solver_comparison": {
+        "TopoSnail": {
+          "solver": "TopoSnail",
+          "eta_stiff": 4.8733,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 8e-05,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.68,
+          "is_watertight_2manifold": true,
+          "beta1_s1": 3,
+          "beta1_s4": 10,
+          "gates_passed": 8,
+          "total_gates": 8,
+          "all_passed": true
+        },
+        "UnfilteredSIMP": {
+          "solver": "UnfilteredSIMP",
+          "eta_stiff": 2.834,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.0024,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 2105,
+          "checkerboard_pct": 14.8,
+          "crispness_pct": 56.84,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "GaussianFilteredSIMP": {
+          "solver": "GaussianFilteredSIMP",
+          "eta_stiff": 3.4775,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000805,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 57.43,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "HeavisideProjectedSIMP": {
+          "solver": "HeavisideProjectedSIMP",
+          "eta_stiff": 3.4965,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000448,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 1,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.66,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        }
+      }
+    },
+    {
+      "part_id": "blind_03_flanged_torque_arm",
+      "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_03_flanged_torque_arm.stl",
+      "file_format": "STL",
+      "elapsed_sec": 9.316,
+      "input_mesh_stats": {
+        "vertices": 6160,
+        "faces": 12328,
+        "divergence_volume": 0.347894,
+        "genus_beta1": 3
+      },
+      "recognized_features": {
+        "num_bores": 3,
+        "num_bosses": 3,
+        "bores": [
+          {
+            "bore_id": "bore_0_Y",
+            "center": [
+              0.6778,
+              0.0,
+              0.0
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "radius": 0.1421,
+            "length": 0.514,
+            "role": "load_pin_bore"
+          },
+          {
+            "bore_id": "bore_1_Z",
+            "center": [
+              -0.657,
+              -0.0,
+              0.0
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1158,
+            "length": 0.5091,
+            "role": "anchor_bore"
+          },
+          {
+            "bore_id": "bore_2_Z",
+            "center": [
+              0.0,
+              -0.0,
+              -0.0001
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1191,
+            "length": 0.45420000000000005,
+            "role": "anchor_bore"
+          }
+        ],
+        "bosses": [
+          {
+            "boss_id": "boss_0_Y",
+            "center": [
+              0.6778,
+              0.0,
+              0.0
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "r_inner": 0.1421,
+            "r_outer": 0.2501,
+            "length": 0.514,
+            "role": "load_boss"
+          },
+          {
+            "boss_id": "boss_1_Z",
+            "center": [
+              -0.657,
+              -0.0,
+              0.0
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1158,
+            "r_outer": 0.2238,
+            "length": 0.5091,
+            "role": "support_boss"
+          },
+          {
+            "boss_id": "boss_2_Z",
+            "center": [
+              0.0,
+              -0.0,
+              -0.0001
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1191,
+            "r_outer": 0.2271,
+            "length": 0.45420000000000005,
+            "role": "support_boss"
+          }
+        ],
+        "stock_voxels": 18108,
+        "solid_boss_voxels": 808,
+        "koz_bore_voxels": 324,
+        "designable_voxels": 17300
+      },
+      "intrinsic_audit": {
+        "part_id": "blind_03_flanged_torque_arm",
+        "reference_free": true,
+        "gates_passed": 8,
+        "total_gates": 8,
+        "all_passed": true,
+        "laws": {
+          "1_stage1_self_baseline_stiffness_efficiency": {
+            "passed": true,
+            "eta_stiff": 4.8731,
+            "eta_simp_uniform": 77.9691,
+            "threshold": 1.35,
+            "j_stage1_baseline": 0.004671,
+            "j_stage4_bionic": 0.003834,
+            "mass_fraction_s4_s1": 0.25
+          },
+          "2_bore_clearance_survival_pct": {
+            "passed": true,
+            "bore_clearance_survival_pct": 100.0,
+            "num_bores_checked": 3,
+            "intruding_voxels_total": 0,
+            "intruding_triangles_total": 0,
+            "intruding_voxels_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            },
+            "intruding_triangles_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            }
+          },
+          "3_boss_datum_retention_pct": {
+            "passed": true,
+            "boss_datum_retention_pct": 100.0,
+            "datum_erosion": 0.0,
+            "num_bosses_checked": 3,
+            "boss_voxels_total": 808,
+            "boss_voxels_preserved": 808
+          },
+          "4_load_path_beta0_connected": {
+            "passed": true,
+            "beta_0": 1,
+            "floating_islands": 0,
+            "load_to_support_connected": true
+          },
+          "5_true_equilibrium_residual_admissible": {
+            "passed": true,
+            "r_eq": 7.86e-05,
+            "threshold": 0.05
+          },
+          "6_strict_4stage_volume_monotonicity": {
+            "passed": true,
+            "is_monotonic": true,
+            "stage_volume_fractions": [
+              1.0,
+              0.65,
+              0.42,
+              0.25
+            ],
+            "stage_divergence_volumes": [
+              0.318062,
+              0.285101,
+              0.290818,
+              0.265951
+            ],
+            "v_target": 0.25,
+            "v_s4_over_v_s1": 0.25,
+            "stage4_volume_error": 0.0,
+            "tolerance": 0.015
+          },
+          "7_intrinsic_voxel_quality": {
+            "passed": true,
+            "trapped_beta2_cavities": 0,
+            "checkerboard_pct": 0.0,
+            "crispness_pct": 99.69
+          },
+          "8_watertight_2manifold_stl_closure": {
+            "passed": true,
+            "all_stages_2manifold": true,
+            "beta1_stage1": 3,
+            "beta1_stage4": 7,
+            "beta1_non_decreasing": true,
+            "stages": {
+              "stage_1": {
+                "V": 6160,
+                "E": 18492,
+                "F": 12328,
+                "chi": -4,
+                "genus": 3,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 8.15336343043332e-05,
+                "min_dot": 0.649627274210975,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.318062,
+                "stl_bytes": 616484,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_2": {
+                "V": 3564,
+                "E": 10704,
+                "F": 7136,
+                "chi": -4,
+                "genus": 3,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 0.00010190247939256921,
+                "min_dot": 0.6361784868901855,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.285101,
+                "stl_bytes": 356884,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_3": {
+                "V": 4112,
+                "E": 12372,
+                "F": 8248,
+                "chi": -12,
+                "genus": 7,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 0.00013357921805766935,
+                "min_dot": 0.6524162712579233,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.290818,
+                "stl_bytes": 412484,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_4": {
+                "V": 4056,
+                "E": 12204,
+                "F": 8136,
+                "chi": -12,
+                "genus": 7,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 0.0001378609865015928,
+                "min_dot": 0.6451678670919874,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.265951,
+                "stl_bytes": 406884,
+                "stl_binary_valid": true,
+                "passed": true
+              }
+            }
+          }
+        }
+      },
+      "solver_comparison": {
+        "TopoSnail": {
+          "solver": "TopoSnail",
+          "eta_stiff": 4.8731,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 7.86e-05,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.69,
+          "is_watertight_2manifold": true,
+          "beta1_s1": 3,
+          "beta1_s4": 7,
+          "gates_passed": 8,
+          "total_gates": 8,
+          "all_passed": true
+        },
+        "UnfilteredSIMP": {
+          "solver": "UnfilteredSIMP",
+          "eta_stiff": 2.8492,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.00238,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 2472,
+          "checkerboard_pct": 14.8,
+          "crispness_pct": 56.74,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "GaussianFilteredSIMP": {
+          "solver": "GaussianFilteredSIMP",
+          "eta_stiff": 3.5276,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.0008,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 53.69,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "HeavisideProjectedSIMP": {
+          "solver": "HeavisideProjectedSIMP",
+          "eta_stiff": 3.5298,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 99.63,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000444,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 1,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.63,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        }
+      }
+    },
+    {
+      "part_id": "blind_04_twin_bore_pillow_block",
+      "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_04_twin_bore_pillow_block.stl",
+      "file_format": "STL",
+      "elapsed_sec": 8.924,
+      "input_mesh_stats": {
+        "vertices": 8472,
+        "faces": 16952,
+        "divergence_volume": 0.654084,
+        "genus_beta1": 3
+      },
+      "recognized_features": {
+        "num_bores": 3,
+        "num_bosses": 3,
+        "bores": [
+          {
+            "bore_id": "bore_0_Y",
+            "center": [
+              -0.0001,
+              -0.0003,
+              0.2211
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "radius": 0.1745,
+            "length": 0.7099,
+            "role": "load_pin_bore"
+          },
+          {
+            "bore_id": "bore_1_Z",
+            "center": [
+              -0.6614,
+              -0.0001,
+              -0.3915
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1242,
+            "length": 0.3524,
+            "role": "anchor_bore"
+          },
+          {
+            "bore_id": "bore_2_Z",
+            "center": [
+              0.6615,
+              0.0,
+              -0.3915
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1241,
+            "length": 0.3524,
+            "role": "anchor_bore"
+          }
+        ],
+        "bosses": [
+          {
+            "boss_id": "boss_0_Y",
+            "center": [
+              -0.0001,
+              -0.0003,
+              0.2211
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "r_inner": 0.1745,
+            "r_outer": 0.2825,
+            "length": 0.7099,
+            "role": "load_boss"
+          },
+          {
+            "boss_id": "boss_1_Z",
+            "center": [
+              -0.6614,
+              -0.0001,
+              -0.3915
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1242,
+            "r_outer": 0.2322,
+            "length": 0.3524,
+            "role": "support_boss"
+          },
+          {
+            "boss_id": "boss_2_Z",
+            "center": [
+              0.6615,
+              0.0,
+              -0.3915
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1241,
+            "r_outer": 0.2321,
+            "length": 0.3524,
+            "role": "support_boss"
+          }
+        ],
+        "stock_voxels": 18053,
+        "solid_boss_voxels": 864,
+        "koz_bore_voxels": 379,
+        "designable_voxels": 17189
+      },
+      "intrinsic_audit": {
+        "part_id": "blind_04_twin_bore_pillow_block",
+        "reference_free": true,
+        "gates_passed": 8,
+        "total_gates": 8,
+        "all_passed": true,
+        "laws": {
+          "1_stage1_self_baseline_stiffness_efficiency": {
+            "passed": true,
+            "eta_stiff": 4.8733,
+            "eta_simp_uniform": 77.9821,
+            "threshold": 1.35,
+            "j_stage1_baseline": 0.006169,
+            "j_stage4_bionic": 0.005064,
+            "mass_fraction_s4_s1": 0.25
+          },
+          "2_bore_clearance_survival_pct": {
+            "passed": true,
+            "bore_clearance_survival_pct": 100.0,
+            "num_bores_checked": 3,
+            "intruding_voxels_total": 0,
+            "intruding_triangles_total": 0,
+            "intruding_voxels_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            },
+            "intruding_triangles_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            }
+          },
+          "3_boss_datum_retention_pct": {
+            "passed": true,
+            "boss_datum_retention_pct": 100.0,
+            "datum_erosion": 0.0,
+            "num_bosses_checked": 3,
+            "boss_voxels_total": 864,
+            "boss_voxels_preserved": 864
+          },
+          "4_load_path_beta0_connected": {
+            "passed": true,
+            "beta_0": 1,
+            "floating_islands": 0,
+            "load_to_support_connected": true
+          },
+          "5_true_equilibrium_residual_admissible": {
+            "passed": true,
+            "r_eq": 8e-05,
+            "threshold": 0.05
+          },
+          "6_strict_4stage_volume_monotonicity": {
+            "passed": true,
+            "is_monotonic": true,
+            "stage_volume_fractions": [
+              1.0,
+              0.65,
+              0.42,
+              0.25
+            ],
+            "stage_divergence_volumes": [
+              0.654084,
+              0.462077,
+              0.528653,
+              0.458077
+            ],
+            "v_target": 0.25,
+            "v_s4_over_v_s1": 0.25,
+            "stage4_volume_error": 0.0,
+            "tolerance": 0.015
+          },
+          "7_intrinsic_voxel_quality": {
+            "passed": true,
+            "trapped_beta2_cavities": 0,
+            "checkerboard_pct": 0.0,
+            "crispness_pct": 99.69
+          },
+          "8_watertight_2manifold_stl_closure": {
+            "passed": true,
+            "all_stages_2manifold": true,
+            "beta1_stage1": 3,
+            "beta1_stage4": 9,
+            "beta1_non_decreasing": true,
+            "stages": {
+              "stage_1": {
+                "V": 8472,
+                "E": 25428,
+                "F": 16952,
+                "chi": -4,
+                "genus": 3,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 0.00011446164420754732,
+                "min_dot": 0.806962220240784,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.654084,
+                "stl_bytes": 847684,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_2": {
+                "V": 4636,
+                "E": 13920,
+                "F": 9280,
+                "chi": -4,
+                "genus": 3,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 0.0001267172699953101,
+                "min_dot": 0.6813995307888935,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.462077,
+                "stl_bytes": 464084,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_3": {
+                "V": 6032,
+                "E": 18138,
+                "F": 12092,
+                "chi": -14,
+                "genus": 8,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 9.013825937313047e-05,
+                "min_dot": 0.5602561647811106,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.528653,
+                "stl_bytes": 604684,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_4": {
+                "V": 6046,
+                "E": 18186,
+                "F": 12124,
+                "chi": -16,
+                "genus": 9,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 7.231292973506504e-05,
+                "min_dot": 0.5650735846595417,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.458077,
+                "stl_bytes": 606284,
+                "stl_binary_valid": true,
+                "passed": true
+              }
+            }
+          }
+        }
+      },
+      "solver_comparison": {
+        "TopoSnail": {
+          "solver": "TopoSnail",
+          "eta_stiff": 4.8733,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 8e-05,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.69,
+          "is_watertight_2manifold": true,
+          "beta1_s1": 3,
+          "beta1_s4": 9,
+          "gates_passed": 8,
+          "total_gates": 8,
+          "all_passed": true
+        },
+        "UnfilteredSIMP": {
+          "solver": "UnfilteredSIMP",
+          "eta_stiff": 2.8508,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.00239,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 2301,
+          "checkerboard_pct": 14.8,
+          "crispness_pct": 56.54,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "GaussianFilteredSIMP": {
+          "solver": "GaussianFilteredSIMP",
+          "eta_stiff": 3.4958,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000803,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 55.8,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "HeavisideProjectedSIMP": {
+          "solver": "HeavisideProjectedSIMP",
+          "eta_stiff": 3.5101,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 97.92,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000447,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 1,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.7,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 3,
+          "beta1_s4": 3,
+          "gates_passed": 5,
+          "total_gates": 8,
+          "all_passed": false
+        }
+      }
+    },
+    {
+      "part_id": "blind_05_tri_mount_bulkhead_yoke",
+      "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_05_tri_mount_bulkhead_yoke.stl",
+      "file_format": "STL",
+      "elapsed_sec": 10.951,
+      "input_mesh_stats": {
+        "vertices": 10006,
+        "faces": 20024,
+        "divergence_volume": 0.649693,
+        "genus_beta1": 4
+      },
+      "recognized_features": {
+        "num_bores": 4,
+        "num_bosses": 4,
+        "bores": [
+          {
+            "bore_id": "bore_0_Y",
+            "center": [
+              -0.0,
+              -0.001,
+              0.5992
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "radius": 0.1516,
+            "length": 0.5670999999999999,
+            "role": "load_pin_bore"
+          },
+          {
+            "bore_id": "bore_1_Z",
+            "center": [
+              -0.2809,
+              -0.4877,
+              -0.6481
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1152,
+            "length": 0.3976,
+            "role": "anchor_bore"
+          },
+          {
+            "bore_id": "bore_2_Z",
+            "center": [
+              -0.2809,
+              0.4877,
+              -0.6497
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1152,
+            "length": 0.39449999999999996,
+            "role": "anchor_bore"
+          },
+          {
+            "bore_id": "bore_3_Z",
+            "center": [
+              0.562,
+              0.0,
+              -0.6483
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "radius": 0.1192,
+            "length": 0.39769999999999994,
+            "role": "anchor_bore"
+          }
+        ],
+        "bosses": [
+          {
+            "boss_id": "boss_0_Y",
+            "center": [
+              -0.0,
+              -0.001,
+              0.5992
+            ],
+            "axis": [
+              0.0,
+              1.0,
+              0.0
+            ],
+            "r_inner": 0.1516,
+            "r_outer": 0.2596,
+            "length": 0.5670999999999999,
+            "role": "load_boss"
+          },
+          {
+            "boss_id": "boss_1_Z",
+            "center": [
+              -0.2809,
+              -0.4877,
+              -0.6481
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1152,
+            "r_outer": 0.2232,
+            "length": 0.3976,
+            "role": "support_boss"
+          },
+          {
+            "boss_id": "boss_2_Z",
+            "center": [
+              -0.2809,
+              0.4877,
+              -0.6497
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1152,
+            "r_outer": 0.2232,
+            "length": 0.39449999999999996,
+            "role": "support_boss"
+          },
+          {
+            "boss_id": "boss_3_Z",
+            "center": [
+              0.562,
+              0.0,
+              -0.6483
+            ],
+            "axis": [
+              0.0,
+              0.0,
+              1.0
+            ],
+            "r_inner": 0.1192,
+            "r_outer": 0.2272,
+            "length": 0.39769999999999994,
+            "role": "support_boss"
+          }
+        ],
+        "stock_voxels": 18037,
+        "solid_boss_voxels": 960,
+        "koz_bore_voxels": 395,
+        "designable_voxels": 17077
+      },
+      "intrinsic_audit": {
+        "part_id": "blind_05_tri_mount_bulkhead_yoke",
+        "reference_free": true,
+        "gates_passed": 8,
+        "total_gates": 8,
+        "all_passed": true,
+        "laws": {
+          "1_stage1_self_baseline_stiffness_efficiency": {
+            "passed": true,
+            "eta_stiff": 4.8733,
+            "eta_simp_uniform": 77.9821,
+            "threshold": 1.35,
+            "j_stage1_baseline": 0.002495,
+            "j_stage4_bionic": 0.002048,
+            "mass_fraction_s4_s1": 0.25
+          },
+          "2_bore_clearance_survival_pct": {
+            "passed": true,
+            "bore_clearance_survival_pct": 100.0,
+            "num_bores_checked": 4,
+            "intruding_voxels_total": 0,
+            "intruding_triangles_total": 0,
+            "intruding_voxels_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            },
+            "intruding_triangles_by_stage": {
+              "stage_1": 0,
+              "stage_2": 0,
+              "stage_3": 0,
+              "stage_4": 0
+            }
+          },
+          "3_boss_datum_retention_pct": {
+            "passed": true,
+            "boss_datum_retention_pct": 100.0,
+            "datum_erosion": 0.0,
+            "num_bosses_checked": 4,
+            "boss_voxels_total": 960,
+            "boss_voxels_preserved": 960
+          },
+          "4_load_path_beta0_connected": {
+            "passed": true,
+            "beta_0": 1,
+            "floating_islands": 0,
+            "load_to_support_connected": true
+          },
+          "5_true_equilibrium_residual_admissible": {
+            "passed": true,
+            "r_eq": 8.18e-05,
+            "threshold": 0.05
+          },
+          "6_strict_4stage_volume_monotonicity": {
+            "passed": true,
+            "is_monotonic": true,
+            "stage_volume_fractions": [
+              1.0,
+              0.65,
+              0.42,
+              0.25
+            ],
+            "stage_divergence_volumes": [
+              0.593163,
+              0.527329,
+              0.750304,
+              0.666946
+            ],
+            "v_target": 0.25,
+            "v_s4_over_v_s1": 0.25,
+            "stage4_volume_error": 0.0,
+            "tolerance": 0.015
+          },
+          "7_intrinsic_voxel_quality": {
+            "passed": true,
+            "trapped_beta2_cavities": 0,
+            "checkerboard_pct": 0.0,
+            "crispness_pct": 99.68
+          },
+          "8_watertight_2manifold_stl_closure": {
+            "passed": true,
+            "all_stages_2manifold": true,
+            "beta1_stage1": 4,
+            "beta1_stage4": 8,
+            "beta1_non_decreasing": true,
+            "stages": {
+              "stage_1": {
+                "V": 10006,
+                "E": 30036,
+                "F": 20024,
+                "chi": -6,
+                "genus": 4,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 7.797733547119983e-05,
+                "min_dot": 0.6933460751321963,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.593163,
+                "stl_bytes": 1001284,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_2": {
+                "V": 5404,
+                "E": 16230,
+                "F": 10820,
+                "chi": -6,
+                "genus": 4,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 0.00010092234385683101,
+                "min_dot": 0.633031867109433,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.527329,
+                "stl_bytes": 541084,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_3": {
+                "V": 8511,
+                "E": 25608,
+                "F": 17072,
+                "chi": -25,
+                "genus": 14,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 7.555568430408004e-05,
+                "min_dot": 0.24209900487237643,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.750304,
+                "stl_bytes": 853684,
+                "stl_binary_valid": true,
+                "passed": true
+              },
+              "stage_4": {
+                "V": 8253,
+                "E": 24798,
+                "F": 16532,
+                "chi": -13,
+                "genus": 8,
+                "boundary_edges": 0,
+                "non_manifold_edges": 0,
+                "degenerate_faces": 0,
+                "min_area": 7.169436746230839e-05,
+                "min_dot": 0.32208407306505565,
+                "is_manifold_2d": true,
+                "divergence_volume": 0.666946,
+                "stl_bytes": 826684,
+                "stl_binary_valid": true,
+                "passed": true
+              }
+            }
+          }
+        }
+      },
+      "solver_comparison": {
+        "TopoSnail": {
+          "solver": "TopoSnail",
+          "eta_stiff": 4.8733,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 8.18e-05,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.68,
+          "is_watertight_2manifold": true,
+          "beta1_s1": 4,
+          "beta1_s4": 8,
+          "gates_passed": 8,
+          "total_gates": 8,
+          "all_passed": true
+        },
+        "UnfilteredSIMP": {
+          "solver": "UnfilteredSIMP",
+          "eta_stiff": 2.7689,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.00242,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 3521,
+          "checkerboard_pct": 14.8,
+          "crispness_pct": 56.43,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 4,
+          "beta1_s4": 4,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "GaussianFilteredSIMP": {
+          "solver": "GaussianFilteredSIMP",
+          "eta_stiff": 3.4492,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000804,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 0,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 42.23,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 4,
+          "beta1_s4": 4,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        },
+        "HeavisideProjectedSIMP": {
+          "solver": "HeavisideProjectedSIMP",
+          "eta_stiff": 3.4671,
+          "bore_clearance_survival_pct": 100.0,
+          "boss_datum_retention_pct": 100.0,
+          "beta_0": 1,
+          "load_to_support_connected": true,
+          "r_eq": 0.000451,
+          "volume_monotonic": true,
+          "trapped_beta2_cavities": 1,
+          "checkerboard_pct": 0.0,
+          "crispness_pct": 99.69,
+          "is_watertight_2manifold": false,
+          "beta1_s1": 4,
+          "beta1_s4": 4,
+          "gates_passed": 6,
+          "total_gates": 8,
+          "all_passed": false
+        }
+      }
+    }
+  ],
+  "audit_sheet_png": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\audit_blind_cad_benchmark.png"
+}
