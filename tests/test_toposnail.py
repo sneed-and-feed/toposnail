@@ -604,8 +604,18 @@ class TestStudioInteractiveAndFirefoxFix:
         from toposnail.studio import (
             _build_smooth_scenario_mesh,
             _generate_synthetic_baselines,
+            _generate_synthetic_scenario_data,
+            _turbo_colormap,
             generate_studio_html,
         )
+
+        # 0. Verify Google Turbo colormap polynomial accuracy (no neon-magenta blue-channel overflow)
+        c_low = _turbo_colormap(0.10)
+        c_mid = _turbo_colormap(0.50)
+        c_high = _turbo_colormap(0.90)
+        assert c_low[2] > c_low[0], "Low stress (0.10) should be predominantly blue/cyan"
+        assert c_mid[1] > 0.85 and c_mid[2] < 0.45, "Mid stress (0.50) should be bright emerald/green, not magenta"
+        assert c_high[0] > 0.70 and c_high[2] < 0.10, "High stress (0.90) should be deep crimson/red, not pink"
 
         dummy_rho = np.zeros(CANONICAL_GRID, dtype=np.float64)
         dummy_vm = np.zeros(CANONICAL_GRID, dtype=np.float64)
@@ -628,11 +638,21 @@ class TestStudioInteractiveAndFirefoxFix:
 
             if s_id == "03_trabecular_femur_anisotropic_so6":
                 # Verify Spherical Femoral Head (x < -0.55, z > 0.70), Greater Trochanter (x > 0.40),
-                # and Distal Cylindrical Diaphysis (z = -0.82)
+                # Distal Cylindrical Diaphysis (z = -0.82), and +Y anterior 3D volume above z > 0.0
                 assert float(np.min(v_arr[:, 0])) <= -0.58
                 assert float(np.max(v_arr[:, 0])) >= 0.40
                 assert float(np.min(v_arr[:, 2])) == pytest.approx(-0.82, abs=1e-3)
                 assert float(np.max(v_arr[:, 2])) >= 0.72
+                upper_verts = v_arr[v_arr[:, 2] > 0.0]
+                assert float(np.max(upper_verts[:, 1])) >= 0.10, "Femur must have +Y 3D anterior volume above z=0"
+                # Verify recessed endosteal cavity shading contrast (dark recessed cavity vertices exist)
+                luma = 0.299 * c_arr[:, 0] + 0.587 * c_arr[:, 1] + 0.114 * c_arr[:, 2]
+                assert np.sum(luma < 0.35) >= 200, "Recessed endosteal cavity must have dark ambient-occluded vertices"
+
+                # Verify 3D voxel field for Scenario 03 has anatomical medullary void & Ward's triangle
+                scen_data = _generate_synthetic_scenario_data(s_id)
+                assert len(scen_data["supports"]) == 2
+                assert "F_joint" in scen_data["force"]["label"]
 
             # Verify scenario-specific benchmark baselines
             base = _generate_synthetic_baselines(s_id)
@@ -642,11 +662,12 @@ class TestStudioInteractiveAndFirefoxFix:
             assert base[0]["checkerboards"] == 0.0
             assert base[0]["beta2_voids"] == 0
 
-        # 2. Verify CAD View Controls & Scenario-Specific Quad C Profile in Studio HTML
+        # 2. Verify CAD View Controls, 3-Axis Section Clipping & Maximize Toggle in Studio HTML
         studio_path = Path("studio/toposnail_portable_studio.html")
         html = studio_path.read_text(encoding="utf-8") if studio_path.exists() else generate_studio_html()
         for token in [
             "function setCameraPreset(",
+            "function toggleMaximizeQuad(",
             "function setRenderMode(",
             "function toggleSectionClip(",
             "function toggleTurntable(",
@@ -656,6 +677,7 @@ class TestStudioInteractiveAndFirefoxFix:
             "function resetQuadBView(",
             "function toggleQuadBFibers(",
             "function zoomQuadB(",
+            "clipZMax",
             "scen._quadCProfile",
             "STATE.axisGizmoHits",
             'id="cadViewBarA"',
@@ -664,7 +686,13 @@ class TestStudioInteractiveAndFirefoxFix:
             'id="btnRenderWire"',
             'id="btnRenderXray"',
             'id="btnToggleClip"',
+            'id="btnMaxQuadA"',
+            'id="btnMaxQuadB"',
+            "touchstart",
+            "touchmove",
+            "ArrowLeft",
         ]:
             assert token in html, f"Missing CAD control token in studio HTML: {token}"
+
 
 

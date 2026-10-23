@@ -189,14 +189,14 @@ def _generate_synthetic_scenario_data(
             d_sq = _segment_dist_sq(xx, yy, zz, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2])
             min_d_sq = np.minimum(min_d_sq, d_sq)
 
-        r = 0.048
-        rho = np.clip(1.0 - (np.sqrt(min_d_sq) - r) / 0.035, 0.001, 0.98).astype(np.float32)
+        r = 0.032
+        rho = np.clip(1.0 - (np.sqrt(min_d_sq) - r) / 0.024, 0.001, 0.98).astype(np.float32)
         for a in ["A1", "A2", "A3", "A4"]:
             pa = nodes[a]
             d_pad = np.sqrt((xx - pa[0])**2 + (yy - pa[1])**2 + (zz - pa[2])**2)
-            rho = np.where((xx < 0.08) & (d_pad < 0.12), 0.98, rho)
+            rho = np.where((xx < 0.08) & (d_pad < 0.10), 0.98, rho)
         d_tip = np.sqrt((xx - 0.95)**2 + (yy - 0.50)**2 + (zz - 0.50)**2)
-        rho = np.where(d_tip < 0.08, 0.98, rho)
+        rho = np.where(d_tip < 0.075, 0.98, rho)
 
         vm = np.where(
             rho > 0.2,
@@ -223,44 +223,45 @@ def _generate_synthetic_scenario_data(
     elif scenario_id == "02_aerospace_jet_bracket":
         # 4-ear bolted aerospace bracket with hollow clevis & cylindrical bores (GE Jet Bracket benchmark)
         bore_centers = [(0.21, 0.21), (0.21, 0.79), (0.79, 0.21), (0.79, 0.79)]
-        base_plate = (zz <= 0.16) & (xx >= 0.08) & (xx <= 0.92) & (yy >= 0.08) & (yy <= 0.92)
+        base_plate = (zz <= 0.14) & (xx >= 0.08) & (xx <= 0.92) & (yy >= 0.08) & (yy <= 0.92)
         d_center = np.sqrt((xx - 0.5)**2 + (yy - 0.5)**2)
-        base_plate &= (d_center > 0.17) & ((np.abs(xx - 0.5) < 0.36) | (np.abs(yy - 0.5) < 0.36))
+        base_plate &= (d_center > 0.19) & ((np.abs(xx - 0.5) < 0.34) | (np.abs(yy - 0.5) < 0.34))
 
         boss_mask = np.zeros(grid_shape, dtype=bool)
         bore_mask = np.zeros(grid_shape, dtype=bool)
         for bx, by in bore_centers:
             d_b = np.sqrt((xx - bx)**2 + (yy - by)**2)
-            bore_mask |= (d_b < 0.080) & (zz <= 0.42)
-            boss_mask |= (d_b < 0.165) & (zz <= 0.25)
+            bore_mask |= (d_b < 0.085) & (zz <= 0.42)
+            boss_mask |= (d_b < 0.155) & (zz <= 0.22)
 
-        clevis_x = np.abs(xx - 0.5) <= 0.15
+        clevis_x = np.abs(xx - 0.5) <= 0.16
         clevis_y1 = (yy >= 0.25) & (yy <= 0.39)
         clevis_y2 = (yy >= 0.61) & (yy <= 0.75)
-        clevis_z = (zz >= 0.14) & (zz <= 0.88)
+        clevis_z = (zz >= 0.56) & (zz <= 0.88)
+        aframe_window = (np.abs(xx - 0.5) < 0.11) & (zz > 0.15) & (zz < 0.55)
 
         d_ear1 = np.sqrt((xx - 0.5)**2 + (zz - 0.76)**2)
-        clevis_crown1 = (d_ear1 <= 0.175) & clevis_y1 & (zz >= 0.66)
-        clevis_crown2 = (d_ear1 <= 0.175) & clevis_y2 & (zz >= 0.66)
-        pin_bore = (d_ear1 < 0.082) & (yy >= 0.18) & (yy <= 0.82)
+        clevis_crown1 = (d_ear1 <= 0.175) & clevis_y1 & (zz >= 0.62)
+        clevis_crown2 = (d_ear1 <= 0.175) & clevis_y2 & (zz >= 0.62)
+        pin_bore = (d_ear1 < 0.088) & (yy >= 0.18) & (yy <= 0.82)
 
         rib_struts = [
-            ((0.21, 0.21, 0.14), (0.40, 0.32, 0.68)),
-            ((0.21, 0.79, 0.14), (0.40, 0.68, 0.68)),
-            ((0.79, 0.21, 0.14), (0.60, 0.32, 0.68)),
-            ((0.79, 0.79, 0.14), (0.60, 0.68, 0.68)),
+            ((0.21, 0.21, 0.14), (0.39, 0.32, 0.66)),
+            ((0.21, 0.79, 0.14), (0.39, 0.68, 0.66)),
+            ((0.79, 0.21, 0.14), (0.61, 0.32, 0.66)),
+            ((0.79, 0.79, 0.14), (0.61, 0.68, 0.66)),
             ((0.21, 0.21, 0.10), (0.79, 0.21, 0.10)),
             ((0.21, 0.79, 0.10), (0.79, 0.79, 0.10)),
-            ((0.36, 0.32, 0.44), (0.64, 0.68, 0.44)),
-            ((0.64, 0.32, 0.44), (0.36, 0.68, 0.44)),
+            ((0.35, 0.32, 0.42), (0.65, 0.68, 0.42)),
+            ((0.65, 0.32, 0.42), (0.35, 0.68, 0.42)),
         ]
         min_rib_sq = np.full(zz.shape, 1e9, dtype=np.float32)
         for p1, p2 in rib_struts:
             d_sq = _segment_dist_sq(xx, yy, zz, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2])
             min_rib_sq = np.minimum(min_rib_sq, d_sq)
-        ribs = min_rib_sq < (0.058 ** 2)
+        ribs = min_rib_sq < (0.052 ** 2)
 
-        solid_bracket = (base_plate | boss_mask | (clevis_x & (clevis_y1 | clevis_y2) & clevis_z) | clevis_crown1 | clevis_crown2 | ribs) & (~bore_mask) & (~pin_bore)
+        solid_bracket = (base_plate | boss_mask | (clevis_x & (clevis_y1 | clevis_y2) & clevis_z) | clevis_crown1 | clevis_crown2 | ribs) & (~bore_mask) & (~pin_bore) & (~aframe_window)
         rho = np.where(solid_bracket, 0.96, 0.001).astype(np.float32)
 
         vm = np.where(
@@ -288,57 +289,72 @@ def _generate_synthetic_scenario_data(
 
     elif scenario_id == "03_trabecular_femur_anisotropic_so6":
         # Human Proximal Femur in Coronal (X-Z) Orientation (Wolff's Law 1892; Koch 1917; Bergmann et al. 2001)
-        # X: Medial (-X, spherical head at x=0.24) to Lateral (+X, greater trochanter at x=0.76, shaft at x=0.58)
-        # Z: Distal diaphysis (z=0.0) to Superior femoral head dome (z=0.82)
+        # X: Medial (-X, spherical head at x=0.26) to Lateral (+X, greater trochanter at x=0.78, shaft at x=0.60)
+        # Z: Distal diaphysis (z=0.0) to Superior femoral head dome (z=0.84)
         # Y: Anterior-Posterior depth centered at y=0.50
-        d_shaft = np.sqrt(((xx - 0.58) / 1.0)**2 + ((yy - 0.50) / 0.92)**2)
-        cortical_wall = (d_shaft <= 0.165) & (d_shaft >= 0.088) & (zz <= 0.52)
-        # Thick medial calcar femorale cortical buttress
-        calcar_wall = (xx >= 0.41) & (xx <= 0.51) & (np.abs(yy - 0.50) <= 0.13) & (zz >= 0.18) & (zz <= 0.56)
-        medullary_void = (d_shaft < 0.088) & (zz <= 0.44)
+        y_dist_sq = ((yy - 0.50) / 0.85) ** 2
 
-        # Constricted femoral neck shell (127 deg CCD neck-shaft angle)
-        neck_d_sq = _segment_dist_sq(xx, yy, zz, 0.55, 0.50, 0.46, 0.25, 0.50, 0.78)
-        neck_shell = (neck_d_sq <= (0.105 ** 2)) & (neck_d_sq >= (0.072 ** 2))
+        # 1. Distal diaphysis cortical shaft (x centered at 0.60, z in [0.0, 0.50]) with hollow medullary canal
+        d_shaft = np.sqrt((xx - 0.60) ** 2 + y_dist_sq)
+        med_calcar_thick = np.where((xx < 0.60) & (zz >= 0.16) & (zz <= 0.58), 0.032, 0.0)
+        cortical_wall = (d_shaft <= 0.145) & (d_shaft >= (0.082 - med_calcar_thick)) & (zz <= 0.48)
+        medullary_void = (d_shaft < (0.082 - med_calcar_thick)) & (zz <= 0.42)
 
-        # Distinct large spherical femoral head at (x=0.23, y=0.50, z=0.80)
-        d_head = np.sqrt((xx - 0.23)**2 + (yy - 0.50)**2 + (zz - 0.80)**2)
-        femur_head_shell = (d_head <= 0.175) & (d_head >= 0.120)
+        # 2. Smooth C^2 Medial Calcar Femorale cortical arch & constricted 127 deg Femoral Neck shell
+        neck_c1 = _segment_dist_sq(xx, yy, zz, 0.58, 0.50, 0.42, 0.41, 0.50, 0.61)
+        neck_c2 = _segment_dist_sq(xx, yy, zz, 0.41, 0.50, 0.61, 0.27, 0.50, 0.74)
+        neck_d = np.sqrt(np.minimum(neck_c1, neck_c2))
+        neck_shell = (neck_d <= 0.112) & (neck_d >= 0.068)
+        neck_cavity = (neck_d < 0.068) & (zz >= 0.38) & (zz <= 0.74)
 
-        # Greater trochanter apophysis at (x=0.75, y=0.50, z=0.70)
-        troch_d_sq = _segment_dist_sq(xx, yy, zz, 0.60, 0.50, 0.42, 0.75, 0.50, 0.70)
-        trochanter_shell = (troch_d_sq <= (0.130 ** 2)) & (troch_d_sq >= (0.085 ** 2))
+        # 3. Spherical Femoral Head (Caput Femoris) at (x=0.25, y=0.50, z=0.77, R=0.168)
+        d_head = np.sqrt((xx - 0.25) ** 2 + y_dist_sq + (zz - 0.77) ** 2)
+        femur_head_shell = (d_head <= 0.168) & (d_head >= 0.118)
+        head_cavity = d_head < 0.118
 
-        # Internal Wolff's Law Trabecular Groups (Principal Compressive, Principal Tensile Arcuate, Secondary)
+        # 4. Overhanging Greater Trochanter (Trochanter Major) at (x=0.76, y=0.50, z=0.69) with piriformis notch
+        troch_d = np.sqrt(_segment_dist_sq(xx, yy, zz, 0.63, 0.50, 0.40, 0.76, 0.50, 0.69))
+        trochanter_shell = (troch_d <= 0.125) & (troch_d >= 0.076)
+        trochanter_cavity = (troch_d < 0.076) & (zz >= 0.40)
+        piriformis_notch = ((xx - 0.58) ** 2 + (zz - 0.73) ** 2) < (0.075 ** 2)
+
+        # 5. Internal Wolff's Law Trabecular Arches (Principal Compressive, Principal Tensile Arcuate, Secondary)
         trab_segs = [
-            # Principal compressive group (from medial calcar cortex up to superior femoral head dome)
-            ((0.46, 0.50, 0.30), (0.36, 0.50, 0.60), 0.038),
-            ((0.36, 0.50, 0.60), (0.21, 0.50, 0.92), 0.038),
-            ((0.49, 0.50, 0.38), (0.39, 0.50, 0.65), 0.035),
-            ((0.39, 0.50, 0.65), (0.27, 0.50, 0.93), 0.035),
-            # Principal tensile (arcuate) group (from lateral cortex arching over superior neck to inferior head)
-            ((0.69, 0.50, 0.34), (0.56, 0.50, 0.64), 0.036),
-            ((0.56, 0.50, 0.64), (0.38, 0.50, 0.75), 0.036),
-            ((0.38, 0.50, 0.75), (0.12, 0.50, 0.74), 0.036),
-            # Secondary compressive group (medial cortex to greater trochanter, bounding Ward's triangle)
-            ((0.48, 0.50, 0.24), (0.64, 0.50, 0.52), 0.034),
-            ((0.64, 0.50, 0.52), (0.77, 0.50, 0.72), 0.034),
+            # Principal compressive cephalic fan (from medial calcar cortex up to superior femoral head dome)
+            ((0.51, 0.50, 0.26), (0.39, 0.50, 0.58), 0.034),
+            ((0.39, 0.50, 0.58), (0.23, 0.50, 0.89), 0.034),
+            ((0.52, 0.50, 0.36), (0.36, 0.50, 0.64), 0.032),
+            ((0.36, 0.50, 0.64), (0.16, 0.50, 0.82), 0.032),
+            # Principal tensile arcuate bundle (from lateral cortex arching over superior neck to inferomedial head)
+            ((0.71, 0.50, 0.34), (0.55, 0.50, 0.63), 0.032),
+            ((0.55, 0.50, 0.63), (0.36, 0.50, 0.74), 0.032),
+            ((0.36, 0.50, 0.74), (0.13, 0.50, 0.69), 0.032),
+            # Secondary compressive arch (lower medial calcar to greater trochanter, bounding Ward's triangle)
+            ((0.51, 0.50, 0.20), (0.66, 0.50, 0.48), 0.032),
+            ((0.66, 0.50, 0.48), (0.78, 0.50, 0.68), 0.032),
         ]
         trab_mask = np.zeros(grid_shape, dtype=bool)
-        comp_d_sq = _segment_dist_sq(xx, yy, zz, 0.46, 0.50, 0.32, 0.23, 0.50, 0.86)
+        comp_d_sq = _segment_dist_sq(xx, yy, zz, 0.50, 0.50, 0.30, 0.24, 0.50, 0.84)
         for p1, p2, r_t in trab_segs:
             d_sq = _segment_dist_sq(xx, yy, zz, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2])
-            trab_mask |= (d_sq <= (r_t ** 2)) & (np.abs(yy - 0.50) <= 0.14)
+            trab_mask |= (d_sq <= (r_t ** 2)) & (np.abs(yy - 0.50) <= 0.16)
 
-        # Ward's triangle low-density zone in center of intertrochanteric neck
-        wards_void = ((xx - 0.51)**2 + (zz - 0.53)**2) < (0.048 ** 2)
+        # Ward's triangle low-density neutral zone in center of intertrochanteric neck
+        wards_void = ((xx - 0.56) ** 2 + (zz - 0.54) ** 2) < (0.056 ** 2)
+        cancellous_void = (neck_cavity | head_cavity | trochanter_cavity) & (~trab_mask)
 
-        femur_solid = (cortical_wall | calcar_wall | neck_shell | femur_head_shell | trochanter_shell | trab_mask) & (~medullary_void) & (~wards_void)
-        rho = np.where(femur_solid, 0.96, 0.002).astype(np.float32)
+        femur_solid = (
+            (cortical_wall | neck_shell | femur_head_shell | trochanter_shell | trab_mask)
+            & (~medullary_void)
+            & (~cancellous_void)
+            & (~wards_void)
+            & (~piriformis_notch)
+        )
+        rho = np.where(femur_solid, np.where(trab_mask & (~femur_head_shell), 0.64, 0.96), 0.002).astype(np.float32)
 
         vm = np.where(
             femur_solid,
-            np.clip(95.0 + 235.0 * (1.0 - xx) * zz + 65.0 * (1.0 - np.minimum(1.0, np.sqrt(comp_d_sq) / 0.09)), 35.0, 342.0),
+            np.clip(85.0 + 240.0 * (1.0 - xx) * zz + 75.0 * (1.0 - np.minimum(1.0, np.sqrt(comp_d_sq) / 0.11)), 35.0, 342.0),
             1.5
         ).astype(np.float32)
         th = np.clip(vm / 245.0, 0.0, 1.38).astype(np.float32)
@@ -352,8 +368,8 @@ def _generate_synthetic_scenario_data(
             [0.27, 0.0, -0.82, 0.0, 0.0, -1.0],
         ]
         force_info = {
-            "origin": [-0.46, 0.0, 0.84],
-            "extra_origins": [[0.42, 0.0, 0.52]],
+            "origin": [-0.45, 0.0, 0.83],
+            "extra_origins": [[0.42, 0.0, 0.54]],
             "dir": [0.34, 0.0, -0.82],
             "label": "F_joint = 2.4 kN [Hip + Abductor]",
         }
@@ -376,14 +392,20 @@ def _generate_synthetic_scenario_data(
             ((np.abs(xx - 0.5) >= 0.28) & (np.abs(yy - 0.5) <= 0.08)) |
             ((np.abs(yy - 0.5) >= 0.28) & (np.abs(xx - 0.5) <= 0.08))
         )
+        # Diagonal thrust-transfer struts from gimbal ring to throat & injector mount
+        strut_d1 = _segment_dist_sq(xx, yy, zz, 0.14, 0.50, 0.78, 0.34, 0.50, 0.58)
+        strut_d2 = _segment_dist_sq(xx, yy, zz, 0.86, 0.50, 0.78, 0.66, 0.50, 0.58)
+        strut_d3 = _segment_dist_sq(xx, yy, zz, 0.14, 0.50, 0.78, 0.32, 0.50, 0.88)
+        strut_d4 = _segment_dist_sq(xx, yy, zz, 0.86, 0.50, 0.78, 0.68, 0.50, 0.88)
+        gimbal_struts = np.minimum(np.minimum(strut_d1, strut_d2), np.minimum(strut_d3, strut_d4)) <= (0.045 ** 2)
 
-        thruster_solid = (inner_liner | ribs | outer_jacket | manifolds | gimbal_ring | gimbal_lugs) & (r_rad >= r_core)
-        rho = np.where(thruster_solid, 0.97, 0.001).astype(np.float32)
+        thruster_solid = (inner_liner | ribs | outer_jacket | manifolds | gimbal_ring | gimbal_lugs | gimbal_struts) & (r_rad >= r_core)
+        rho = np.where(thruster_solid, np.where(ribs & (~inner_liner) & (~outer_jacket), 0.62, 0.97), 0.001).astype(np.float32)
 
         t_grad = np.clip(1200.0 * np.exp(-((zz - 0.58) / 0.28) ** 2) * (1.0 - r_rad / 0.52), 0.0, 1200.0)
         vm = np.where(
             thruster_solid,
-            np.clip(115.0 + 165.0 * (1.0 - r_rad) + 0.11 * t_grad, 45.0, 348.0),
+            np.clip(75.0 + 195.0 * np.exp(-((zz - 0.58) / 0.32) ** 2) * (1.0 - r_rad) + 0.09 * t_grad, 40.0, 348.0),
             2.0
         ).astype(np.float32)
         th = np.clip(vm / 285.0, 0.0, 1.35).astype(np.float32)
@@ -944,50 +966,68 @@ def _build_smooth_scenario_mesh(
     elif scenario_id == "03_trabecular_femur_anisotropic_so6":
         # Human Proximal Femur Osteology & Wolff's Law (1892) Internal Trabecular Architecture
         # Coronal Plane (X-Z): Medial = -X (Spherical Femoral Head at x=-0.39, z=+0.55, R=0.225),
-        # Slender Waisted 127° Neck Isthmus, Lateral = +X (Greater Trochanter at x=+0.42, z=+0.54).
+        # Slender Waisted 127° Neck Isthmus, Lateral = +X (Greater Trochanter at x=+0.425, z=+0.54).
         # Anterior (+Y) Coronal Cutaway Section reveals the recessed 3D Endosteal Cavity, Calcar Femorale,
         # Ward's Triangle, and the 4 Orthogonal Wolff's Law Trabecular Groups!
 
-        # 1. Matched Medial-Lateral Coronal Cross-Sections (i = 0 .. N_stations - 1)
-        #    Each station pair: (xo_m, zo_m, xi_m, zi_m, s_m, xo_l, zo_l, xi_l, zi_l, s_l, r_ap_out, r_ap_in)
-        station_pairs: List[Tuple[float, float, float, float, float, float, float, float, float, float, float, float]] = [
-            # Zone 1: Diaphysis & Lesser Trochanter (z in [-0.82, -0.01])
-            (0.000, -0.82, 0.068, -0.82, 0.38,  0.280, -0.82, 0.212, -0.82, 0.36,  0.142, 0.088),
-            (0.000, -0.64, 0.068, -0.64, 0.42,  0.280, -0.64, 0.212, -0.64, 0.38,  0.142, 0.088),
-            (0.000, -0.48, 0.068, -0.48, 0.48,  0.280, -0.48, 0.212, -0.48, 0.42,  0.144, 0.090),
-            (-0.008, -0.34, 0.066, -0.34, 0.54, 0.282, -0.34, 0.218, -0.34, 0.45,  0.146, 0.092),
-            (-0.042, -0.25, 0.062, -0.25, 0.60, 0.288, -0.24, 0.226, -0.24, 0.48,  0.150, 0.095),
-            (-0.072, -0.17, 0.056, -0.17, 0.64, 0.298, -0.14, 0.238, -0.14, 0.50,  0.156, 0.098),
-            (-0.038, -0.09, 0.052, -0.09, 0.68, 0.318, -0.02, 0.262, -0.02, 0.52,  0.154, 0.098),
-            # Zone 2: Smooth C2 Medial Calcar Femorale vs. Greater Trochanter Fan
-            (-0.022, -0.01, 0.046, 0.00, 0.72,  0.355, 0.10, 0.302, 0.10, 0.55,    0.154, 0.100),
-            (-0.028, 0.04, 0.038, 0.05, 0.75,   0.405, 0.26, 0.355, 0.26, 0.58,    0.156, 0.102),
-            (-0.042, 0.08, 0.024, 0.10, 0.78,   0.425, 0.42, 0.378, 0.41, 0.62,    0.158, 0.104),
-            (-0.058, 0.11, 0.008, 0.13, 0.80,   0.390, 0.54, 0.348, 0.50, 0.65,    0.154, 0.100),
-            (-0.076, 0.14, -0.010, 0.16, 0.82,  0.310, 0.60, 0.280, 0.55, 0.66,    0.148, 0.096),
-            (-0.096, 0.17, -0.030, 0.19, 0.83,  0.220, 0.57, 0.198, 0.52, 0.68,    0.142, 0.092),
-            (-0.118, 0.20, -0.054, 0.22, 0.84,  0.160, 0.48, 0.142, 0.43, 0.70,    0.136, 0.088),
-            (-0.142, 0.23, -0.082, 0.25, 0.85,  0.092, 0.41, 0.088, 0.36, 0.72,    0.130, 0.084),
-            # Zone 3: Slender Waisted 127° Femoral Neck Isthmus (narrow waist before spherical head flare!)
-            (-0.170, 0.26, -0.116, 0.29, 0.87,  -0.008, 0.41, 0.002, 0.37, 0.75,   0.122, 0.080),
-            (-0.202, 0.29, -0.154, 0.32, 0.89,  -0.085, 0.44, -0.065, 0.40, 0.79,  0.114, 0.076),
-            (-0.234, 0.32, -0.192, 0.35, 0.90,  -0.138, 0.48, -0.115, 0.44, 0.82,  0.108, 0.074),
-            (-0.265, 0.348, -0.228, 0.378, 0.91, -0.165, 0.535, -0.140, 0.502, 0.84, 0.126, 0.088),
+        # 1. Control Stations for Zones 1..3 (Diaphysis -> Medial Calcar / Greater Trochanter -> 127° Neck Isthmus)
+        #    Note: The Medial Calcar Femorale sweeps in a smooth, monotonic C^2 concave arch without zig-zag kinks,
+        #    while the Lesser Trochanter is modeled anatomically as a true 3D posteromedial prominence (-Y).
+        ctrl_stations: List[Tuple[float, float, float, float, float, float, float, float, float, float, float, float]] = [
+            # Zone 1: Cylindrical-Elliptical Diaphysis (z in [-0.82, -0.18])
+            (0.000, -0.82, 0.068, -0.82, 0.24,  0.280, -0.82, 0.212, -0.82, 0.20,  0.142, 0.088),
+            (0.000, -0.66, 0.068, -0.66, 0.28,  0.280, -0.66, 0.212, -0.66, 0.24,  0.142, 0.088),
+            (-0.002, -0.50, 0.068, -0.50, 0.34, 0.281, -0.50, 0.214, -0.50, 0.28,  0.144, 0.090),
+            (-0.006, -0.35, 0.066, -0.35, 0.42, 0.285, -0.35, 0.220, -0.35, 0.33,  0.146, 0.092),
+            (-0.012, -0.22, 0.062, -0.22, 0.50, 0.295, -0.22, 0.232, -0.22, 0.38,  0.150, 0.096),
+            (-0.018, -0.10, 0.056, -0.10, 0.58, 0.318, -0.06, 0.258, -0.06, 0.42,  0.154, 0.098),
+            # Zone 2: Thick Medial Calcar Femorale Buttress vs. Lateral Greater Trochanter Flare
+            (-0.024, 0.00, 0.048, 0.01, 0.65,   0.362, 0.12, 0.308, 0.12, 0.46,    0.156, 0.100),
+            (-0.033, 0.06, 0.036, 0.07, 0.70,   0.408, 0.28, 0.356, 0.28, 0.52,    0.158, 0.102),
+            (-0.045, 0.10, 0.022, 0.12, 0.74,   0.426, 0.43, 0.378, 0.42, 0.58,    0.158, 0.104),
+            (-0.060, 0.13, 0.006, 0.15, 0.77,   0.392, 0.55, 0.348, 0.51, 0.64,    0.154, 0.100),
+            (-0.078, 0.16, -0.012, 0.18, 0.80,  0.312, 0.60, 0.278, 0.55, 0.66,    0.148, 0.096),
+            (-0.100, 0.19, -0.036, 0.21, 0.82,  0.218, 0.56, 0.192, 0.51, 0.62,    0.142, 0.092),
+            (-0.124, 0.22, -0.064, 0.24, 0.84,  0.148, 0.47, 0.130, 0.42, 0.58,    0.136, 0.088),
+            (-0.150, 0.25, -0.094, 0.27, 0.85,  0.076, 0.41, 0.068, 0.36, 0.60,    0.128, 0.084),
+            # Zone 3: Slender Waisted 127° Femoral Neck Isthmus (Collum Femoris)
+            (-0.178, 0.28, -0.128, 0.30, 0.87,  -0.012, 0.41, -0.002, 0.37, 0.66,  0.120, 0.078),
+            (-0.208, 0.306, -0.162, 0.33, 0.88, -0.086, 0.44, -0.066, 0.40, 0.72,  0.114, 0.075),
+            (-0.238, 0.328, -0.196, 0.355, 0.89, -0.138, 0.48, -0.115, 0.44, 0.77, 0.112, 0.076),
+            (-0.265, 0.348, -0.228, 0.378, 0.90, -0.165, 0.535, -0.140, 0.502, 0.82, 0.128, 0.090),
         ]
+
+        # Subdivide Zones 1..3 via Catmull-Rom cubic interpolation for C^1 smooth cortical contours
+        ctrl_arr = np.array(ctrl_stations, dtype=np.float64)
+        ext_ctrl = np.vstack([2.0 * ctrl_arr[0] - ctrl_arr[1], ctrl_arr, 2.0 * ctrl_arr[-1] - ctrl_arr[-2]])
+        station_pairs: List[Tuple[float, float, float, float, float, float, float, float, float, float, float, float]] = []
+        sub_steps = 2
+        for idx in range(len(ctrl_stations) - 1):
+            p0, p1, p2, p3 = ext_ctrl[idx], ext_ctrl[idx + 1], ext_ctrl[idx + 2], ext_ctrl[idx + 3]
+            for k in range(sub_steps):
+                t = k / float(sub_steps)
+                t2 = t * t
+                t3 = t2 * t
+                row_interp = 0.5 * (
+                    (2.0 * p1)
+                    + (-p0 + p2) * t
+                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+                )
+                station_pairs.append(tuple(float(v) for v in row_interp))  # type: ignore[arg-type]
+        station_pairs.append(ctrl_stations[-1])
 
         # Zone 4: Spherical Femoral Head (Caput Femoris) — Exact 3D Sphere centered at (-0.39, y_cut, 0.55), R = 0.225
         cx_h, cz_h, r_head = -0.39, 0.55, 0.225
         t_sub = 0.032
-        n_head_slices = 20
-        # Inferior arc sweeps from -60 deg (-1.047 rad) around bottom/medial head to apex (-216.9 deg = -3.785 rad)
-        # Superior arc sweeps from +22 deg (+0.384 rad) over superior dome to the exact same apex (+143.1 deg = +2.498 rad)
+        n_head_slices = 24
         ang_m_vals = np.linspace(-1.047, -3.785, n_head_slices)
         ang_l_vals = np.linspace(0.384, 2.498, n_head_slices)
-        for kh in range(n_head_slices):
+        for kh in range(1, n_head_slices):
             am = float(ang_m_vals[kh])
             al = float(ang_l_vals[kh])
-            # Subtle fovea capitis indentation on medial-inferior pole (am around -3.15 rad)
-            fovea = 0.014 * math.exp(-((am + 3.15) / 0.20) ** 2)
+            # Fovea capitis ovoid depression on inferomedial pole (am around -3.15 rad)
+            fovea = 0.015 * math.exp(-((am + 3.15) / 0.20) ** 2)
             rm_out = r_head - fovea
             rl_out = r_head
             rm_in = max(0.015, rm_out - t_sub)
@@ -1006,13 +1046,13 @@ def _build_smooth_scenario_mesh(
             # By Pythagoras' theorem, setting r_ap_out = half-chord length makes the 3D arch an EXACT sphere!
             h_out = max(0.015, 0.5 * math.hypot(xol - xom, zol - zom))
             h_in = max(0.008, 0.5 * math.hypot(xil - xim, zil - zim))
-            sm = float(np.clip(0.80 + 0.12 * math.sin(am + 1.5), 0.74, 0.94))
-            sl = float(np.clip(0.84 + 0.11 * math.sin(al), 0.78, 0.96))
+            sm = float(np.clip(0.72 + 0.16 * math.sin(am + 1.5), 0.64, 0.90))
+            sl = float(np.clip(0.82 + 0.13 * math.sin(al), 0.76, 0.96))
             station_pairs.append((xom, zom, xim, zim, sm, xol, zol, xil, zil, sl, h_out, h_in))
 
-        y_cut = 0.026  # Anterior coronal resection plane facing camera (+Y)
+        y_cut = 0.022  # Anterior coronal resection plane facing camera (+Y)
         n_stat = len(station_pairs)
-        n_arch = 15
+        n_arch = 19
         thetas_arch = np.linspace(0.0, math.pi, n_arch)
 
         outer_grid: List[List[int]] = []
@@ -1054,14 +1094,19 @@ def _build_smooth_scenario_mesh(
                 colors.append(stress_color(s_loc))
                 o_row.append(idx_o)
 
-                # Forward-facing concave normal for inner endosteal marrow cavity so it renders as a
-                # warmly illuminated solid 3D bone interior (distinct from the dark #0b0f19 viewport background!)
-                nx_i = -(dx_c / c_len) * 0.42 * abs(ct)
-                ny_i = 0.85 + 0.15 * st_th
-                nz_i = -(dz_c / c_len) * 0.42 * abs(ct)
+                # True 3D concave normal & recessed endosteal marrow-cavity shading so the bright cortical wall
+                # and glowing internal Wolff's Law trabecular arches stand out in high-contrast 3D relief!
+                nx_i = -(dx_c / c_len) * 0.72 * abs(ct)
+                ny_i = 0.35 + 0.65 * st_th
+                nz_i = -(dz_c / c_len) * 0.72 * abs(ct)
                 ni_len = math.hypot(nx_i, ny_i, nz_i) + 1e-12
-                base_c = stress_color(max(0.28, s_loc - 0.10))
-                cav_color = [min(1.0, c * 0.72 + 0.10) for c in base_c]
+                depth_atten = 0.28 + 0.16 * (1.0 - st_th)  # Darker deep in posterior concavity, brighter near cut rim
+                base_c = stress_color(max(0.18, s_loc * 0.65))
+                cav_color = [
+                    min(1.0, base_c[0] * depth_atten + 0.05),
+                    min(1.0, base_c[1] * depth_atten + 0.07),
+                    min(1.0, base_c[2] * depth_atten + 0.11),
+                ]
 
                 idx_i = len(verts)
                 verts.append([float(xi_p), float(yi_p), float(zi_p)])
@@ -1090,8 +1135,8 @@ def _build_smooth_scenario_mesh(
                 ((xom0, zom0, xim0, zim0, sm0), (xom1, zom1, xim1, zim1, sm1)),
                 ((xol0, zol0, xil0, zil0, sl0), (xol1, zol1, xil1, zil1, sl1)),
             ]:
-                c_r0 = [min(1.0, c * 1.12 + 0.08) for c in stress_color(sa0)]
-                c_r1 = [min(1.0, c * 1.12 + 0.08) for c in stress_color(sa1)]
+                c_r0 = [min(1.0, c * 1.08 + 0.06) for c in stress_color(sa0)]
+                c_r1 = [min(1.0, c * 1.08 + 0.06) for c in stress_color(sa1)]
                 rb = len(verts)
                 verts.extend([
                     [float(xa0), y_cut, float(za0)], [float(xb0), y_cut, float(zb0)],
@@ -1102,87 +1147,140 @@ def _build_smooth_scenario_mesh(
                 faces.append([rb, rb + 1, rb + 3])
                 faces.append([rb, rb + 3, rb + 2])
 
-        # 2. Intact 360° Cylindrical Anterior Cortical Collar on the Distal Shaft (z in [-0.82, -0.48])
-        distal_collar_z = [-0.82, -0.65, -0.48]
-        thetas_ant = np.linspace(0.0, math.pi, 14)
+        # 2. Smoothly Beveled 360° Cylindrical Anterior Cortical Collar on the Distal Shaft (z in [-0.82, -0.36])
+        #    Uses an oblique parabolic bevel window (dipped at center, higher at medial/lateral walls) for a seamless transition!
+        n_col_z = 6
+        thetas_ant = np.linspace(0.0, math.pi, 18)
         ant_o_rows: List[List[int]] = []
         ant_in_rows: List[List[int]] = []
-        for cz in distal_collar_z:
+        for iz_c in range(n_col_z):
+            v_frac = iz_c / float(n_col_z - 1)
             o_r: List[int] = []
             i_r: List[int] = []
-            s_val = 0.38 + 0.30 * (cz + 0.82)
             for th in thetas_ant:
                 ct, st_a = math.cos(th), math.sin(th)
-                p_out = [0.14 + ct * 0.140, y_cut + st_a * 0.135, cz]
-                p_in = [0.14 + ct * 0.072, y_cut + st_a * 0.072, cz]
-                s_loc = float(np.clip(s_val + 0.10 * (-ct), 0.22, 0.88))
+                z_top_th = -0.36 - 0.14 * st_a  # Oblique surgical bevel window
+                cz = -0.82 + v_frac * (z_top_th - (-0.82))
+                p_out = [0.14 + ct * 0.140, y_cut + st_a * 0.138, cz]
+                p_in = [0.14 + ct * 0.072, y_cut + st_a * 0.074, cz]
+                s_val = 0.22 + 0.28 * ((cz + 0.82) / 0.46)
+                s_loc = float(np.clip(s_val + 0.08 * (-ct), 0.18, 0.62))
                 idx_o = len(verts)
                 verts.append(p_out); normals.append([float(ct), float(st_a), 0.0]); colors.append(stress_color(s_loc))
                 o_r.append(idx_o)
                 idx_i = len(verts)
-                verts.append(p_in); normals.append([float(-ct), float(-st_a), 0.0]); colors.append(stress_color(s_loc - 0.10))
+                in_c = [c * 0.45 + 0.05 for c in stress_color(max(0.15, s_loc - 0.08))]
+                verts.append(p_in); normals.append([float(-ct), float(-st_a), 0.0]); colors.append(in_c)
                 i_r.append(idx_i)
             ant_o_rows.append(o_r)
             ant_in_rows.append(i_r)
-        for i in range(len(distal_collar_z) - 1):
+        for i in range(n_col_z - 1):
             for j in range(len(thetas_ant) - 1):
                 faces.append([ant_o_rows[i][j], ant_o_rows[i + 1][j], ant_o_rows[i + 1][j + 1]])
                 faces.append([ant_o_rows[i][j], ant_o_rows[i + 1][j + 1], ant_o_rows[i][j + 1]])
                 faces.append([ant_in_rows[i][j], ant_in_rows[i + 1][j + 1], ant_in_rows[i + 1][j]])
                 faces.append([ant_in_rows[i][j], ant_in_rows[i][j + 1], ant_in_rows[i + 1][j + 1]])
         for j in range(len(thetas_ant) - 1):
-            faces.append([ant_o_rows[-1][j], ant_in_rows[-1][j], ant_in_rows[-1][j + 1]])
-            faces.append([ant_o_rows[-1][j], ant_in_rows[-1][j + 1], ant_o_rows[-1][j + 1]])
+            # Beveled top rim of distal cortical collar
+            rb = len(verts)
+            p_o0, p_i0 = verts[ant_o_rows[-1][j]], verts[ant_in_rows[-1][j]]
+            p_o1, p_i1 = verts[ant_o_rows[-1][j + 1]], verts[ant_in_rows[-1][j + 1]]
+            rim_c = [min(1.0, c * 1.08 + 0.06) for c in colors[ant_o_rows[-1][j]]]
+            verts.extend([p_o0, p_i0, p_o1, p_i1])
+            normals.extend([[0.0, 0.45, 0.89]] * 4)
+            colors.extend([rim_c] * 4)
+            faces.append([rb, rb + 1, rb + 3])
+            faces.append([rb, rb + 3, rb + 2])
 
-        # 3. Internal 3D Wolff's Law Trabecular Lattice (Strictly INSIDE the Proximal Femur Cancellous Cavity!)
-        #    All femoral head endpoints stay at radius <= 0.175 from head center (-0.39, 0.55) so the
-        #    entire circular subchondral cortical rim (R_in = 0.193 .. R_out = 0.225) frames the fan cleanly!
-        for y_plane, r_scale in [(0.012, 1.0), (-0.022, 0.84)]:
+        # 3. True 3D Anatomical Landmarks on Posterior (-Y) and Anterior (+Y) Surfaces:
+        #    (a) Posteromedial Lesser Trochanter (Trochanter Minor, iliopsoas insertion) & Posterior Intertrochanteric Crest
+        add_joint_sphere((-0.025, -0.085, -0.19), 0.062, 0.56, n_lat=8, n_lon=12, scale_xyz=(1.15, 0.95, 0.85))
+        add_spline_tube(
+            [(-0.025, -0.085, -0.19), (0.11, -0.145, -0.02), (0.25, -0.155, 0.20), (0.35, -0.115, 0.46)],
+            [0.044, 0.038, 0.040, 0.046],
+            [0.54, 0.48, 0.52, 0.60],
+            subdiv=4, n_sides=10,
+        )
+        #    (b) 3D Anterior Cortical Arch Bridges framing the Coronal Fenestra (giving full +Y 3D depth from RIGHT/TOP views!)
+        #        - Anterior Medial Calcar Buttress Rib
+        add_spline_tube(
+            [(0.015, 0.075, -0.38), (-0.018, 0.068, -0.10), (-0.060, 0.058, 0.13), (-0.175, 0.048, 0.28), (-0.265, 0.042, 0.35)],
+            [0.028, 0.026, 0.025, 0.022, 0.020],
+            [0.46, 0.60, 0.76, 0.86, 0.89],
+            subdiv=4, n_sides=10,
+        )
+        #        - Anterior Intertrochanteric Line & Superior Neck Rim Arch
+        add_spline_tube(
+            [(0.265, 0.072, -0.38), (0.355, 0.078, 0.12), (0.390, 0.065, 0.50), (0.215, 0.048, 0.55), (-0.012, 0.042, 0.41), (-0.165, 0.042, 0.535)],
+            [0.026, 0.028, 0.026, 0.022, 0.020, 0.020],
+            [0.36, 0.48, 0.62, 0.60, 0.66, 0.80],
+            subdiv=4, n_sides=10,
+        )
+        #        - Anterior Subchondral Articular Rim Hoop around Femoral Head
+        head_hoop_pts = [
+            (
+                float(cx_h + (r_head - 0.014) * math.cos(a)),
+                float(y_cut + 0.038 * math.sin(math.pi * idx / 14.0)),
+                float(cz_h + (r_head - 0.014) * math.sin(a)),
+            )
+            for idx, a in enumerate(np.linspace(0.384, 2.498, 15))
+        ]
+        add_tube_along_curve(head_hoop_pts, [0.018] * 15, [0.86] * 15, n_sides=10)
+
+        # 4. Internal 3D Wolff's Law Trabecular Lattice (Strictly INSIDE the Proximal Femur Cancellous Cavity!)
+        #    Spans 2 coronal planes (y = +0.014 and y = -0.032) plus 3D cross-ties and nodal fillets,
+        #    leaving Ward's Triangle (center of neck around x=0.05, z=0.22) cleanly open against the dark cavity!
+        for y_plane, r_scale in [(0.014, 1.0), (-0.032, 0.88)]:
             # (a) Principal Compressive Trabecular Fan (Medial Calcar Cortex -> Waisted Neck -> Superior Femoral Head Dome)
             comp_trajectories = [
-                [(0.055, y_plane, -0.28), (0.010, y_plane, 0.06), (-0.155, y_plane, 0.36), (-0.28, y_plane, 0.56), (-0.34, y_plane, 0.70)],
-                [(0.052, y_plane, -0.14), (-0.005, y_plane, 0.14), (-0.168, y_plane, 0.37), (-0.32, y_plane, 0.58), (-0.41, y_plane, 0.71)],
-                [(0.038, y_plane, 0.00), (-0.032, y_plane, 0.21), (-0.182, y_plane, 0.38), (-0.36, y_plane, 0.56), (-0.48, y_plane, 0.68)],
-                [(0.005, y_plane, 0.12), (-0.075, y_plane, 0.27), (-0.200, y_plane, 0.38), (-0.40, y_plane, 0.53), (-0.53, y_plane, 0.62)],
-                [(-0.045, y_plane, 0.23), (-0.135, y_plane, 0.32), (-0.220, y_plane, 0.38), (-0.41, y_plane, 0.49), (-0.55, y_plane, 0.54)],
+                [(0.052, y_plane, -0.30), (0.012, y_plane, 0.04), (-0.145, y_plane, 0.35), (-0.265, y_plane, 0.55), (-0.325, y_plane, 0.71)],
+                [(0.050, y_plane, -0.18), (-0.002, y_plane, 0.11), (-0.160, y_plane, 0.36), (-0.305, y_plane, 0.58), (-0.385, y_plane, 0.72)],
+                [(0.042, y_plane, -0.06), (-0.022, y_plane, 0.18), (-0.175, y_plane, 0.37), (-0.345, y_plane, 0.57), (-0.445, y_plane, 0.70)],
+                [(0.024, y_plane, 0.05), (-0.052, y_plane, 0.23), (-0.190, y_plane, 0.38), (-0.380, y_plane, 0.55), (-0.495, y_plane, 0.66)],
+                [(-0.006, y_plane, 0.14), (-0.092, y_plane, 0.28), (-0.205, y_plane, 0.38), (-0.405, y_plane, 0.52), (-0.535, y_plane, 0.60)],
+                [(-0.055, y_plane, 0.22), (-0.140, y_plane, 0.32), (-0.222, y_plane, 0.38), (-0.420, y_plane, 0.48), (-0.555, y_plane, 0.53)],
             ]
-            for c_pts in comp_trajectories:
-                r_c = [0.0110 * r_scale] * len(c_pts)
-                s_c = [0.84 + 0.03 * idx for idx in range(len(c_pts))]
+            for c_idx, c_pts in enumerate(comp_trajectories):
+                r_c = [0.0115 * r_scale * (1.08 - 0.03 * idx) for idx in range(len(c_pts))]
+                s_c = [float(np.clip(0.76 + 0.045 * idx - 0.015 * c_idx, 0.70, 0.96)) for idx in range(len(c_pts))]
                 add_spline_tube(c_pts, r_c, s_c, subdiv=4, n_sides=8)
 
-            # (b) Principal Tensile (Arcuate) Trabecular Arch Bundle (Lateral Cortex -> Superior Neck Isthmus -> Inferior-Medial Head)
+            # (b) Principal Tensile (Arcuate) Trabecular Arch Bundle (Lateral Cortex -> Superior Neck Isthmus -> Inferomedial Head)
             tens_trajectories = [
-                [(0.22, y_plane, -0.28), (0.18, y_plane, 0.08), (-0.05, y_plane, 0.37), (-0.28, y_plane, 0.48), (-0.43, y_plane, 0.40)],
-                [(0.24, y_plane, -0.14), (0.16, y_plane, 0.17), (-0.07, y_plane, 0.39), (-0.32, y_plane, 0.52), (-0.50, y_plane, 0.44)],
-                [(0.26, y_plane, 0.00), (0.13, y_plane, 0.25), (-0.10, y_plane, 0.41), (-0.35, y_plane, 0.56), (-0.54, y_plane, 0.50)],
-                [(0.29, y_plane, 0.12), (0.09, y_plane, 0.32), (-0.12, y_plane, 0.44), (-0.32, y_plane, 0.61), (-0.46, y_plane, 0.65)],
+                [(0.225, y_plane, -0.30), (0.185, y_plane, 0.06), (-0.045, y_plane, 0.37), (-0.275, y_plane, 0.47), (-0.425, y_plane, 0.39)],
+                [(0.242, y_plane, -0.16), (0.165, y_plane, 0.15), (-0.068, y_plane, 0.39), (-0.315, y_plane, 0.51), (-0.485, y_plane, 0.43)],
+                [(0.262, y_plane, -0.02), (0.138, y_plane, 0.24), (-0.095, y_plane, 0.41), (-0.345, y_plane, 0.55), (-0.535, y_plane, 0.48)],
+                [(0.290, y_plane, 0.10), (0.105, y_plane, 0.31), (-0.118, y_plane, 0.43), (-0.335, y_plane, 0.59), (-0.495, y_plane, 0.61)],
+                [(0.320, y_plane, 0.22), (0.080, y_plane, 0.36), (-0.135, y_plane, 0.46), (-0.310, y_plane, 0.63), (-0.435, y_plane, 0.67)],
             ]
-            for t_pts in tens_trajectories:
-                r_t = [0.0100 * r_scale] * len(t_pts)
-                s_t = [0.70 + 0.05 * idx for idx in range(len(t_pts))]
+            for t_idx, t_pts in enumerate(tens_trajectories):
+                r_t = [0.0102 * r_scale] * len(t_pts)
+                s_t = [float(np.clip(0.48 + 0.06 * idx + 0.02 * t_idx, 0.44, 0.80)) for idx in range(len(t_pts))]
                 add_spline_tube(t_pts, r_t, s_t, subdiv=4, n_sides=8)
 
-            # (c) Secondary Compressive & Greater Trochanteric Trabecular Arches (framing Ward's Triangle at (x=0.04, z=0.24))
+            # (c) Secondary Compressive & Greater Trochanteric Trabecular Arches (framing Ward's Triangle at (x=0.05, z=0.23))
             sec_trajectories = [
-                [(0.06, y_plane, -0.38), (0.14, y_plane, -0.12), (0.26, y_plane, 0.16), (0.35, y_plane, 0.41)],
-                [(0.06, y_plane, -0.24), (0.15, y_plane, 0.00), (0.27, y_plane, 0.26), (0.31, y_plane, 0.50)],
-                [(0.29, y_plane, 0.10), (0.34, y_plane, 0.26), (0.35, y_plane, 0.44), (0.27, y_plane, 0.53)],
-                [(0.24, y_plane, 0.18), (0.25, y_plane, 0.35), (0.19, y_plane, 0.49)],
+                [(0.058, y_plane, -0.40), (0.145, y_plane, -0.14), (0.265, y_plane, 0.14), (0.355, y_plane, 0.40)],
+                [(0.056, y_plane, -0.26), (0.155, y_plane, -0.02), (0.275, y_plane, 0.24), (0.325, y_plane, 0.49)],
+                [(0.295, y_plane, 0.08), (0.345, y_plane, 0.25), (0.355, y_plane, 0.43), (0.275, y_plane, 0.53)],
+                [(0.245, y_plane, 0.16), (0.255, y_plane, 0.34), (0.195, y_plane, 0.49)],
             ]
             for s_pts in sec_trajectories:
-                r_s = [0.0090 * r_scale] * len(s_pts)
-                s_s = [0.58 + 0.04 * idx for idx in range(len(s_pts))]
+                r_s = [0.0092 * r_scale] * len(s_pts)
+                s_s = [0.36 + 0.05 * idx for idx in range(len(s_pts))]
                 add_spline_tube(s_pts, r_s, s_s, subdiv=3, n_sides=8)
 
-        # (d) Anterior-Posterior Transverse Trabecular Tie Struts connecting the two coronal lattice planes at orthogonal nodes
+        # (d) 3D Anterior-Posterior Trabecular Cross-Tie Struts & Nodal Fillets at Orthogonal Wolff's Law Intersections
         tie_nodes = [
-            (-0.36, 0.64, 0.92), (-0.45, 0.56, 0.90), (-0.32, 0.52, 0.86),
-            (-0.16, 0.39, 0.84), (-0.05, 0.27, 0.78), (0.16, 0.16, 0.68),
-            (0.30, 0.36, 0.64), (0.05, -0.16, 0.76), (0.20, -0.14, 0.64),
+            (-0.33, 0.68, 0.92), (-0.40, 0.69, 0.91), (-0.47, 0.64, 0.88),
+            (-0.31, 0.56, 0.85), (-0.38, 0.54, 0.84), (-0.48, 0.49, 0.80),
+            (-0.17, 0.38, 0.82), (-0.08, 0.38, 0.72), (-0.03, 0.21, 0.76),
+            (0.02, 0.06, 0.72), (0.16, 0.15, 0.56), (0.27, 0.25, 0.52),
+            (0.33, 0.42, 0.58), (0.05, -0.18, 0.64), (0.20, -0.15, 0.48),
         ]
         for tx, tz, ts in tie_nodes:
-            add_strut((tx, -0.024, tz), (tx, 0.013, tz), 0.0080, 0.0080, ts, ts, n_segs=3, n_sides=8)
+            add_strut((tx, -0.034, tz), (tx, 0.016, tz), 0.0085, 0.0085, ts, ts, n_segs=3, n_sides=8)
+            add_joint_sphere((tx, 0.014, tz), 0.0135, ts, n_lat=6, n_lon=8)
 
         return verts, faces, colors, normals
 
@@ -1569,11 +1667,11 @@ def _extract_marching_cubes_preview(
 
 
 def _turbo_colormap(val: float) -> List[float]:
-    """Pure-Python Turbo colormap evaluation."""
+    """Pure-Python Google Turbo colormap evaluation (Mikhailov 2019)."""
     x = float(np.clip(val, 0.0, 1.0))
-    r = np.clip(0.1357 + x * (4.6153 + x * (-42.6603 + x * (132.131 - x * (152.942 - 59.286 * x)))), 0.0, 1.0)
-    g = np.clip(0.0914 + x * (2.1941 + x * (4.8429 + x * (-14.1850 + x * (4.2772 + 2.8295 * x)))), 0.0, 1.0)
-    b = np.clip(0.1066 + x * (12.5593 + x * (-77.2282 + x * (234.494 - x * (305.424 - 138.292 * x)))), 0.0, 1.0)
+    r = np.clip(0.13572138 + x * (4.61539260 + x * (-42.66032258 + x * (132.13108234 + x * (-152.94239396 + x * 59.28637943)))), 0.0, 1.0)
+    g = np.clip(0.09140261 + x * (2.19418839 + x * (4.84296658 + x * (-14.18503333 + x * (4.27729857 + x * 2.82956604)))), 0.0, 1.0)
+    b = np.clip(0.10667330 + x * (12.64194608 + x * (-60.58204836 + x * (110.36276771 + x * (-89.90310912 + x * 27.34824973)))), 0.0, 1.0)
     return [float(r), float(g), float(b)]
 
 
@@ -1985,49 +2083,59 @@ table.benchmark-table tr.active {{
 }}
 .cad-view-bar {{
     position: absolute;
-    top: 6px;
-    right: 8px;
+    top: 5px;
+    right: 6px;
     z-index: 12;
     display: flex;
     align-items: center;
-    gap: 3px;
-    background: rgba(11, 15, 25, 0.86);
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 6px;
-    padding: 3px 5px;
+    gap: 2px;
+    background: rgba(11, 15, 25, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 5px;
+    padding: 2px 4px;
     backdrop-filter: blur(6px);
     pointer-events: auto;
     flex-wrap: wrap;
 }}
 .cad-view-bar .cad-sep {{
     width: 1px;
-    height: 14px;
+    height: 13px;
     background: rgba(148, 163, 184, 0.25);
     margin: 0 2px;
 }}
 .cad-btn {{
-    background: rgba(30, 41, 59, 0.75);
+    background: rgba(30, 41, 59, 0.78);
     color: var(--text-secondary);
     border: 1px solid rgba(148, 163, 184, 0.2);
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 10px;
+    border-radius: 3px;
+    padding: 2px 5px;
+    font-size: 9.5px;
     font-weight: 600;
     font-family: monospace;
     cursor: pointer;
-    line-height: 1.3;
+    line-height: 1.25;
     transition: all 0.12s ease;
     user-select: none;
 }}
 .cad-btn:hover {{
     border-color: var(--accent-cyan);
     color: var(--text-primary);
-    background: rgba(6, 182, 212, 0.16);
+    background: rgba(6, 182, 212, 0.18);
 }}
 .cad-btn.active {{
-    background: rgba(6, 182, 212, 0.22);
+    background: rgba(6, 182, 212, 0.24);
     border-color: var(--accent-cyan);
     color: #22d3ee;
+}}
+.quad-panel.maximized {{
+    position: fixed;
+    top: 90px;
+    left: 4px;
+    right: 4px;
+    bottom: 4px;
+    z-index: 100;
+    border: 1px solid var(--accent-cyan);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.85);
 }}
 </style>
 </head>
@@ -2098,7 +2206,7 @@ table.benchmark-table tr.active {{
 
 <div class="grid-container">
     <!-- Quad A: 3D Marching Cubes Organic Isosurface -->
-    <div class="quad-panel">
+    <div class="quad-panel" id="panelQuadA">
         <div class="quad-header">
             <div class="indicator"></div>
             QUAD A: 3D MARCHING-CUBES ORGANIC ISOSURFACE (PHONG SHADED)
@@ -2106,29 +2214,30 @@ table.benchmark-table tr.active {{
         <div class="quad-canvas-wrap">
             <canvas id="canvasQuadA"></canvas>
             <div class="cad-view-bar" id="cadViewBarA">
-                <button type="button" class="cad-btn active" id="btnCamIso" onclick="setCameraPreset('iso')" title="Isometric 3D View [Key: 1]">ISO</button>
+                <button type="button" class="cad-btn active" id="btnCamIso" onclick="setCameraPreset('iso')" title="Isometric 3D View [Key: 1 / 0]">ISO</button>
                 <button type="button" class="cad-btn" id="btnCamFront" onclick="setCameraPreset('front')" title="Front / Coronal X-Z View [Key: 2]">FRONT</button>
                 <button type="button" class="cad-btn" id="btnCamRight" onclick="setCameraPreset('right')" title="Right / Sagittal Y-Z View [Key: 3]">RIGHT</button>
                 <button type="button" class="cad-btn" id="btnCamTop" onclick="setCameraPreset('top')" title="Top / Axial X-Y View [Key: 4]">TOP</button>
                 <button type="button" class="cad-btn" id="btnCamFit" onclick="resetCameraFit()" title="Fit & Center Model [Key: F / Double-Click]">FIT</button>
                 <div class="cad-sep"></div>
                 <button type="button" class="cad-btn active" id="btnRenderSolid" onclick="setRenderMode('solid')" title="Phong Studio Shaded Solid">SOLID</button>
-                <button type="button" class="cad-btn" id="btnRenderEdges" onclick="setRenderMode('edges')" title="Shaded Solid + CAD Feature Edges">EDGES</button>
-                <button type="button" class="cad-btn" id="btnRenderWire" onclick="setRenderMode('wire')" title="Technical Wireframe Mesh">WIRE</button>
-                <button type="button" class="cad-btn" id="btnRenderXray" onclick="setRenderMode('xray')" title="Translucent X-Ray Internal Inspection">X-RAY</button>
+                <button type="button" class="cad-btn" id="btnRenderEdges" onclick="setRenderMode('edges')" title="Shaded Solid + CAD Feature Edges [Key: E]">EDGES</button>
+                <button type="button" class="cad-btn" id="btnRenderWire" onclick="setRenderMode('wire')" title="Technical Wireframe Mesh [Key: W]">WIRE</button>
+                <button type="button" class="cad-btn" id="btnRenderXray" onclick="setRenderMode('xray')" title="Translucent X-Ray Internal Inspection [Key: X]">X-RAY</button>
                 <div class="cad-sep"></div>
-                <button type="button" class="cad-btn" id="btnToggleClip" onclick="toggleSectionClip()" title="Toggle 3D Section Cutaway Plane [Key: C]">CLIP</button>
+                <button type="button" class="cad-btn" id="btnToggleClip" onclick="toggleSectionClip()" title="Toggle 3D Chair-Cut Section Cutaway [Key: C]">CLIP</button>
                 <button type="button" class="cad-btn" id="btnToggleSpin" onclick="toggleTurntable()" title="Toggle Auto-Orbit Turntable [Key: R]">SPIN</button>
-                <button type="button" class="cad-btn active" id="btnToggleBCs" onclick="toggleBCs()" title="Toggle Supports & Force Vectors">BCs</button>
-                <button type="button" class="cad-btn active" id="btnToggleGrid" onclick="toggleCadGrid()" title="Toggle 3D Floor Grid & Bounding Box">GRID</button>
-                <button type="button" class="cad-btn" onclick="zoomCamera(1.16)" title="Zoom In">+</button>
-                <button type="button" class="cad-btn" onclick="zoomCamera(0.86)" title="Zoom Out">&minus;</button>
+                <button type="button" class="cad-btn active" id="btnToggleBCs" onclick="toggleBCs()" title="Toggle Supports & Force Vectors [Key: B]">BCs</button>
+                <button type="button" class="cad-btn active" id="btnToggleGrid" onclick="toggleCadGrid()" title="Toggle 3D Floor Grid & Bounding Box [Key: G]">GRID</button>
+                <button type="button" class="cad-btn" onclick="zoomCamera(1.16)" title="Zoom In [+]">+</button>
+                <button type="button" class="cad-btn" onclick="zoomCamera(0.86)" title="Zoom Out [-]">&minus;</button>
+                <button type="button" class="cad-btn" id="btnMaxQuadA" onclick="toggleMaximizeQuad('panelQuadA')" title="Maximize / Restore Viewport [Key: M / Esc]">MAX</button>
             </div>
         </div>
     </div>
 
     <!-- Quad B: SO(6) Principal Fibers & Chair-Cut Slicer -->
-    <div class="quad-panel">
+    <div class="quad-panel" id="panelQuadB">
         <div class="quad-header">
             <div class="indicator"></div>
             QUAD B: SO(6) FIBER TRAJECTORIES & CHAIR-CUT SLICER
@@ -2141,6 +2250,7 @@ table.benchmark-table tr.active {{
                 <button type="button" class="cad-btn active" id="btnQuadBRings" onclick="toggleQuadBRings()" title="Toggle Shielded Beltrami-Morse Strut Callouts">RINGS</button>
                 <button type="button" class="cad-btn" onclick="zoomQuadB(1.15)" title="Zoom In Chair-Cut">+</button>
                 <button type="button" class="cad-btn" onclick="zoomQuadB(0.87)" title="Zoom Out Chair-Cut">&minus;</button>
+                <button type="button" class="cad-btn" id="btnMaxQuadB" onclick="toggleMaximizeQuad('panelQuadB')" title="Maximize / Restore Chair-Cut Slicer">MAX</button>
             </div>
         </div>
     </div>
@@ -2272,6 +2382,7 @@ const STATE = {{
     turntable: false,
     showBCs: true,
     showGrid: true,
+    maximizedPanelId: null,
     quadBRotZ: 0.0,
     quadBPitch: 0.52,
     quadBZoom: 1.0,
@@ -2350,6 +2461,12 @@ function parseUrlParams() {{
         if (f) STATE.fieldId = f;
         const m = url.searchParams.get("mode");
         if (m) STATE.solverMode = m;
+        const v = url.searchParams.get("view");
+        if (v) STATE.camPreset = v;
+        const r = url.searchParams.get("render");
+        if (r) STATE.renderMode = r;
+        const c = url.searchParams.get("clip");
+        if (c === "1" || c === "true") STATE.sectionClip = true;
     }} catch (e) {{}}
 }}
 
@@ -2373,6 +2490,10 @@ function initUI() {{
     STATE.camZoom = camDef.zoom;
     STATE.camPanX = 0.0;
     STATE.camPanY = 0.0;
+    if (STATE.camPreset && STATE.camPreset !== "iso") {{
+        setCameraPreset(STATE.camPreset);
+    }}
+    updateCadToolbarState();
     updateUIValues();
     setupCanvasEvents();
     setupDropzoneEvents();
@@ -2416,16 +2537,44 @@ function setCameraPreset(preset) {{
     }} else if (preset === "front") {{
         STATE.camRotX = 0.0;
         STATE.camRotY = 0.0;
+    }} else if (preset === "back") {{
+        STATE.camRotX = 0.0;
+        STATE.camRotY = Math.PI;
     }} else if (preset === "right") {{
         STATE.camRotX = 0.0;
         STATE.camRotY = -Math.PI / 2.0;
+    }} else if (preset === "left") {{
+        STATE.camRotX = 0.0;
+        STATE.camRotY = Math.PI / 2.0;
     }} else if (preset === "top") {{
         STATE.camRotX = Math.PI / 2.0 - 0.01;
+        STATE.camRotY = 0.0;
+    }} else if (preset === "bottom") {{
+        STATE.camRotX = -Math.PI / 2.0 + 0.01;
         STATE.camRotY = 0.0;
     }}
     STATE.camYaw = STATE.camRotY;
     updateCadToolbarState();
     renderQuadA();
+}}
+
+function toggleMaximizeQuad(panelId) {{
+    const targetId = panelId || "panelQuadA";
+    const panels = ["panelQuadA", "panelQuadB"];
+    if (STATE.maximizedPanelId === targetId) {{
+        STATE.maximizedPanelId = null;
+    }} else {{
+        STATE.maximizedPanelId = targetId;
+    }}
+    panels.forEach(pid => {{
+        const el = document.getElementById(pid);
+        if (el) el.classList.toggle("maximized", STATE.maximizedPanelId === pid);
+    }});
+    const btnA = document.getElementById("btnMaxQuadA");
+    if (btnA) btnA.classList.toggle("active", STATE.maximizedPanelId === "panelQuadA");
+    const btnB = document.getElementById("btnMaxQuadB");
+    if (btnB) btnB.classList.toggle("active", STATE.maximizedPanelId === "panelQuadB");
+    renderAll();
 }}
 
 function resetCameraFit() {{
@@ -2833,6 +2982,60 @@ function setupCanvasEvents() {{
             resetCameraFit();
         }});
 
+        // Touch gesture support for 1-finger orbit and 2-finger pan/pinch-zoom
+        let touchStartDist = 0.0;
+        canvasA.addEventListener("touchstart", e => {{
+            if (e.touches.length === 1) {{
+                STATE.isDragging = true;
+                STATE.dragMode = "orbit";
+                STATE.lastMouseX = e.touches[0].clientX;
+                STATE.lastMouseY = e.touches[0].clientY;
+            }} else if (e.touches.length === 2) {{
+                STATE.isDragging = true;
+                STATE.dragMode = "pan";
+                STATE.lastMouseX = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+                STATE.lastMouseY = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+                touchStartDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+            }}
+        }}, {{ passive: true }});
+
+        canvasA.addEventListener("touchmove", e => {{
+            if (!STATE.isDragging) return;
+            if (e.touches.length === 1 && STATE.dragMode === "orbit") {{
+                const dx = e.touches[0].clientX - STATE.lastMouseX;
+                const dy = e.touches[0].clientY - STATE.lastMouseY;
+                STATE.camRotY += dx * 0.01;
+                STATE.camYaw = STATE.camRotY;
+                STATE.camRotX = Math.max(-1.52, Math.min(1.52, STATE.camRotX + dy * 0.01));
+                STATE.lastMouseX = e.touches[0].clientX;
+                STATE.lastMouseY = e.touches[0].clientY;
+                renderQuadA();
+            }} else if (e.touches.length === 2) {{
+                const mx = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+                const my = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+                STATE.camPanX += (mx - STATE.lastMouseX) * 1.1;
+                STATE.camPanY += (my - STATE.lastMouseY) * 1.1;
+                STATE.lastMouseX = mx;
+                STATE.lastMouseY = my;
+                const dist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX,
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                if (touchStartDist > 10.0) {{
+                    STATE.camZoom = Math.max(0.35, Math.min(3.8, STATE.camZoom * (dist / touchStartDist)));
+                    touchStartDist = dist;
+                }}
+                renderQuadA();
+            }}
+        }}, {{ passive: true }});
+
+        canvasA.addEventListener("touchend", () => {{
+            STATE.isDragging = false;
+        }});
+
         window.addEventListener("mousemove", e => {{
             if (STATE.isDragging) {{
                 const dx = e.clientX - STATE.lastMouseX;
@@ -2927,20 +3130,48 @@ function setupCanvasEvents() {{
         }});
     }}
 
-    // Keyboard shortcuts for CAD views & rendering modes
+    // Keyboard shortcuts for CAD views, rendering modes, maximize, and erosion playback
     window.addEventListener("keydown", e => {{
         if (e.target && (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA")) return;
         if (e.key === "1") setCameraPreset("iso");
         else if (e.key === "2") setCameraPreset("front");
         else if (e.key === "3") setCameraPreset("right");
         else if (e.key === "4") setCameraPreset("top");
-        else if (e.key === "f" || e.key === "F") resetCameraFit();
+        else if (e.key === "5") setCameraPreset("back");
+        else if (e.key === "6") setCameraPreset("left");
+        else if (e.key === "7") setCameraPreset("bottom");
+        else if (e.key === "0" || e.key === "f" || e.key === "F") resetCameraFit();
         else if (e.key === "c" || e.key === "C") toggleSectionClip();
         else if (e.key === "r" || e.key === "R") toggleTurntable();
+        else if (e.key === "g" || e.key === "G") toggleCadGrid();
+        else if (e.key === "b" || e.key === "B") toggleBCs();
+        else if (e.key === "m" || e.key === "M") toggleMaximizeQuad("panelQuadA");
+        else if (e.key === "Escape" && STATE.maximizedPanelId) toggleMaximizeQuad(STATE.maximizedPanelId);
+        else if (e.key === "x" || e.key === "X") setRenderMode(STATE.renderMode === "xray" ? "solid" : "xray");
+        else if (e.key === "e" || e.key === "E") setRenderMode(STATE.renderMode === "edges" ? "solid" : "edges");
         else if (e.key === "w" || e.key === "W") {{
             const order = ["solid", "edges", "wire", "xray"];
             const nextIdx = (order.indexOf(STATE.renderMode) + 1) % order.length;
             setRenderMode(order[nextIdx]);
+        }} else if (e.key === "+" || e.key === "=") zoomCamera(1.14);
+        else if (e.key === "-" || e.key === "_") zoomCamera(0.88);
+        else if (e.key === "ArrowLeft") {{
+            STATE.camRotY -= 0.08;
+            STATE.camYaw = STATE.camRotY;
+            renderQuadA();
+        }} else if (e.key === "ArrowRight") {{
+            STATE.camRotY += 0.08;
+            STATE.camYaw = STATE.camRotY;
+            renderQuadA();
+        }} else if (e.key === "ArrowUp") {{
+            STATE.camRotX = Math.min(1.52, STATE.camRotX + 0.08);
+            renderQuadA();
+        }} else if (e.key === "ArrowDown") {{
+            STATE.camRotX = Math.max(-1.52, STATE.camRotX - 0.08);
+            renderQuadA();
+        }} else if (e.key === " ") {{
+            e.preventDefault();
+            toggleErosionLoop();
         }}
     }});
 }}
@@ -3239,9 +3470,10 @@ function renderQuadA() {{
     const fllen = Math.hypot(flx, fly, flz);
     const nflx = flx / fllen, nfly = fly / fllen, nflz = flz / fllen;
 
-    // Interactive 3D Section Clip Threshold (mapped to Chair Cut X / Y sliders)
-    const clipXMax = bbox.minX + ((STATE.sliceX + 1) / 24.0) * (bbox.maxX - bbox.minX);
-    const clipYMax = bbox.minY + ((STATE.sliceY + 1) / 24.0) * (bbox.maxY - bbox.minY);
+    // Interactive 3D Chair-Cut Section Clip Thresholds (mapped to Chair Cut X / Y / Z sliders)
+    const clipXMax = bbox.minX + ((STATE.sliceX + 0.5) / 24.0) * (bbox.maxX - bbox.minX);
+    const clipYMax = bbox.minY + ((STATE.sliceY + 0.5) / 24.0) * (bbox.maxY - bbox.minY);
+    const clipZMax = bbox.minZ + ((STATE.sliceZ + 0.5) / 32.0) * (bbox.maxZ - bbox.minZ);
 
     // (a) When progress < 0.88, render surviving 100% OPAQUE solid billet donor voxels
     const billet = scen ? scen._billet : null;
@@ -3268,7 +3500,7 @@ function renderQuadA() {{
             if (solidGrid[idx] !== 1) continue;
             const c = cells[idx];
             const {{ gx, gy, gz, cx, cy, cz }} = c;
-            if (STATE.sectionClip && cx > clipXMax && cy < clipYMax) continue;
+            if (STATE.sectionClip && cx > clipXMax && cy < clipYMax && cz > clipZMax) continue;
 
             const timeToErode = c.erodeAt - progress;
             const shrink = (progress > 0.0 && timeToErode < 0.08) ? (0.72 + 0.28 * (timeToErode / 0.08)) : 1.0;
@@ -3360,11 +3592,14 @@ function renderQuadA() {{
                 if (solidGrid[(gz * billet.Ny + gy) * billet.Nx + gx] !== 0) continue;
             }}
 
-            // Interactive 3D Section Cutaway Plane filter
+            // Interactive 3D Chair-Cut Section Cutaway octant filter (controlled by Chair Cut Z / Y / X sliders)
             let isNearClipPlane = false;
             if (STATE.sectionClip) {{
-                if (mx > clipXMax && my < clipYMax) continue;
-                if (Math.abs(mx - clipXMax) < 0.045 || Math.abs(my - clipYMax) < 0.045) {{
+                if (mx > clipXMax && my < clipYMax && mz > clipZMax) continue;
+                const onXWall = Math.abs(mx - clipXMax) < 0.042 && my < clipYMax + 0.02 && mz > clipZMax - 0.02;
+                const onYWall = Math.abs(my - clipYMax) < 0.042 && mx > clipXMax - 0.02 && mz > clipZMax - 0.02;
+                const onZFloor = Math.abs(mz - clipZMax) < 0.042 && mx > clipXMax - 0.02 && my < clipYMax + 0.02;
+                if (onXWall || onYWall || onZFloor) {{
                     isNearClipPlane = true;
                 }}
             }}
@@ -3537,6 +3772,32 @@ function renderQuadA() {{
         }}
     }});
 
+    // Draw translucent 3D Chair-Cut Section Plane guides when STATE.sectionClip is active
+    if (STATE.sectionClip) {{
+        ctx.strokeStyle = "rgba(245, 158, 11, 0.75)";
+        ctx.fillStyle = "rgba(245, 158, 11, 0.08)";
+        ctx.lineWidth = 1.2;
+        const planes = [
+            [[clipXMax, bbox.minY, clipZMax], [clipXMax, clipYMax, clipZMax], [clipXMax, clipYMax, bbox.maxZ], [clipXMax, bbox.minY, bbox.maxZ]],
+            [[clipXMax, clipYMax, clipZMax], [bbox.maxX, clipYMax, clipZMax], [bbox.maxX, clipYMax, bbox.maxZ], [clipXMax, clipYMax, bbox.maxZ]],
+            [[clipXMax, bbox.minY, clipZMax], [bbox.maxX, bbox.minY, clipZMax], [bbox.maxX, clipYMax, clipZMax], [clipXMax, clipYMax, clipZMax]],
+        ];
+        planes.forEach(pl => {{
+            const q0 = project(...pl[0]);
+            const q1 = project(...pl[1]);
+            const q2 = project(...pl[2]);
+            const q3 = project(...pl[3]);
+            ctx.beginPath();
+            ctx.moveTo(q0[0], q0[1]);
+            ctx.lineTo(q1[0], q1[1]);
+            ctx.lineTo(q2[0], q2[1]);
+            ctx.lineTo(q3[0], q3[1]);
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+        }});
+    }}
+
     // Render 3D Fixed Support Cones & Force Vectors when STATE.showBCs is enabled
     if (STATE.showBCs && scen && scen.supports) {{
         scen.supports.forEach(sup => {{
@@ -3629,19 +3890,20 @@ function renderQuadA() {{
 
     ctx.restore();
 
-    // --- 1. Top-Left Live Status Overlay ---
-    ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
-    ctx.font = `bold ${{Math.round(10.5 * dpr)}}px monospace`;
-    const stateLabel = progress < 0.02 ? "INITIAL SOLID BLOCK" : (progress < 1.0 ? "ERODING DONOR VOXELS" : "CONVERGED MANIFOLD");
+    // --- 1. Top-Left Live Status Overlay (compact so it never collides with cadViewBarA) ---
+    ctx.fillStyle = "rgba(255, 255, 255, 0.90)";
+    ctx.font = `bold ${{Math.round(10 * dpr)}}px monospace`;
+    const stateLabel = progress < 0.02 ? "SOLID BILLET" : (progress < 1.0 ? "ERODING" : "CONVERGED");
     ctx.fillText(
-        `Iter: ${{Math.round(STATE.erosionIter)}}/${{STATE.maxErosionIters}} (${{stateLabel}})`,
-        12 * dpr, 17 * dpr
+        `Iter ${{Math.round(STATE.erosionIter)}}/${{STATE.maxErosionIters}} [${{stateLabel}}]`,
+        10 * dpr, 16 * dpr
     );
-    ctx.fillStyle = "rgba(148, 163, 184, 0.90)";
-    ctx.font = `${{Math.round(9.5 * dpr)}}px monospace`;
+    ctx.fillStyle = "rgba(148, 163, 184, 0.92)";
+    ctx.font = `${{Math.round(9.2 * dpr)}}px monospace`;
+    const clipTag = STATE.sectionClip ? " | CLIP:ON" : "";
     ctx.fillText(
-        `Mode: ${{STATE.solverMode}} | V_budget: ${{Math.round(STATE.vBudget * 100)}}% | View: ${{(STATE.renderMode || "solid").toUpperCase()}}`,
-        12 * dpr, 30 * dpr
+        `${{STATE.solverMode}} | V=${{Math.round(STATE.vBudget * 100)}}% | ${{(STATE.renderMode || "solid").toUpperCase()}}${{clipTag}}`,
+        10 * dpr, 28 * dpr
     );
 
     // --- 2. Bottom-Left Scalar Colorbar Legend ---
@@ -3683,27 +3945,30 @@ function renderQuadA() {{
     ctx.fillText(midStr, cbX + cbW * 0.44, cbY + cbH + 9 * dpr);
     ctx.fillText(maxStr, cbX + cbW - ctx.measureText(maxStr).width, cbY + cbH + 9 * dpr);
 
-    // --- 3. Bottom-Right Interactive 3D Orientation Axis Triad Gizmo ---
+    // --- 3. Bottom-Right Interactive 6-Direction 3D Orientation Triad Gizmo ---
     const gizmoCx = w - 42 * dpr;
     const gizmoCy = h - 42 * dpr;
     const gizmoR = 26 * dpr;
 
-    ctx.fillStyle = "rgba(15, 23, 42, 0.76)";
-    ctx.strokeStyle = "rgba(148, 163, 184, 0.28)";
+    ctx.fillStyle = "rgba(15, 23, 42, 0.80)";
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.30)";
     ctx.lineWidth = 1.0;
     ctx.beginPath();
-    ctx.arc(gizmoCx, gizmoCy, gizmoR + 7 * dpr, 0, Math.PI * 2);
+    ctx.arc(gizmoCx, gizmoCy, gizmoR + 8 * dpr, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     const axes = [
-        {{ label: "X", vec: [1, 0, 0], color: "#ef4444", preset: "right" }},
-        {{ label: "Y", vec: [0, 1, 0], color: "#22c55e", preset: "front" }},
-        {{ label: "Z", vec: [0, 0, 1], color: "#3b82f6", preset: "top" }},
+        {{ label: "X", vec: [1, 0, 0], color: "#ef4444", preset: "right", positive: true }},
+        {{ label: "-X", vec: [-1, 0, 0], color: "#7f1d1d", preset: "left", positive: false }},
+        {{ label: "Y", vec: [0, 1, 0], color: "#22c55e", preset: "front", positive: true }},
+        {{ label: "-Y", vec: [0, -1, 0], color: "#14532d", preset: "back", positive: false }},
+        {{ label: "Z", vec: [0, 0, 1], color: "#3b82f6", preset: "top", positive: true }},
+        {{ label: "-Z", vec: [0, 0, -1], color: "#1e3a8a", preset: "bottom", positive: false }},
     ].map(ax => {{
         const [vx, vy, vz] = ax.vec;
         const rx = vx * cosY - vy * sinY;
-        const ryDepth = vx * sinY + vy * cosY;
+        const ryDepth = vx * sinY + ny_zero_safe(vy * cosY);
         const screenZ = vz * cosX - ryDepth * sinX;
         const depth = vz * sinX + ryDepth * cosX;
         return {{
@@ -3714,25 +3979,31 @@ function renderQuadA() {{
         }};
     }}).sort((a, b) => a.depth - b.depth);
 
+    function ny_zero_safe(v) {{ return v; }}
+
     STATE.axisGizmoHits = [];
     axes.forEach(ax => {{
-        ctx.strokeStyle = ax.color;
-        ctx.lineWidth = 2.0 * dpr;
-        ctx.beginPath();
-        ctx.moveTo(gizmoCx, gizmoCy);
-        ctx.lineTo(ax.sx, ax.sy);
-        ctx.stroke();
+        if (ax.positive) {{
+            ctx.strokeStyle = ax.color;
+            ctx.lineWidth = 2.0 * dpr;
+            ctx.beginPath();
+            ctx.moveTo(gizmoCx, gizmoCy);
+            ctx.lineTo(ax.sx, ax.sy);
+            ctx.stroke();
+        }}
 
-        const ballR = 7.0 * dpr;
+        const ballR = (ax.positive ? 7.0 : 5.0) * dpr;
         ctx.fillStyle = ax.color;
         ctx.beginPath();
         ctx.arc(ax.sx, ax.sy, ballR, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `bold ${{Math.round(8.5 * dpr)}}px sans-serif`;
-        const tw = ctx.measureText(ax.label).width;
-        ctx.fillText(ax.label, ax.sx - tw * 0.5, ax.sy + 3 * dpr);
+        if (ax.positive) {{
+            ctx.fillStyle = "#ffffff";
+            ctx.font = `bold ${{Math.round(8.5 * dpr)}}px sans-serif`;
+            const tw = ctx.measureText(ax.label).width;
+            ctx.fillText(ax.label, ax.sx - tw * 0.5, ax.sy + 3 * dpr);
+        }}
 
         STATE.axisGizmoHits.push({{ x: ax.sx, y: ax.sy, r: ballR + 3 * dpr, preset: ax.preset }});
     }});
@@ -3740,7 +4011,7 @@ function renderQuadA() {{
     // --- 4. Bottom-Center Camera Controls Hint ---
     ctx.fillStyle = "rgba(148, 163, 184, 0.72)";
     ctx.font = `${{Math.round(9.5 * dpr)}}px monospace`;
-    const hintText = `L-Drag: Orbit | R/Shift-Drag: Pan | Wheel: Zoom (${{Math.round(STATE.camZoom * 100)}}%) | DblClick: Fit`;
+    const hintText = `L-Drag: Orbit | R/Shift-Drag: Pan | Wheel: Zoom (${{Math.round(STATE.camZoom * 100)}}%) | Keys: 1-7, F, W, X, C, R, M`;
     const hintW = ctx.measureText(hintText).width;
     if (w - cbW - 110 * dpr > hintW) {{
         ctx.fillText(hintText, cbX + cbW + 16 * dpr, h - 10 * dpr);
@@ -4063,7 +4334,7 @@ function renderQuadC() {{
     const baseBudget = (scen && scen.volume_budget) ? scen.volume_budget : 0.24;
     const volScale = STATE.vBudget / baseBudget;
 
-    // Build and cache 2D structural topology projection (Nx=24, Nz=18) from the scenario's real 3D voxel fields
+    // Build and cache 2D structural topology projection (Nx=24, Nz=16) from the scenario's real 3D voxel fields
     if (scen && scen.fields_b64 && !scen._quadCProfile) {{
         const flatRho = getDecodedField(scen, "toposnail_rho", 0.0, 1.0);
         const flatVm = getDecodedField(scen, "toposnail_vm", 0.0, 350.0);
@@ -4077,6 +4348,11 @@ function renderQuadC() {{
         const rho2d = new Float32Array(gridW * gridH);
         const vm2d = new Float32Array(gridW * gridH);
         const curl2d = new Float32Array(gridW * gridH);
+        const yMid = Math.floor(Y / 2);
+        const isHollowShell = (
+            STATE.scenarioId === "03_trabecular_femur_anisotropic_so6" ||
+            STATE.scenarioId === "04_regenerative_thruster_gimbal_thermo"
+        );
 
         for (let gy = 0; gy < gridH; gy++) {{
             // Map gy=0 to top (Z-1) and gy=gridH-1 to bottom (0)
@@ -4084,6 +4360,8 @@ function renderQuadC() {{
             for (let gx = 0; gx < gridW; gx++) {{
                 const xIdx = Math.min(X - 1, Math.max(0, Math.round((gx / (gridW - 1)) * (X - 1))));
                 let maxR = 0.0;
+                let midR = 0.0;
+                let frontR = 0.0;
                 let bestVm = 0.0;
                 let maxC = 0.0;
                 for (let y = 0; y < Y; y++) {{
@@ -4093,12 +4371,21 @@ function renderQuadC() {{
                         maxR = rVal;
                         bestVm = flatVm[idx3];
                     }}
+                    if (Math.abs(y - yMid) <= 2 && rVal > midR) {{
+                        midR = rVal;
+                    }}
+                    if (y >= 4 && y <= 11 && rVal > frontR) {{
+                        frontR = rVal;
+                    }}
                     if (flatCurl && flatCurl[idx3] > maxC) {{
                         maxC = flatCurl[idx3];
                     }}
                 }}
                 const i2 = gy * gridW + gx;
-                rho2d[i2] = maxR;
+                // For hollow-shell scenarios (03 Femur, 04 Thruster), sample mid-coronal section to expose
+                // medullary canal, Ward's triangle, and nozzle core; for space-frame/arch scenarios (01, 02, 05),
+                // sample the front structural elevation plane so truss diamonds & A-frame windows stay crisp.
+                rho2d[i2] = isHollowShell ? (0.80 * midR + 0.20 * maxR) : Math.max(frontR, maxR * 0.85);
                 vm2d[i2] = bestVm;
                 curl2d[i2] = maxC;
             }}
@@ -4202,8 +4489,8 @@ function renderQuadC() {{
                 const vmNorm = prof ? Math.min(1.0, Math.max(0.05, prof.vm2d[i2] / 310.0)) : 0.5;
                 const curlVal = prof ? prof.curl2d[i2] : 0.0;
 
-                const isSolid = rawRho > 0.25;
-                const isThinStrut = isSolid && rawRho < 0.72 && curlVal > 2.2;
+                const isSolid = rawRho > 0.34;
+                const isThinStrut = isSolid && rawRho < 0.78 && curlVal > 2.2;
 
                 // Outside-in erosion schedule
                 const distFromWall = (1.0 - rawRho) * 0.85;
@@ -4280,10 +4567,11 @@ function renderQuadC() {{
 }}
 
 function _turboJs(x) {{
+    // Official Google Turbo polynomial (Anton Mikhailov, 2019): Blue -> Cyan -> Green -> Yellow -> Orange -> Red
     x = Math.max(0.0, Math.min(1.0, x));
-    const r = Math.max(0.0, Math.min(1.0, 0.1357 + x * (4.6153 + x * (-42.6603 + x * (132.131 - x * (152.942 - 59.286 * x))))));
-    const g = Math.max(0.0, Math.min(1.0, 0.0914 + x * (2.1941 + x * (4.8429 + x * (-14.1850 + x * (4.2772 + 2.8295 * x))))));
-    const b = Math.max(0.0, Math.min(1.0, 0.1066 + x * (12.5593 + x * (-77.2282 + x * (234.494 - x * (305.424 - 138.292 * x))))));
+    const r = Math.max(0.0, Math.min(1.0, 0.13572138 + x * (4.61539260 + x * (-42.66032258 + x * (132.13108234 + x * (-152.94239396 + x * 59.28637943))))));
+    const g = Math.max(0.0, Math.min(1.0, 0.09140261 + x * (2.19418839 + x * (4.84296658 + x * (-14.18503333 + x * (4.27729857 + x * 2.82956604))))));
+    const b = Math.max(0.0, Math.min(1.0, 0.10667330 + x * (12.64194608 + x * (-60.58204836 + x * (110.36276771 + x * (-89.90310912 + x * 27.34824973))))));
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }}
 
