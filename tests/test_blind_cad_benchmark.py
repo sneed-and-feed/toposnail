@@ -52,15 +52,49 @@ from toposnail.blind_cad_benchmark import (
 from toposnail.io import export_binary_stl, export_obj_mesh
 
 
+@pytest.fixture(scope="module")
+def blind_corpus_manifest(tmp_path_factory):
+    """Locate or generate the 5-part blind CAD corpus (.STL & .OBJ) once per module."""
+    stl_files = ensure_blind_cad_corpus()
+    manifest = []
+    for stl_p in stl_files:
+        obj_p = stl_p.with_suffix(".obj")
+        if not obj_p.exists():
+            c_dir = tmp_path_factory.mktemp("blind_corpus_shared")
+            stl_files = ensure_blind_cad_corpus(c_dir)
+            break
+    for stl_p in stl_files:
+        obj_p = stl_p.with_suffix(".obj")
+        if not obj_p.exists():
+            c_dir = tmp_path_factory.mktemp("blind_corpus_fallback")
+            return _fallback_generate_blind_cad_corpus(c_dir)
+        manifest.append({
+            "part_id": stl_p.stem,
+            "stl_path": str(stl_p.resolve()),
+            "obj_path": str(obj_p.resolve()),
+        })
+    return manifest
+
+
+@pytest.fixture(scope="module")
+def corpus_results(blind_corpus_manifest, tmp_path_factory):
+    """Run the 5-part reference-free blind CAD benchmark once per module."""
+    exp_dir = tmp_path_factory.mktemp("blind_exports_shared")
+    stl_files = [Path(item["stl_path"]) for item in blind_corpus_manifest]
+    return [
+        run_blind_cad_part_benchmark(p, grid_shape=(24, 18, 18), v_budget=0.25, max_iters=15, export_dir=exp_dir)
+        for p in stl_files
+    ]
+
+
 class TestColdCADIngestionAndFeatureRecognition:
     """Verify cold .STL and .OBJ ingestion and reference-free bore/boss recognition."""
 
-    def test_cold_binary_stl_and_obj_ingestion(self, tmp_path: Path):
+    def test_cold_binary_stl_and_obj_ingestion(self, blind_corpus_manifest):
         """Cold-loading both binary .STL and Wavefront .OBJ must produce welded 2-manifold meshes."""
-        manifest = _fallback_generate_blind_cad_corpus(tmp_path)
-        assert len(manifest) == 5
+        assert len(blind_corpus_manifest) == 5
 
-        first = manifest[0]
+        first = blind_corpus_manifest[0]
         stl_mesh = load_blind_cad_file(first["stl_path"])
         obj_mesh = load_blind_cad_file(first["obj_path"])
 
@@ -99,17 +133,22 @@ endsolid unseen_part
         assert len(loaded.vertices) == 4
         assert len(loaded.faces) == 2
 
-    def test_automatic_bore_and_boss_recognition_3zone_partition(self, tmp_path: Path):
+    def test_automatic_bore_and_boss_recognition_3zone_partition(self, corpus_results):
         """
         Verify automatic recognition of cylindrical keep-out bores (Omega_KOZ),
         annular mounting bosses (Omega_solid), and boundary conditions (Omega_fixed, f_ext).
         """
-        stl_files = ensure_blind_cad_corpus(tmp_path)
-        assert len(stl_files) == 5
+        assert len(corpus_results) == 5
 
-        for stl_p in stl_files:
-            mesh = load_blind_cad_file(stl_p)
-            feat = recognize_features_from_blind_cad(mesh, grid_shape=(20, 16, 16), v_budget=0.25)
+        # Also verify direct recognize_features_from_blind_cad on an alternate grid resolution
+        alt_feat = recognize_features_from_blind_cad(
+            corpus_results[0].loaded_mesh, grid_shape=(20, 16, 16), v_budget=0.25
+        )
+        assert alt_feat.to_partition().validate_partition() is True
+
+        for res in corpus_results:
+            mesh = res.loaded_mesh
+            feat = res.features
 
             assert len(feat.bores) >= 2, f"{mesh.part_id}: expected >= 2 detected bores"
             assert len(feat.bosses) >= 2, f"{mesh.part_id}: expected >= 2 detected bosses"
@@ -126,16 +165,6 @@ endsolid unseen_part
 
 class TestReferenceFree8IntrinsicLaws:
     """Verify all 8 Reference-Free Intrinsic Physical, Geometric & Topological Laws across all 5 blind CAD parts."""
-
-    @pytest.fixture(scope="class")
-    def corpus_results(self, tmp_path_factory):
-        c_dir = tmp_path_factory.mktemp("blind_corpus")
-        stl_files = ensure_blind_cad_corpus(c_dir)
-        results = [
-            run_blind_cad_part_benchmark(p, grid_shape=(24, 18, 18), v_budget=0.25, max_iters=15, export_dir=c_dir / "exports")
-            for p in stl_files
-        ]
-        return results
 
     def test_all_5_blind_parts_pass_8_of_8_intrinsic_gates(self, corpus_results):
         """Every blind CAD part in the 5-part corpus must pass 8/8 reference-free intrinsic gates."""
@@ -229,7 +258,7 @@ class TestReferenceFree8IntrinsicLaws:
 class TestFourSolverBlindCADContrast:
     """Verify 4-solver blind CAD pathology separation on identical voxelized stock & BCs."""
 
-    def test_4solver_blind_comparison_pathology_separation(self, tmp_path: Path):
+    def test_4solver_blind_comparison_pathology_separation(self, corpus_results):
         """
         Verify on blind CAD stock that:
         - `UnfilteredSIMP` fails the intrinsic checkerboard gate (checkerboard_pct > 12%),
@@ -237,40 +266,37 @@ class TestFourSolverBlindCADContrast:
         - `HeavisideProjectedSIMP` exhibits inferior stiffness efficiency and trapped beta_2 >= 1 cavities,
         - `TopoSnail` passes 8/8 intrinsic reference-free gates.
         """
-        stl_files = ensure_blind_cad_corpus(tmp_path)
-        res = run_blind_cad_part_benchmark(stl_files[0], grid_shape=(20, 16, 16), v_budget=0.25, max_iters=15)
-        comp = res.solver_comparison
+        for res in corpus_results:
+            comp = res.solver_comparison
+            assert set(comp.keys()) == {"TopoSnail", "UnfilteredSIMP", "GaussianFilteredSIMP", "HeavisideProjectedSIMP"}
 
-        assert set(comp.keys()) == {"TopoSnail", "UnfilteredSIMP", "GaussianFilteredSIMP", "HeavisideProjectedSIMP"}
+            # 1. UnfilteredSIMP fails checkerboard gate (> 12%)
+            assert comp["UnfilteredSIMP"]["checkerboard_pct"] > 12.0
+            assert comp["UnfilteredSIMP"]["all_passed"] is False
 
-        # 1. UnfilteredSIMP fails checkerboard gate (> 12%)
-        assert comp["UnfilteredSIMP"]["checkerboard_pct"] > 12.0
-        assert comp["UnfilteredSIMP"]["all_passed"] is False
+            # 2. GaussianFilteredSIMP fails binary crispness gate (< 78%)
+            assert comp["GaussianFilteredSIMP"]["crispness_pct"] < 78.0
+            assert comp["GaussianFilteredSIMP"]["all_passed"] is False
 
-        # 2. GaussianFilteredSIMP fails binary crispness gate (< 78%)
-        assert comp["GaussianFilteredSIMP"]["crispness_pct"] < 78.0
-        assert comp["GaussianFilteredSIMP"]["all_passed"] is False
+            # 3. HeavisideProjectedSIMP leaves trapped beta_2 cavities and lower stiffness efficiency
+            assert comp["HeavisideProjectedSIMP"]["trapped_beta2_cavities"] >= 1
+            assert comp["HeavisideProjectedSIMP"]["eta_stiff"] < comp["TopoSnail"]["eta_stiff"]
+            assert comp["HeavisideProjectedSIMP"]["all_passed"] is False
 
-        # 3. HeavisideProjectedSIMP leaves trapped beta_2 cavities and lower stiffness efficiency
-        assert comp["HeavisideProjectedSIMP"]["trapped_beta2_cavities"] >= 1
-        assert comp["HeavisideProjectedSIMP"]["eta_stiff"] < comp["TopoSnail"]["eta_stiff"]
-        assert comp["HeavisideProjectedSIMP"]["all_passed"] is False
-
-        # 4. TopoSnail passes 8/8 reference-free gates
-        assert comp["TopoSnail"]["gates_passed"] == 8
-        assert comp["TopoSnail"]["all_passed"] is True
-        assert comp["TopoSnail"]["checkerboard_pct"] == 0.0
-        assert comp["TopoSnail"]["crispness_pct"] >= 98.0
-        assert comp["TopoSnail"]["trapped_beta2_cavities"] == 0
+            # 4. TopoSnail passes 8/8 reference-free gates
+            assert comp["TopoSnail"]["gates_passed"] == 8
+            assert comp["TopoSnail"]["all_passed"] is True
+            assert comp["TopoSnail"]["checkerboard_pct"] == 0.0
+            assert comp["TopoSnail"]["crispness_pct"] >= 98.0
+            assert comp["TopoSnail"]["trapped_beta2_cavities"] == 0
 
 
 class TestCLIRunnerAndArtifactGeneration:
     """Verify CLI runner (`scripts/run_blind_cad_benchmark.py`), JSON summary, and PNG visual sheet."""
 
-    def test_cli_single_custom_part_and_artifacts(self, tmp_path: Path):
+    def test_cli_single_custom_part_and_artifacts(self, blind_corpus_manifest, tmp_path: Path):
         """Running `scripts/run_blind_cad_benchmark.py --input <custom.stl>` must succeed and emit JSON & PNG."""
-        stl_files = ensure_blind_cad_corpus(tmp_path)
-        custom_stl = stl_files[0]
+        custom_stl = Path(blind_corpus_manifest[0]["stl_path"])
         json_out = tmp_path / "custom_summary.json"
         png_out = tmp_path / "custom_audit.png"
 

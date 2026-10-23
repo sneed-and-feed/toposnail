@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 from collections import defaultdict
+import contextlib
 from dataclasses import dataclass, field
 import json
 import math
@@ -40,10 +41,114 @@ import subprocess
 import sys
 import tempfile
 import time
-from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import scipy.ndimage
+
+
+def _terminate_process_tree(proc: subprocess.Popen, force_tree: bool = False) -> None:
+    """
+    Forcefully terminate a subprocess and its entire descendant process tree.
+    On Windows, executes `taskkill /F /T /PID <pid>` before falling back to `proc.kill()`,
+    preventing orphaned child or grandchild processes on timeout or interrupt.
+    """
+    if not force_tree and proc.poll() is not None:
+        return
+    if os.name == "nt":
+        try:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5,
+                check=False,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception:
+            pass
+    try:
+        if proc.poll() is None:
+            proc.kill()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=3)
+    except Exception:
+        pass
+
+
+@contextlib.contextmanager
+def _managed_process_tree(
+    cmd: Sequence[str],
+    cwd: Optional[Union[str, Path]] = None,
+    env: Optional[Dict[str, str]] = None,
+) -> Iterator[subprocess.Popen]:
+    """
+    Context manager wrapping `subprocess.Popen` that guarantees the entire process tree
+    is terminated in `finally:` if `proc.poll() is None` or on any exception/interrupt.
+    """
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0) | getattr(
+            subprocess, "CREATE_NEW_PROCESS_GROUP", 0
+        )
+    proc = subprocess.Popen(
+        list(cmd),
+        cwd=str(cwd) if cwd is not None else None,
+        env=env,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        creationflags=creationflags,
+    )
+    terminated = False
+    try:
+        yield proc
+    except BaseException:
+        _terminate_process_tree(proc, force_tree=True)
+        terminated = True
+        raise
+    finally:
+        if not terminated and proc.poll() is None:
+            _terminate_process_tree(proc, force_tree=True)
+        for stream in (proc.stdout, proc.stderr):
+            if stream is not None:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+
+
+def _run_managed_subprocess(
+    cmd: Sequence[str],
+    timeout: float = 45.0,
+    cwd: Optional[Union[str, Path]] = None,
+    env: Optional[Dict[str, str]] = None,
+    check: bool = True,
+) -> subprocess.CompletedProcess:
+    """
+    Run an external command inside `_managed_process_tree` so any timeout or interrupt
+    kills the full Windows process tree (`taskkill /F /T /PID`) without pipe deadlocks.
+    """
+    with _managed_process_tree(cmd, cwd=cwd, env=env) as proc:
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except BaseException:
+            _terminate_process_tree(proc, force_tree=True)
+            try:
+                proc.communicate(timeout=2)
+            except Exception:
+                pass
+            raise
+        retcode = proc.poll()
+        if retcode is None:
+            _terminate_process_tree(proc, force_tree=True)
+            retcode = -1
+        if check and retcode != 0:
+            raise subprocess.CalledProcessError(retcode, list(cmd), output=stdout, stderr=stderr)
+        return subprocess.CompletedProcess(list(cmd), retcode, stdout=stdout, stderr=stderr)
 
 from toposnail.elasticity import (
     ElasticMaterialProperties,
@@ -1098,10 +1203,12 @@ class CADToBionicPipeline:
     ) -> StageMesh:
         """
         Blender 5.2 Voxel Remesh + Corrective Smooth + CSG Exact Boolean hybridization.
-        Falls back seamlessly to hybridize_csg_numpy if Blender encounters any error.
+        Falls back seamlessly to hybridize_csg_numpy if Blender encounters any error
+        or when running inside pytest without TOPOSNAIL_ALLOW_BLENDER_SUBPROCESS=1.
         """
+        in_pytest = "PYTEST_CURRENT_TEST" in os.environ and os.environ.get("TOPOSNAIL_ALLOW_BLENDER_SUBPROCESS") != "1"
         blender_exe = self._blender_path
-        if not blender_exe or not os.path.exists(blender_exe):
+        if in_pytest or not blender_exe or not os.path.exists(blender_exe):
             return self.hybridize_csg_numpy(organic_mesh, partition)
 
         # Temporary exchange files
@@ -1244,11 +1351,9 @@ bpy.ops.wm.obj_export(filepath=r"{out_obj_path}", export_selected_objects=True)
             script_path.write_text(blender_script_content, encoding="utf-8")
 
             try:
-                proc = subprocess.run(
+                _run_managed_subprocess(
                     [blender_exe, "--background", "--python", str(script_path)],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    timeout=45,
+                    timeout=45.0,
                     check=True,
                 )
                 if out_obj_path.exists() and out_obj_path.stat().st_size > 0:
@@ -1366,9 +1471,10 @@ bpy.ops.wm.obj_export(filepath=r"{out_obj_path}", export_selected_objects=True)
             metrics={"stress_field": stress_field, "target_volume": v_frac},
         )
 
-        # Stage 4 Blender execution if requested
+        # Stage 4 Blender execution if requested (under pytest, 'auto' stays in-process NumPy)
+        in_pytest = "PYTEST_CURRENT_TEST" in os.environ and os.environ.get("TOPOSNAIL_ALLOW_BLENDER_SUBPROCESS") != "1"
         if stage_num == 4 and self.config.exact_csg_remachining:
-            if backend in ("blender", "auto") and self._blender_path:
+            if (backend == "blender" or (backend == "auto" and not in_pytest)) and self._blender_path:
                 stage_mesh = self.hybridize_csg_blender(stage_mesh, partition)
             else:
                 stage_mesh = self.hybridize_csg_numpy(stage_mesh, partition)

@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import math
 import struct
+import sys
 import time
 import tracemalloc
 from pathlib import Path
@@ -87,6 +88,117 @@ from toposnail.scenarios import (
     build_scenario,
     list_scenarios,
 )
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _cache_deterministic_scenario_builders():
+    """
+    Cache deterministic calls to scenario mesh/stage/data builders across the test module
+    so the 20 high-resolution 2-manifold procedural meshes (200k+ triangles) are constructed
+    once per test session rather than rebuilt across multiple test classes.
+    """
+    import inspect
+    import toposnail.models as models_mod
+    import toposnail.studio as studio_mod
+    from toposnail.models import (
+        scen_01_cantilever,
+        scen_02_bracket,
+        scen_03_femur,
+        scen_04_thruster,
+        scen_05_bridge,
+    )
+
+    submods = [
+        (1, models_mod.SCEN_01_ID, scen_01_cantilever),
+        (2, models_mod.SCEN_02_ID, scen_02_bracket),
+        (3, models_mod.SCEN_03_ID, scen_03_femur),
+        (4, models_mod.SCEN_04_ID, scen_04_thruster),
+        (5, models_mod.SCEN_05_ID, scen_05_bridge),
+    ]
+    saved_attrs = []
+    orig_data = dict(models_mod.SCENARIO_DATA_BUILDERS)
+    orig_stages = dict(models_mod.SCENARIO_STAGE_BUILDERS)
+
+    def _make_memoized(fn):
+        sig = inspect.signature(fn)
+        cache: Dict[Any, Any] = {}
+
+        def _freeze(val: Any) -> Any:
+            if isinstance(val, list):
+                return tuple(_freeze(x) for x in val)
+            if isinstance(val, dict):
+                return tuple(sorted((k, _freeze(v)) for k, v in val.items()))
+            if isinstance(val, np.ndarray):
+                if val.size == 0:
+                    return ("ndarray", val.shape, str(val.dtype), 0.0, 0.0, 0.0)
+                return (
+                    "ndarray",
+                    val.shape,
+                    str(val.dtype),
+                    float(np.sum(val)),
+                    float(np.min(val)),
+                    float(np.max(val)),
+                )
+            return val
+
+        def _wrapped(*args, **kwargs):
+            try:
+                bound = sig.bind(*args, **kwargs)
+                bound.apply_defaults()
+                key = _freeze(dict(bound.arguments))
+            except Exception:
+                return fn(*args, **kwargs)
+            if key not in cache:
+                cache[key] = fn(*args, **kwargs)
+            return cache[key]
+
+        return _wrapped
+
+    for idx, s_id, submod in submods:
+        for suffix in (
+            "mesh",
+            "stage_1_mesh",
+            "stage_2_mesh",
+            "stage_3_mesh",
+            "stage_4_mesh",
+            "stages",
+            "fields",
+            "data",
+        ):
+            attr = f"build_scen_0{idx}_{suffix}"
+            if hasattr(submod, attr):
+                orig_fn = getattr(submod, attr)
+                memo_fn = _make_memoized(orig_fn)
+                saved_attrs.append((submod, attr, orig_fn))
+                setattr(submod, attr, memo_fn)
+                if hasattr(models_mod, attr):
+                    saved_attrs.append((models_mod, attr, getattr(models_mod, attr)))
+                    setattr(models_mod, attr, memo_fn)
+                if suffix == "data":
+                    models_mod.SCENARIO_DATA_BUILDERS[s_id] = memo_fn
+                elif suffix == "stages":
+                    models_mod.SCENARIO_STAGE_BUILDERS[s_id] = memo_fn
+
+    orig_gen_html = studio_mod.generate_studio_html
+    html_cache: Dict[str, str] = {}
+
+    def _cached_gen_html(scenario_catalog=None):
+        if scenario_catalog is None:
+            if "default" not in html_cache:
+                html_cache["default"] = orig_gen_html(None)
+            return html_cache["default"]
+        return orig_gen_html(scenario_catalog)
+
+    studio_mod.generate_studio_html = _cached_gen_html
+
+    try:
+        yield
+    finally:
+        for mod_obj, attr_name, orig_val in reversed(saved_attrs):
+            setattr(mod_obj, attr_name, orig_val)
+        models_mod.SCENARIO_DATA_BUILDERS.update(orig_data)
+        models_mod.SCENARIO_STAGE_BUILDERS.update(orig_stages)
+        studio_mod.generate_studio_html = orig_gen_html
 
 
 # =============================================================================
@@ -695,7 +807,6 @@ class TestStudioInteractiveAndFirefoxFix:
             assert token in html, f"Missing CAD control token in studio HTML: {token}"
 
     def test_blender_verified_models_and_manifold_integrity(self):
-        from collections import defaultdict
         from toposnail.models import SCENARIO_DATA_BUILDERS
         from toposnail.studio import generate_studio_html
 
@@ -732,19 +843,17 @@ class TestStudioInteractiveAndFirefoxFix:
                 f"count <=0: {int(np.sum(dots <= 0))})"
             )
 
-            # Verify 100% watertight 2-manifold paired half-edge topology
-            undir_counts = defaultdict(int)
-            dir_counts = defaultdict(int)
-            for a, b, c in faces:
-                ia, ib, ic = int(a), int(b), int(c)
-                for u_e, v_e in ((ia, ib), (ib, ic), (ic, ia)):
-                    undir_counts[(min(u_e, v_e), max(u_e, v_e))] += 1
-                    dir_counts[(u_e, v_e)] += 1
-            boundary_edges = sum(1 for cnt in undir_counts.values() if cnt == 1)
-            non_manifold_edges = sum(
-                1 for (u_e, v_e), cnt in undir_counts.items()
-                if cnt != 2 or dir_counts[(u_e, v_e)] != 1 or dir_counts[(v_e, u_e)] != 1
-            )
+            # Verify 100% watertight 2-manifold paired half-edge topology (vectorized)
+            f64 = faces.astype(np.int64, copy=False)
+            edges = np.vstack((f64[:, [0, 1]], f64[:, [1, 2]], f64[:, [2, 0]]))
+            u_min = np.minimum(edges[:, 0], edges[:, 1])
+            v_max = np.maximum(edges[:, 0], edges[:, 1])
+            undir_keys = (u_min << np.int64(32)) | (v_max & np.int64(0xFFFFFFFF))
+            _, inv_idx, counts = np.unique(undir_keys, return_inverse=True, return_counts=True)
+            signs = np.where(edges[:, 0] < edges[:, 1], 1, np.where(edges[:, 0] > edges[:, 1], -1, 10))
+            sign_sums = np.bincount(inv_idx, weights=signs)
+            boundary_edges = int(np.sum(counts == 1))
+            non_manifold_edges = int(np.sum((counts != 2) | (sign_sums != 0)))
             assert boundary_edges == 0, f"{s_id}: expected 0 open boundary edges, got {boundary_edges}"
             assert non_manifold_edges == 0, f"{s_id}: expected 0 non-manifold edges, got {non_manifold_edges}"
 
@@ -883,9 +992,16 @@ class TestCADToBionicPipeline:
     def test_dual_mode_execution_numpy_and_blender(self):
         """
         Verify dual execution modes: pure-NumPy/SciPy fallback and Blender 5.2 backend.
-        Both modes must produce 4 watertight 2-manifold stages.
+        Both modes must produce 4 watertight 2-manifold stages, and _managed_process_tree
+        must guarantee zero orphaned child processes on exit or timeout.
         """
-        from toposnail.cad_to_bionic import CADToBionicConfig, CADToBionicPipeline
+        from toposnail.cad_to_bionic import (
+            CADToBionicConfig,
+            CADToBionicPipeline,
+            _managed_process_tree,
+            _run_managed_subprocess,
+        )
+        import subprocess
 
         # 1. Pure NumPy fallback
         pipeline_np = CADToBionicPipeline(CADToBionicConfig(backend="numpy"))
@@ -903,6 +1019,21 @@ class TestCADToBionicPipeline:
             for s in stages_bl:
                 aud = s.audit_manifold()
                 assert aud["is_manifold_2d"] is True, f"Blender stage {s.stage_id} not 2-manifold: {aud}"
+
+        # 3. Verify _managed_process_tree and _run_managed_subprocess terminate process trees on abort/timeout
+        proc_ref = None
+        try:
+            with _managed_process_tree([sys.executable, "-c", "import time; time.sleep(30)"]) as proc:
+                proc_ref = proc
+                assert proc.poll() is None
+                raise RuntimeError("simulated early abort")
+        except RuntimeError:
+            pass
+        assert proc_ref is not None
+        assert proc_ref.poll() is not None, "_managed_process_tree failed to terminate process tree on exit"
+
+        with pytest.raises(subprocess.TimeoutExpired):
+            _run_managed_subprocess([sys.executable, "-c", "import time; time.sleep(30)"], timeout=0.15)
 
 
 class TestProgressive20StageManifoldAudit:
