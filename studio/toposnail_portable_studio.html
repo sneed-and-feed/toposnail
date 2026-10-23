@@ -1093,12 +1093,114 @@ function renderQuadA() {
         return [rx * scale, -screenZ * scale, depth];
     }
 
-    // Draw 3D coordinate bounding cage
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
+    // Precompute and cache exact scenario bounding box and 3D solid billet grid on scen._billet
+    if (scen && scen.mesh && scen.mesh.vertices && scen.mesh.vertices.length > 0 && !scen._billet) {
+        const verts = scen.mesh.vertices;
+        let minX = Infinity, maxX = -Infinity;
+        let minY = Infinity, maxY = -Infinity;
+        let minZ = Infinity, maxZ = -Infinity;
+        for (let i = 0; i < verts.length; i++) {
+            const v = verts[i];
+            if (v[0] < minX) minX = v[0];
+            if (v[0] > maxX) maxX = v[0];
+            if (v[1] < minY) minY = v[1];
+            if (v[1] > maxY) maxY = v[1];
+            if (v[2] < minZ) minZ = v[2];
+            if (v[2] > maxZ) maxZ = v[2];
+        }
+        // Pad bounding box slightly so 100% of the final part (including volume budget scaling) is strictly inside the raw billet
+        const padX = Math.max(0.025, (maxX - minX) * 0.025);
+        const padY = Math.max(0.025, (maxY - minY) * 0.045);
+        const padZ = Math.max(0.025, (maxZ - minZ) * 0.045);
+        minX -= padX; maxX += padX;
+        minY -= padY; maxY += padY;
+        minZ -= padZ; maxZ += padZ;
+
+        const Nx = 14, Ny = 8, Nz = 8;
+        const dx = (maxX - minX) / Nx;
+        const dy = (maxY - minY) / Ny;
+        const dz = (maxZ - minZ) / Nz;
+        const cellDiag = Math.hypot(dx, dy, dz);
+
+        const fOrig = (scen.force && scen.force.origin) ? scen.force.origin : [maxX, 0, 0];
+        const sups = scen.supports || [];
+
+        const cells = [];
+        for (let gz = 0; gz < Nz; gz++) {
+            for (let gy = 0; gy < Ny; gy++) {
+                for (let gx = 0; gx < Nx; gx++) {
+                    const cx = minX + (gx + 0.5) * dx;
+                    const cy = minY + (gy + 0.5) * dy;
+                    const cz = minZ + (gz + 0.5) * dz;
+
+                    // Minimum distance from billet cell center to final mesh vertices
+                    let minDistSq = Infinity;
+                    const stride = verts.length > 800 ? 2 : 1;
+                    for (let vi = 0; vi < verts.length; vi += stride) {
+                        const vx = verts[vi][0] - cx;
+                        const vy = verts[vi][1] - cy;
+                        const vz = verts[vi][2] - cz;
+                        const d2 = vx * vx + vy * vy + vz * vz;
+                        if (d2 < minDistSq) minDistSq = d2;
+                    }
+                    const dMesh = Math.sqrt(minDistSq);
+
+                    // Distance to load & supports for realistic linear-elastic initial billet stress field
+                    const dForce = Math.hypot(cx - fOrig[0], cy - fOrig[1], cz - fOrig[2]);
+                    let dSup = Infinity;
+                    for (let si = 0; si < sups.length; si++) {
+                        const sd = Math.hypot(cx - sups[si][0], cy - sups[si][1], cz - sups[si][2]);
+                        if (sd < dSup) dSup = sd;
+                    }
+                    const stressProxy = Math.exp(-dMesh * 2.6) * 0.65 + Math.exp(-dForce * 1.8) * 0.45 + Math.exp(-dSup * 2.2) * 0.35;
+                    const sNorm = Math.max(0.05, Math.min(0.92, stressProxy));
+                    // Metallic engineering billet colormap (deep slate blue in unloaded corners -> teal/cyan along load path -> warm amber at load/support concentrations)
+                    const br = Math.min(1.0, 0.16 + 0.58 * Math.pow(sNorm, 1.5));
+                    const bg = Math.min(1.0, 0.30 + 0.52 * Math.sin(sNorm * Math.PI * 0.85));
+                    const bb = Math.max(0.20, 0.54 + 0.28 * (1.0 - sNorm));
+
+                    cells.push({
+                        gx, gy, gz, cx, cy, cz,
+                        dMesh,
+                        erodeAt: 0.5,
+                        color: [br, bg, bb]
+                    });
+                }
+            }
+        }
+
+        // Rank cells from outside-in / lowest stress (largest dMesh -> erode FIRST at progress ~ 0.03)
+        // to core load-bearing skeleton (smallest dMesh -> billet jacket peels off at progress ~ 0.35..0.85 to reveal smooth struts)
+        const sortedByDist = cells.slice().sort((a, b) => {
+            const scoreA = a.dMesh + 0.18 * Math.hypot(a.cx / Math.max(0.1, maxX), a.cy / Math.max(0.1, maxY), a.cz / Math.max(0.1, maxZ));
+            const scoreB = b.dMesh + 0.18 * Math.hypot(b.cx / Math.max(0.1, maxX), b.cy / Math.max(0.1, maxY), b.cz / Math.max(0.1, maxZ));
+            return scoreB - scoreA;
+        });
+        const totalCells = sortedByDist.length;
+        for (let r = 0; r < totalCells; r++) {
+            const rankFrac = r / Math.max(1, totalCells - 1); // 0 = farthest outer corner, 1 = innermost core
+            sortedByDist[r].erodeAt = 0.03 + 0.82 * Math.pow(rankFrac, 0.90);
+        }
+
+        scen._billet = {
+            minX, maxX, minY, maxY, minZ, maxZ,
+            Nx, Ny, Nz, dx, dy, dz, cellDiag,
+            cells
+        };
+    }
+
+    const bbox = (scen && scen._billet) ? scen._billet : {
+        minX: -1.0, maxX: 1.0, minY: -0.65, maxY: 0.65, minZ: -0.65, maxZ: 0.65
+    };
+
+    // Draw 3D coordinate bounding cage matching exact scenario design domain
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.18)";
     ctx.lineWidth = 1;
     const corners = [
-        [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
-        [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]
+        [bbox.minX, bbox.minY, bbox.minZ], [bbox.maxX, bbox.minY, bbox.minZ],
+        [bbox.maxX, bbox.maxY, bbox.minZ], [bbox.minX, bbox.maxY, bbox.minZ],
+        [bbox.minX, bbox.minY, bbox.maxZ], [bbox.maxX, bbox.minY, bbox.maxZ],
+        [bbox.maxX, bbox.maxY, bbox.maxZ], [bbox.minX, bbox.maxY, bbox.maxZ]
     ];
     const boxEdges = [
         [0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]
@@ -1119,74 +1221,128 @@ function renderQuadA() {
     const llen = Math.hypot(lx, ly, lz);
     const nlx = lx / llen, nly = ly / llen, nlz = lz / llen;
 
-    // (a) When progress < 0.98, render eroding 3D outer donor voxel block shells
-    // At iter = 0 (progress = 0.0), this forms a solid 3D initial engineering block.
-    // As progress goes 0 -> 1, outer low-salience donor voxels progressively peel away and shrink!
-    if (progress < 0.98) {
-        const gvN = 6;
-        const step = 1.80 / gvN;
-        for (let gz = 0; gz < gvN; gz++) {
-            for (let gy = 0; gy < gvN; gy++) {
-                for (let gx = 0; gx < gvN; gx++) {
-                    const isOuter = (gx === 0 || gx === gvN - 1 || gy === 0 || gy === gvN - 1 || gz === 0 || gz === gvN - 1);
-                    if (!isOuter) continue;
+    // (a) When progress < 0.88, render surviving 100% OPAQUE solid billet donor voxels
+    // At iter = 0 (progress = 0.0), allNx*Ny*Nz billet cells are solid and ONLY the 6 exterior faces
+    // of the watertight rectangular billet are emitted (zero internal faces, zero X-ray ghosting, zero protruding tips!).
+    const billet = scen ? scen._billet : null;
+    let solidGrid = null;
+    if (billet && progress < 0.88) {
+        const { Nx, Ny, Nz, dx, dy, dz, cells } = billet;
+        solidGrid = new Uint8Array(Nx * Ny * Nz);
+        for (let idx = 0; idx < cells.length; idx++) {
+            if (progress < cells[idx].erodeAt) {
+                solidGrid[idx] = 1;
+            }
+        }
 
-                    const cx = -0.90 + (gx + 0.5) * step;
-                    const cy = -0.90 + (gy + 0.5) * step;
-                    const cz = -0.90 + (gz + 0.5) * step;
+        const isCellSolid = (gx, gy, gz) => {
+            if (gx < 0 || gx >= Nx || gy < 0 || gy >= Ny || gz < 0 || gz >= Nz) return false;
+            return solidGrid[(gz * Ny + gy) * Nx + gx] === 1;
+        };
 
-                    // Salience priority: corners & outer low-stress zones erode first
-                    const distFromAxis = Math.hypot(cy, cz * 0.7) + 0.35 * (cx + 1.0);
-                    const erodeThreshold = Math.max(0.05, Math.min(0.96, 1.05 - distFromAxis * 0.48));
-                    if (progress >= erodeThreshold) continue;
+        const hx = dx * 0.502;
+        const hy = dy * 0.502;
+        const hz = dz * 0.502;
 
-                    const localRemain = Math.max(0.15, Math.min(1.0, (erodeThreshold - progress) / erodeThreshold));
-                    const half = (step * 0.46) * (0.45 + 0.55 * localRemain);
+        // 6 neighbor directions and their outward unit normals + 2 quad triangles
+        for (let idx = 0; idx < cells.length; idx++) {
+            if (solidGrid[idx] !== 1) continue;
+            const c = cells[idx];
+            const { gx, gy, gz, cx, cy, cz } = c;
 
-                    // Add outward-facing quad of this donor voxel
-                    const voxFaces = [
-                        [[cx - half, cy - half, cz + half], [cx + half, cy - half, cz + half], [cx + half, cy + half, cz + half], [0, 0, 1]],
-                        [[cx - half, cy - half, cz + half], [cx + half, cy + half, cz + half], [cx - half, cy + half, cz + half], [0, 0, 1]],
-                        [[cx + half, cy - half, cz - half], [cx + half, cy - half, cz + half], [cx + half, cy + half, cz + half], [1, 0, 0]],
-                        [[cx + half, cy - half, cz - half], [cx + half, cy + half, cz + half], [cx + half, cy + half, cz - half], [1, 0, 0]],
-                        [[cx - half, cy + half, cz - half], [cx + half, cy + half, cz - half], [cx + half, cy + half, cz + half], [0, 1, 0]],
-                        [[cx - half, cy + half, cz - half], [cx + half, cy + half, cz + half], [cx - half, cy + half, cz + half], [0, 1, 0]],
-                    ];
-                    voxFaces.forEach(vf => {
-                        const p0 = project(vf[0][0], vf[0][1], vf[0][2]);
-                        const p1 = project(vf[1][0], vf[1][1], vf[1][2]);
-                        const p2 = project(vf[2][0], vf[2][1], vf[2][2]);
-                        const depth = (p0[2] + p1[2] + p2[2]) / 3.0;
-                        const nx = vf[3][0], ny = vf[3][1], nz = vf[3][2];
-                        const rnx = nx * cosY - ny * sinY;
-                        const rnyDepth = nx * sinY + ny * cosY;
-                        const rny = nz * cosX - rnyDepth * sinX;
-                        const rnz2 = nz * sinX + rnyDepth * cosX;
-                        const diffuse = Math.max(0.25, Math.min(1.0, Math.abs(rnx * nlx + rny * nly + rnz2 * nlz)));
-                        sortedFaces.push({
-                            p0, p1, p2, depth, diffuse, spec: 0.08,
-                            color: [0.22, 0.42, 0.68],
-                            alpha: 0.78 * localRemain
-                        });
-                    });
-                }
+            // Slight bevel/chamfer on cells that are just about to erode
+            const timeToErode = c.erodeAt - progress;
+            const shrink = (progress > 0.0 && timeToErode < 0.08) ? (0.72 + 0.28 * (timeToErode / 0.08)) : 1.0;
+            const sx = hx * shrink, sy = hy * shrink, sz = hz * shrink;
+
+            const candidateFaces = [];
+            if (!isCellSolid(gx, gy, gz + 1)) {
+                candidateFaces.push([[cx - sx, cy - sy, cz + sz], [cx + sx, cy - sy, cz + sz], [cx + sx, cy + sy, cz + sz], [cx - sx, cy + sy, cz + sz], [0, 0, 1]]);
+            }
+            if (!isCellSolid(gx, gy, gz - 1)) {
+                candidateFaces.push([[cx - sx, cy + sy, cz - sz], [cx + sx, cy + sy, cz - sz], [cx + sx, cy - sy, cz - sz], [cx - sx, cy - sy, cz - sz], [0, 0, -1]]);
+            }
+            if (!isCellSolid(gx + 1, gy, gz)) {
+                candidateFaces.push([[cx + sx, cy - sy, cz - sz], [cx + sx, cy + sy, cz - sz], [cx + sx, cy + sy, cz + sz], [cx + sx, cy - sy, cz + sz], [1, 0, 0]]);
+            }
+            if (!isCellSolid(gx - 1, gy, gz)) {
+                candidateFaces.push([[cx - sx, cy + sy, cz - sz], [cx - sx, cy - sy, cz - sz], [cx - sx, cy - sy, cz + sz], [cx - sx, cy + sy, cz + sz], [-1, 0, 0]]);
+            }
+            if (!isCellSolid(gx, gy + 1, gz)) {
+                candidateFaces.push([[cx - sx, cy + sy, cz - sz], [cx - sx, cy + sy, cz + sz], [cx + sx, cy + sy, cz + sz], [cx + sx, cy + sy, cz - sz], [0, 1, 0]]);
+            }
+            if (!isCellSolid(gx, gy - 1, gz)) {
+                candidateFaces.push([[cx + sx, cy - sy, cz - sz], [cx + sx, cy - sy, cz + sz], [cx - sx, cy - sy, cz + sz], [cx - sx, cy - sy, cz - sz], [0, -1, 0]]);
+            }
+
+            if (candidateFaces.length === 0) continue;
+
+            // Color billet cell according to active KPI scalar field or default linear-elastic billet stress
+            let bcr = c.color[0], bcg = c.color[1], bcb = c.color[2];
+            if (STATE.fieldId === "toposnail_rho") {
+                bcr = 0.14; bcg = 0.62; bcb = 0.58;
+            } else if (STATE.fieldId === "toposnail_th") {
+                bcr = Math.min(1.0, bcr * 1.25 + 0.12);
+                bcg *= 0.65;
+            }
+
+            for (let fi = 0; fi < candidateFaces.length; fi++) {
+                const qf = candidateFaces[fi];
+                const p0 = project(qf[0][0], qf[0][1], qf[0][2]);
+                const p1 = project(qf[1][0], qf[1][1], qf[1][2]);
+                const p2 = project(qf[2][0], qf[2][1], qf[2][2]);
+                const p3 = project(qf[3][0], qf[3][1], qf[3][2]);
+                const nx = qf[4][0], ny = qf[4][1], nz = qf[4][2];
+                const rnx = nx * cosY - ny * sinY;
+                const rnyDepth = nx * sinY + ny * cosY;
+                const rny = nz * cosX - rnyDepth * sinX;
+                const rnz2 = nz * sinX + rnyDepth * cosX;
+                const diffuse = Math.max(0.28, Math.min(1.0, Math.abs(rnx * nlx + rny * nly + rnz2 * nlz)));
+                const spec = Math.pow(Math.max(0.0, Math.abs(rnz2) * 0.78 + rny * 0.25), 14) * 0.22;
+
+                const dTri1 = (p0[2] + p1[2] + p2[2]) / 3.0;
+                const dTri2 = (p0[2] + p2[2] + p3[2]) / 3.0;
+                sortedFaces.push({
+                    p0, p1, p2, depth: dTri1, diffuse, spec,
+                    color: [bcr, bcg, bcb],
+                    alpha: 1.0,
+                    isBillet: true
+                });
+                sortedFaces.push({
+                    p0, p1: p2, p2: p3, depth: dTri2, diffuse, spec,
+                    color: [bcr, bcg, bcb],
+                    alpha: 1.0,
+                    isBillet: true
+                });
             }
         }
     }
 
-    // (b) Render the 3D Marching-Cubes Organic Isosurface Mesh
-    if (scen && scen.mesh && scen.mesh.faces && scen.mesh.faces.length > 0) {
+    // (b) Render the 3D Smooth Organic Manifold Mesh
+    // At progress === 0.0 (Iter: 0/60), the raw billet is 100% uncarved solid metal, so the internal final part is NOT drawn at all!
+    // As outer billet voxels erode away (progress > 0.02), triangles in eroded zones emerge at 100% opacity (alpha = 1.0).
+    if (progress > 0.02 && scen && scen.mesh && scen.mesh.faces && scen.mesh.faces.length > 0) {
         const mesh = scen.mesh;
         const modePuff = (STATE.solverMode === "Gaussian") ? 1.07 : 1.0;
 
         for (let i = 0; i < mesh.faces.length; i++) {
-            // During early erosion (progress < 0.15), progressively reveal internal struts
-            if (progress < 0.08 && (i % 3 !== 0)) continue;
-
             const f = mesh.faces[i];
             const raw0 = mesh.vertices[f[0]];
             const raw1 = mesh.vertices[f[1]];
             const raw2 = mesh.vertices[f[2]];
+
+            // When billet is still partially present (progress < 0.88), only emit mesh triangles
+            // whose containing billet cell has already eroded so nothing ever pokes through uncarved billet stock
+            if (billet && solidGrid && progress < 0.88) {
+                const mx = (raw0[0] + raw1[0] + raw2[0]) / 3.0;
+                const my = (raw0[1] + raw1[1] + raw2[1]) / 3.0;
+                const mz = (raw0[2] + raw1[2] + raw2[2]) / 3.0;
+                const gx = Math.max(0, Math.min(billet.Nx - 1, Math.floor((mx - billet.minX) / billet.dx)));
+                const gy = Math.max(0, Math.min(billet.Ny - 1, Math.floor((my - billet.minY) / billet.dy)));
+                const gz = Math.max(0, Math.min(billet.Nz - 1, Math.floor((mz - billet.minZ) / billet.dz)));
+                if (solidGrid[(gz * billet.Ny + gy) * billet.Nx + gx] !== 0) continue;
+            }
+
             const n0 = (mesh.normals && mesh.normals[f[0]]) ? mesh.normals[f[0]] : [0, 0, 1];
             const n1 = (mesh.normals && mesh.normals[f[1]]) ? mesh.normals[f[1]] : n0;
             const n2 = (mesh.normals && mesh.normals[f[2]]) ? mesh.normals[f[2]] : n0;
@@ -1287,12 +1443,13 @@ function renderQuadA() {
                 cb = Math.max(0.05, Math.min(1.0, cb + cbShift));
             }
 
-            const meshAlpha = (STATE.solverMode === "Gaussian") ? 0.76 : (0.35 + 0.65 * progress);
+            const meshAlpha = (STATE.solverMode === "Gaussian") ? 0.76 : 1.0;
 
             sortedFaces.push({
                 p0, p1, p2, depth, diffuse, spec,
                 color: [cr, cg, cb],
-                alpha: meshAlpha
+                alpha: meshAlpha,
+                isBillet: false
             });
         }
     }
@@ -1308,8 +1465,14 @@ function renderQuadA() {
 
         const fillCss = alpha < 0.99 ? `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})` : `rgb(${r}, ${g}, ${b})`;
         ctx.fillStyle = fillCss;
-        ctx.strokeStyle = (STATE.solverMode === "Unfiltered") ? `rgba(15, 23, 42, 0.55)` : fillCss;
-        ctx.lineWidth = (STATE.solverMode === "Unfiltered") ? 0.6 : 0.65;
+        if (f.isBillet) {
+            // Subtle machined billet grid seam on solid donor block
+            ctx.strokeStyle = `rgba(15, 23, 42, 0.22)`;
+            ctx.lineWidth = 0.55;
+        } else {
+            ctx.strokeStyle = (STATE.solverMode === "Unfiltered") ? `rgba(15, 23, 42, 0.55)` : fillCss;
+            ctx.lineWidth = (STATE.solverMode === "Unfiltered") ? 0.6 : 0.65;
+        }
 
         ctx.beginPath();
         ctx.moveTo(f.p0[0], f.p0[1]);
