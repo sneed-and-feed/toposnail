@@ -244,24 +244,416 @@ def build_scen_01_baselines() -> List[Dict[str, Any]]:
     ]
 
 
+def _add_watertight_box(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    x0: float, x1: float,
+    y0: float, y1: float,
+    z0: float, z1: float,
+    clr: List[float],
+) -> None:
+    """Watertight 2-manifold rectangular box with outward normals and 0 boundary edges."""
+    base_idx = len(verts)
+    corners = np.array([
+        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
+    ], dtype=np.float64)
+    center = np.array([(x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5])
+    v_dirs = corners - center
+    v_norms = v_dirs / (np.linalg.norm(v_dirs, axis=1, keepdims=True) + 1e-12)
+    for i in range(8):
+        verts.append([float(corners[i, 0]), float(corners[i, 1]), float(corners[i, 2])])
+        normals.append([float(v_norms[i, 0]), float(v_norms[i, 1]), float(v_norms[i, 2])])
+        colors.append(clr)
+    box_faces = [
+        # -Z (normal (0,0,-1))
+        [0, 3, 2], [0, 2, 1],
+        # +Z (normal (0,0,+1))
+        [4, 5, 6], [4, 6, 7],
+        # -X (normal (-1,0,0))
+        [0, 4, 7], [0, 7, 3],
+        # +X (normal (+1,0,0))
+        [1, 2, 6], [1, 6, 5],
+        # -Y (normal (0,-1,0))
+        [0, 1, 5], [0, 5, 4],
+        # +Y (normal (0,+1,0))
+        [3, 7, 6], [3, 6, 2],
+    ]
+    for bf in box_faces:
+        faces.append([base_idx + bf[0], base_idx + bf[1], base_idx + bf[2]])
+
+
+def _add_tube_along_curve(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    pts: List[Tuple[float, float, float]],
+    radii: List[float],
+    stress_vals: List[float],
+    n_sides: int = 12,
+    ry_scale: float = 1.0,
+    rz_scale: float = 1.0,
+    cap_ends: bool = True,
+) -> None:
+    def stress_color(ratio: float) -> List[float]:
+        return turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
+
+    clean_pts: List[Tuple[float, float, float]] = [pts[0]]
+    clean_r: List[float] = [radii[0]]
+    clean_s: List[float] = [stress_vals[0]]
+    for idx in range(1, len(pts)):
+        p_prev = clean_pts[-1]
+        p_cur = pts[idx]
+        if math.hypot(p_cur[0] - p_prev[0], p_cur[1] - p_prev[1], p_cur[2] - p_prev[2]) > 1e-4:
+            clean_pts.append(p_cur)
+            clean_r.append(radii[idx])
+            clean_s.append(stress_vals[idx])
+
+    n_pts = len(clean_pts)
+    if n_pts < 2:
+        return
+
+    pts_arr = np.array(clean_pts, dtype=np.float64)
+    tangents = np.zeros_like(pts_arr)
+    tangents[0] = pts_arr[1] - pts_arr[0]
+    tangents[-1] = pts_arr[-1] - pts_arr[-2]
+    for i in range(1, n_pts - 1):
+        tangents[i] = pts_arr[i + 1] - pts_arr[i - 1]
+    t_lens = np.linalg.norm(tangents, axis=1, keepdims=True) + 1e-12
+    tangents = tangents / t_lens
+
+    base_idx = len(verts)
+    angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
+
+    t0 = tangents[0]
+    up = np.array([0.0, 0.0, 1.0]) if abs(t0[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
+    b1 = np.cross(up, t0)
+    b1 = b1 / (np.linalg.norm(b1) + 1e-12)
+    b2 = np.cross(t0, b1)
+
+    for i in range(n_pts):
+        ti = tangents[i]
+        b1 = b1 - np.dot(b1, ti) * ti
+        b1_norm = np.linalg.norm(b1)
+        if b1_norm < 1e-6:
+            up_alt = np.array([0.0, 1.0, 0.0]) if abs(ti[1]) < 0.85 else np.array([1.0, 0.0, 0.0])
+            b1 = np.cross(up_alt, ti)
+            b1_norm = np.linalg.norm(b1) + 1e-12
+        b1 = b1 / b1_norm
+        b2 = np.cross(ti, b1)
+
+        r = max(1e-3, clean_r[i])
+        clr = stress_color(clean_s[i])
+        p = pts_arr[i]
+        for a in angles:
+            ca, sa = math.cos(a), math.sin(a)
+            v_off = ca * b1 * ry_scale + sa * b2 * rz_scale
+            n_vec = (ca / max(1e-6, ry_scale)) * b1 + (sa / max(1e-6, rz_scale)) * b2
+            n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
+            v_pos = p + r * v_off
+            verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
+            normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
+            colors.append(clr)
+
+    for i in range(n_pts - 1):
+        row0 = base_idx + i * n_sides
+        row1 = base_idx + (i + 1) * n_sides
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            faces.append([row0 + j, row0 + jn, row1 + jn])
+            faces.append([row0 + j, row1 + jn, row1 + j])
+
+    if cap_ends:
+        r0 = max(1e-3, clean_r[0])
+        clr0 = stress_color(clean_s[0])
+        t0_v = tangents[0]
+        b1_0 = np.cross(np.array([0.0, 0.0, 1.0]) if abs(t0_v[2]) < 0.85 else np.array([0.0, 1.0, 0.0]), t0_v)
+        b1_0 = b1_0 / (np.linalg.norm(b1_0) + 1e-12)
+        b2_0 = np.cross(t0_v, b1_0)
+        ring_start_mid = len(verts)
+        p_s_mid = pts_arr[0] - 0.06 * r0 * t0_v
+        for a in angles:
+            ca, sa = math.cos(a), math.sin(a)
+            v_off = ca * b1_0 * ry_scale + sa * b2_0 * rz_scale
+            n_vec = 0.707 * (ca * b1_0 + sa * b2_0) - 0.707 * t0_v
+            n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
+            v_pos = p_s_mid + 0.65 * r0 * v_off
+            verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
+            normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
+            colors.append(clr0)
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            faces.append([ring_start_mid + j, base_idx + jn, base_idx + j])
+            faces.append([ring_start_mid + j, ring_start_mid + jn, base_idx + jn])
+
+        c_start_idx = len(verts)
+        p_start = pts_arr[0] - 0.14 * r0 * t0_v
+        verts.append([float(p_start[0]), float(p_start[1]), float(p_start[2])])
+        normals.append([float(-t0_v[0]), float(-t0_v[1]), float(-t0_v[2])])
+        colors.append(clr0)
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            faces.append([c_start_idx, ring_start_mid + jn, ring_start_mid + j])
+
+        r1_end = max(1e-3, clean_r[-1])
+        clr1 = stress_color(clean_s[-1])
+        t1_v = tangents[-1]
+        last_row = base_idx + (n_pts - 1) * n_sides
+        ring_end_mid = len(verts)
+        p_e_mid = pts_arr[-1] + 0.06 * r1_end * t1_v
+        for a in angles:
+            ca, sa = math.cos(a), math.sin(a)
+            v_off = ca * b1 * ry_scale + sa * b2 * rz_scale
+            n_vec = 0.707 * (ca * b1 + sa * b2) + 0.707 * t1_v
+            n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
+            v_pos = p_e_mid + 0.65 * r1_end * v_off
+            verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
+            normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
+            colors.append(clr1)
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            faces.append([last_row + j, last_row + jn, ring_end_mid + jn])
+            faces.append([last_row + j, ring_end_mid + jn, ring_end_mid + j])
+
+        c_end_idx = len(verts)
+        p_end = pts_arr[-1] + 0.14 * r1_end * t1_v
+        verts.append([float(p_end[0]), float(p_end[1]), float(p_end[2])])
+        normals.append([float(t1_v[0]), float(t1_v[1]), float(t1_v[2])])
+        colors.append(clr1)
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            faces.append([c_end_idx, ring_end_mid + j, ring_end_mid + jn])
+
+
+def _add_spline_tube(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    ctrl_pts: List[Tuple[float, float, float]],
+    ctrl_radii: List[float],
+    ctrl_stress: List[float],
+    subdiv: int = 4,
+    n_sides: int = 12,
+    ry_scale: float = 1.0,
+    rz_scale: float = 1.0,
+    cap_ends: bool = True,
+) -> None:
+    m = len(ctrl_pts)
+    if m < 2:
+        return
+    if m == 2 or subdiv <= 1:
+        _add_tube_along_curve(
+            verts, faces, colors, normals,
+            ctrl_pts, ctrl_radii, ctrl_stress,
+            n_sides=n_sides, ry_scale=ry_scale, rz_scale=rz_scale, cap_ends=cap_ends,
+        )
+        return
+    pts_arr = np.array(ctrl_pts, dtype=np.float64)
+    ext_pts = np.vstack([2.0 * pts_arr[0] - pts_arr[1], pts_arr, 2.0 * pts_arr[-1] - pts_arr[-2]])
+    out_pts: List[Tuple[float, float, float]] = []
+    out_r: List[float] = []
+    out_s: List[float] = []
+    for idx in range(m - 1):
+        p0, p1, p2, p3 = ext_pts[idx], ext_pts[idx + 1], ext_pts[idx + 2], ext_pts[idx + 3]
+        r1, r2 = ctrl_radii[idx], ctrl_radii[idx + 1]
+        s1, s2 = ctrl_stress[idx], ctrl_stress[idx + 1]
+        steps = subdiv if idx < m - 2 else subdiv + 1
+        for k in range(steps):
+            t = k / float(subdiv)
+            t2 = t * t
+            t3 = t2 * t
+            pos = 0.5 * (
+                (2.0 * p1)
+                + (-p0 + p2) * t
+                + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+            )
+            out_pts.append((float(pos[0]), float(pos[1]), float(pos[2])))
+            out_r.append(float(r1 * (1.0 - t) + r2 * t))
+            out_s.append(float(s1 * (1.0 - t) + s2 * t))
+    _add_tube_along_curve(
+        verts, faces, colors, normals,
+        out_pts, out_r, out_s,
+        n_sides=n_sides, ry_scale=ry_scale, rz_scale=rz_scale, cap_ends=cap_ends,
+    )
+
+
+def _add_strut(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    p1: Tuple[float, float, float],
+    p2: Tuple[float, float, float],
+    r1: float,
+    r2: float,
+    s1: float,
+    s2: float,
+    n_segs: int = 5,
+    n_sides: int = 10,
+    flare: float = 0.14,
+) -> None:
+    pts = [
+        (
+            p1[0] + (p2[0] - p1[0]) * t,
+            p1[1] + (p2[1] - p1[1]) * t,
+            p1[2] + (p2[2] - p1[2]) * t,
+        )
+        for t in np.linspace(0.0, 1.0, n_segs)
+    ]
+    radii = [
+        (r1 * (1.0 - t) + r2 * t) * (1.0 + flare * (2.0 * t - 1.0) ** 4)
+        for t in np.linspace(0.0, 1.0, n_segs)
+    ]
+    s_vals = [s1 * (1.0 - t) + s2 * t for t in np.linspace(0.0, 1.0, n_segs)]
+    _add_tube_along_curve(verts, faces, colors, normals, pts, radii, s_vals, n_sides=n_sides, cap_ends=True)
+
+
+def _add_joint_sphere(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    center: Tuple[float, float, float],
+    radius: float,
+    stress_val: float,
+    n_lat: int = 8,
+    n_lon: int = 14,
+    scale_xyz: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+) -> None:
+    clr = turbo_colormap(float(np.clip(stress_val, 0.02, 0.98)))
+    sx, sy, sz = scale_xyz
+
+    idx_north = len(verts)
+    verts.append([float(center[0]), float(center[1]), float(center[2] + radius * sz)])
+    normals.append([0.0, 0.0, 1.0])
+    colors.append(clr)
+
+    rings: List[List[int]] = []
+    for i in range(1, n_lat):
+        theta = math.pi * i / float(n_lat)
+        st, ct = math.sin(theta), math.cos(theta)
+        ring: List[int] = []
+        for j in range(n_lon):
+            phi = 2.0 * math.pi * j / float(n_lon)
+            ux = st * math.cos(phi)
+            uy = st * math.sin(phi)
+            uz = ct
+            vx = center[0] + radius * sx * ux
+            vy = center[1] + radius * sy * uy
+            vz = center[2] + radius * sz * uz
+            nx, ny, nz = ux / max(1e-6, sx), uy / max(1e-6, sy), uz / max(1e-6, sz)
+            nlen = math.hypot(nx, ny, nz) + 1e-12
+            idx_v = len(verts)
+            verts.append([float(vx), float(vy), float(vz)])
+            normals.append([float(nx / nlen), float(ny / nlen), float(nz / nlen)])
+            colors.append(clr)
+            ring.append(idx_v)
+        rings.append(ring)
+
+    idx_south = len(verts)
+    verts.append([float(center[0]), float(center[1]), float(center[2] - radius * sz)])
+    normals.append([0.0, 0.0, -1.0])
+    colors.append(clr)
+
+    first_ring = rings[0]
+    for j in range(n_lon):
+        jn = (j + 1) % n_lon
+        faces.append([idx_north, first_ring[j], first_ring[jn]])
+
+    for i in range(len(rings) - 1):
+        r0 = rings[i]
+        r1 = rings[i + 1]
+        for j in range(n_lon):
+            jn = (j + 1) % n_lon
+            faces.append([r0[j], r1[j], r1[jn]])
+            faces.append([r0[j], r1[jn], r0[jn]])
+
+    last_ring = rings[-1]
+    for j in range(n_lon):
+        jn = (j + 1) % n_lon
+        faces.append([idx_south, last_ring[jn], last_ring[j]])
+
+
+def _add_annular_boss(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    center: Tuple[float, float, float],
+    axis: Tuple[float, float, float],
+    r_inner: float,
+    r_outer: float,
+    length: float,
+    stress_outer: float,
+    stress_bore: float,
+    n_sides: int = 24,
+) -> None:
+    ax = np.array(axis, dtype=np.float64)
+    ax = ax / (np.linalg.norm(ax) + 1e-12)
+    up = np.array([0.0, 0.0, 1.0]) if abs(ax[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
+    u = np.cross(up, ax)
+    u = u / (np.linalg.norm(u) + 1e-12)
+    v = np.cross(ax, u)
+
+    c_pt = np.array(center, dtype=np.float64)
+    h_len = 0.5 * length
+    chamfer = min(0.16 * length, 0.16 * (r_outer - r_inner))
+
+    def stress_color(ratio: float) -> List[float]:
+        return turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
+
+    clr_out = stress_color(stress_outer)
+    clr_in = stress_color(stress_bore)
+    clr_cap = stress_color(0.5 * (stress_outer + stress_bore))
+
+    c45, s45 = 0.9238795, 0.3826834
+    profile = [
+        (r_outer, -h_len + chamfer, +c45, -s45, clr_out),
+        (r_outer, +h_len - chamfer, +c45, +s45, clr_out),
+        (r_outer - chamfer, +h_len, +s45, +c45, clr_cap),
+        (r_inner + chamfer, +h_len, -s45, +c45, clr_cap),
+        (r_inner, +h_len - chamfer, -c45, +s45, clr_in),
+        (r_inner, -h_len + chamfer, -c45, -s45, clr_in),
+        (r_inner + chamfer, -h_len, -s45, -c45, clr_cap),
+        (r_outer - chamfer, -h_len, +s45, -c45, clr_cap),
+    ]
+    n_prof = len(profile)
+    angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
+
+    base_idx = len(verts)
+    for a in angles:
+        ca, sa = math.cos(a), math.sin(a)
+        rad_dir = ca * u + sa * v
+        for r_val, z_val, nr, nz, clr in profile:
+            pos = c_pt + z_val * ax + r_val * rad_dir
+            n_vec = nr * rad_dir + nz * ax
+            n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
+            verts.append([float(pos[0]), float(pos[1]), float(pos[2])])
+            normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
+            colors.append(clr)
+
+    for j in range(n_sides):
+        jn = (j + 1) % n_sides
+        b0 = base_idx + j * n_prof
+        b1 = base_idx + jn * n_prof
+        for p in range(n_prof):
+            pn = (p + 1) % n_prof
+            faces.append([b0 + p, b1 + p, b1 + pn])
+            faces.append([b0 + p, b1 + pn, b0 + pn])
+
+
 def build_scen_01_mesh(
     rho: Optional[np.ndarray] = None,
     vm: Optional[np.ndarray] = None,
 ) -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
     Construct the analytical 3D Michell (1904) Hencky-Prandtl Orthogonal Slip-Line &
-    Space-Frame Cantilever Truss manifold mesh.
-
-    Guarantees:
-    - 0 degenerate triangles (all triangle areas strictly positive).
-    - 100% consistent outward face and vertex normals (dot(n_face, n_vert) > 0 for every face).
-    - 100% closed watertight 2-manifold topology across all primitives (0 boundary edges,
-      0 non-manifold edges).
-    - 100% unobstructed open cylindrical keep-out bores (Omega_KOZ) at all 4 clamped bulkhead
-      bolt bosses (X = -0.92, Y = +/-0.54, Z = +/-0.68, r_inner = 0.052) and at the tip shear
-      clevis pin eye (X = +0.90, Y = 0.0, Z = 0.0, r_inner = 0.056).
-    - Complete 4-bay +/-45 deg Hencky-Prandtl slip-line web arches spanning all the way from
-      the root bulkhead collar to the tip clevis collar with 100% open interior diamonds.
+    Space-Frame Cantilever Truss manifold mesh (Stage 4 Converged Bionic Hybrid).
     """
     verts: List[List[float]] = []
     faces: List[List[int]] = []
@@ -271,347 +663,21 @@ def build_scen_01_mesh(
     def stress_color(ratio: float) -> List[float]:
         return turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
 
-    def add_tube_along_curve(
-        pts: List[Tuple[float, float, float]],
-        radii: List[float],
-        stress_vals: List[float],
-        n_sides: int = 12,
-        ry_scale: float = 1.0,
-        rz_scale: float = 1.0,
-        cap_ends: bool = True,
-    ) -> None:
-        clean_pts: List[Tuple[float, float, float]] = [pts[0]]
-        clean_r: List[float] = [radii[0]]
-        clean_s: List[float] = [stress_vals[0]]
-        for idx in range(1, len(pts)):
-            p_prev = clean_pts[-1]
-            p_cur = pts[idx]
-            if math.hypot(p_cur[0] - p_prev[0], p_cur[1] - p_prev[1], p_cur[2] - p_prev[2]) > 1e-4:
-                clean_pts.append(p_cur)
-                clean_r.append(radii[idx])
-                clean_s.append(stress_vals[idx])
+    def add_tube_along_curve(pts, radii, stress_vals, n_sides=12, ry_scale=1.0, rz_scale=1.0, cap_ends=True):
+        _add_tube_along_curve(verts, faces, colors, normals, pts, radii, stress_vals, n_sides, ry_scale, rz_scale, cap_ends)
 
-        n_pts = len(clean_pts)
-        if n_pts < 2:
-            return
+    def add_spline_tube(ctrl_pts, ctrl_radii, ctrl_stress, subdiv=4, n_sides=12, ry_scale=1.0, rz_scale=1.0, cap_ends=True):
+        _add_spline_tube(verts, faces, colors, normals, ctrl_pts, ctrl_radii, ctrl_stress, subdiv, n_sides, ry_scale, rz_scale, cap_ends)
 
-        pts_arr = np.array(clean_pts, dtype=np.float64)
-        tangents = np.zeros_like(pts_arr)
-        tangents[0] = pts_arr[1] - pts_arr[0]
-        tangents[-1] = pts_arr[-1] - pts_arr[-2]
-        for i in range(1, n_pts - 1):
-            tangents[i] = pts_arr[i + 1] - pts_arr[i - 1]
-        t_lens = np.linalg.norm(tangents, axis=1, keepdims=True) + 1e-12
-        tangents = tangents / t_lens
+    def add_strut(p1, p2, r1, r2, s1, s2, n_segs=5, n_sides=10, flare=0.14):
+        _add_strut(verts, faces, colors, normals, p1, p2, r1, r2, s1, s2, n_segs, n_sides, flare)
 
-        base_idx = len(verts)
-        angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
+    def add_joint_sphere(center, radius, stress_val, n_lat=8, n_lon=14, scale_xyz=(1.0, 1.0, 1.0)):
+        _add_joint_sphere(verts, faces, colors, normals, center, radius, stress_val, n_lat, n_lon, scale_xyz)
 
-        # Right-handed parallel-transport frame (b1, b2, t) with b1 x b2 = t
-        t0 = tangents[0]
-        up = np.array([0.0, 0.0, 1.0]) if abs(t0[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
-        b1 = np.cross(up, t0)
-        b1 = b1 / (np.linalg.norm(b1) + 1e-12)
-        b2 = np.cross(t0, b1)
+    def add_annular_boss(center, axis, r_inner, r_outer, length, stress_outer, stress_bore, n_sides=24):
+        _add_annular_boss(verts, faces, colors, normals, center, axis, r_inner, r_outer, length, stress_outer, stress_bore, n_sides)
 
-        for i in range(n_pts):
-            ti = tangents[i]
-            b1 = b1 - np.dot(b1, ti) * ti
-            b1_norm = np.linalg.norm(b1)
-            if b1_norm < 1e-6:
-                up_alt = np.array([0.0, 1.0, 0.0]) if abs(ti[1]) < 0.85 else np.array([1.0, 0.0, 0.0])
-                b1 = np.cross(up_alt, ti)
-                b1_norm = np.linalg.norm(b1) + 1e-12
-            b1 = b1 / b1_norm
-            b2 = np.cross(ti, b1)
-
-            r = max(1e-3, clean_r[i])
-            clr = stress_color(clean_s[i])
-            p = pts_arr[i]
-            for a in angles:
-                ca, sa = math.cos(a), math.sin(a)
-                v_off = ca * b1 * ry_scale + sa * b2 * rz_scale
-                n_vec = (ca / max(1e-6, ry_scale)) * b1 + (sa / max(1e-6, rz_scale)) * b2
-                n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
-                v_pos = p + r * v_off
-                verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
-                normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
-                colors.append(clr)
-
-        for i in range(n_pts - 1):
-            row0 = base_idx + i * n_sides
-            row1 = base_idx + (i + 1) * n_sides
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([row0 + j, row0 + jn, row1 + jn])
-                faces.append([row0 + j, row1 + jn, row1 + j])
-
-        if cap_ends:
-            # Two-stage domed endcap at start so Laplacian / Corrective Smooth never pinches tube ends
-            r0 = max(1e-3, clean_r[0])
-            clr0 = stress_color(clean_s[0])
-            t0_v = tangents[0]
-            b1_0 = np.cross(np.array([0.0, 0.0, 1.0]) if abs(t0_v[2]) < 0.85 else np.array([0.0, 1.0, 0.0]), t0_v)
-            b1_0 = b1_0 / (np.linalg.norm(b1_0) + 1e-12)
-            b2_0 = np.cross(t0_v, b1_0)
-            ring_start_mid = len(verts)
-            p_s_mid = pts_arr[0] - 0.06 * r0 * t0_v
-            for a in angles:
-                ca, sa = math.cos(a), math.sin(a)
-                v_off = ca * b1_0 * ry_scale + sa * b2_0 * rz_scale
-                n_vec = 0.707 * (ca * b1_0 + sa * b2_0) - 0.707 * t0_v
-                n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
-                v_pos = p_s_mid + 0.65 * r0 * v_off
-                verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
-                normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
-                colors.append(clr0)
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([ring_start_mid + j, base_idx + jn, base_idx + j])
-                faces.append([ring_start_mid + j, ring_start_mid + jn, base_idx + jn])
-
-            c_start_idx = len(verts)
-            p_start = pts_arr[0] - 0.14 * r0 * t0_v
-            verts.append([float(p_start[0]), float(p_start[1]), float(p_start[2])])
-            normals.append([float(-t0_v[0]), float(-t0_v[1]), float(-t0_v[2])])
-            colors.append(clr0)
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([c_start_idx, ring_start_mid + jn, ring_start_mid + j])
-
-            # Two-stage domed endcap at end
-            r1_end = max(1e-3, clean_r[-1])
-            clr1 = stress_color(clean_s[-1])
-            t1_v = tangents[-1]
-            last_row = base_idx + (n_pts - 1) * n_sides
-            ring_end_mid = len(verts)
-            p_e_mid = pts_arr[-1] + 0.06 * r1_end * t1_v
-            for a in angles:
-                ca, sa = math.cos(a), math.sin(a)
-                v_off = ca * b1 * ry_scale + sa * b2 * rz_scale
-                n_vec = 0.707 * (ca * b1 + sa * b2) + 0.707 * t1_v
-                n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
-                v_pos = p_e_mid + 0.65 * r1_end * v_off
-                verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
-                normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
-                colors.append(clr1)
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([last_row + j, last_row + jn, ring_end_mid + jn])
-                faces.append([last_row + j, ring_end_mid + jn, ring_end_mid + j])
-
-            c_end_idx = len(verts)
-            p_end = pts_arr[-1] + 0.14 * r1_end * t1_v
-            verts.append([float(p_end[0]), float(p_end[1]), float(p_end[2])])
-            normals.append([float(t1_v[0]), float(t1_v[1]), float(t1_v[2])])
-            colors.append(clr1)
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([c_end_idx, ring_end_mid + j, ring_end_mid + jn])
-
-    def add_spline_tube(
-        ctrl_pts: List[Tuple[float, float, float]],
-        ctrl_radii: List[float],
-        ctrl_stress: List[float],
-        subdiv: int = 4,
-        n_sides: int = 12,
-        ry_scale: float = 1.0,
-        rz_scale: float = 1.0,
-        cap_ends: bool = True,
-    ) -> None:
-        """Catmull-Rom C^1 spline-interpolated organic tube with zero kinks."""
-        m = len(ctrl_pts)
-        if m < 2:
-            return
-        if m == 2 or subdiv <= 1:
-            add_tube_along_curve(
-                ctrl_pts, ctrl_radii, ctrl_stress,
-                n_sides=n_sides, ry_scale=ry_scale, rz_scale=rz_scale, cap_ends=cap_ends,
-            )
-            return
-        pts_arr = np.array(ctrl_pts, dtype=np.float64)
-        ext_pts = np.vstack([2.0 * pts_arr[0] - pts_arr[1], pts_arr, 2.0 * pts_arr[-1] - pts_arr[-2]])
-        out_pts: List[Tuple[float, float, float]] = []
-        out_r: List[float] = []
-        out_s: List[float] = []
-        for idx in range(m - 1):
-            p0, p1, p2, p3 = ext_pts[idx], ext_pts[idx + 1], ext_pts[idx + 2], ext_pts[idx + 3]
-            r1, r2 = ctrl_radii[idx], ctrl_radii[idx + 1]
-            s1, s2 = ctrl_stress[idx], ctrl_stress[idx + 1]
-            steps = subdiv if idx < m - 2 else subdiv + 1
-            for k in range(steps):
-                t = k / float(subdiv)
-                t2 = t * t
-                t3 = t2 * t
-                pos = 0.5 * (
-                    (2.0 * p1)
-                    + (-p0 + p2) * t
-                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
-                )
-                out_pts.append((float(pos[0]), float(pos[1]), float(pos[2])))
-                out_r.append(float(r1 * (1.0 - t) + r2 * t))
-                out_s.append(float(s1 * (1.0 - t) + s2 * t))
-        add_tube_along_curve(
-            out_pts, out_r, out_s,
-            n_sides=n_sides, ry_scale=ry_scale, rz_scale=rz_scale, cap_ends=cap_ends,
-        )
-
-    def add_strut(
-        p1: Tuple[float, float, float],
-        p2: Tuple[float, float, float],
-        r1: float,
-        r2: float,
-        s1: float,
-        s2: float,
-        n_segs: int = 5,
-        n_sides: int = 10,
-        flare: float = 0.14,
-    ) -> None:
-        pts = [
-            (
-                p1[0] + (p2[0] - p1[0]) * t,
-                p1[1] + (p2[1] - p1[1]) * t,
-                p1[2] + (p2[2] - p1[2]) * t,
-            )
-            for t in np.linspace(0.0, 1.0, n_segs)
-        ]
-        radii = [
-            (r1 * (1.0 - t) + r2 * t) * (1.0 + flare * (2.0 * t - 1.0) ** 4)
-            for t in np.linspace(0.0, 1.0, n_segs)
-        ]
-        s_vals = [s1 * (1.0 - t) + s2 * t for t in np.linspace(0.0, 1.0, n_segs)]
-        add_tube_along_curve(pts, radii, s_vals, n_sides=n_sides, cap_ends=True)
-
-    def add_joint_sphere(
-        center: Tuple[float, float, float],
-        radius: float,
-        stress_val: float,
-        n_lat: int = 8,
-        n_lon: int = 14,
-        scale_xyz: Tuple[float, float, float] = (1.0, 1.0, 1.0),
-    ) -> None:
-        """
-        Closed watertight UV sphere with single North and South pole vertices
-        guaranteeing 0 degenerate pole triangles and 100% outward normals.
-        """
-        clr = stress_color(stress_val)
-        sx, sy, sz = scale_xyz
-
-        idx_north = len(verts)
-        verts.append([float(center[0]), float(center[1]), float(center[2] + radius * sz)])
-        normals.append([0.0, 0.0, 1.0])
-        colors.append(clr)
-
-        rings: List[List[int]] = []
-        for i in range(1, n_lat):
-            theta = math.pi * i / float(n_lat)
-            st, ct = math.sin(theta), math.cos(theta)
-            ring: List[int] = []
-            for j in range(n_lon):
-                phi = 2.0 * math.pi * j / float(n_lon)
-                ux = st * math.cos(phi)
-                uy = st * math.sin(phi)
-                uz = ct
-                vx = center[0] + radius * sx * ux
-                vy = center[1] + radius * sy * uy
-                vz = center[2] + radius * sz * uz
-                nx, ny, nz = ux / max(1e-6, sx), uy / max(1e-6, sy), uz / max(1e-6, sz)
-                nlen = math.hypot(nx, ny, nz) + 1e-12
-                idx_v = len(verts)
-                verts.append([float(vx), float(vy), float(vz)])
-                normals.append([float(nx / nlen), float(ny / nlen), float(nz / nlen)])
-                colors.append(clr)
-                ring.append(idx_v)
-            rings.append(ring)
-
-        idx_south = len(verts)
-        verts.append([float(center[0]), float(center[1]), float(center[2] - radius * sz)])
-        normals.append([0.0, 0.0, -1.0])
-        colors.append(clr)
-
-        first_ring = rings[0]
-        for j in range(n_lon):
-            jn = (j + 1) % n_lon
-            faces.append([idx_north, first_ring[j], first_ring[jn]])
-
-        for i in range(len(rings) - 1):
-            r0 = rings[i]
-            r1 = rings[i + 1]
-            for j in range(n_lon):
-                jn = (j + 1) % n_lon
-                faces.append([r0[j], r1[j], r1[jn]])
-                faces.append([r0[j], r1[jn], r0[jn]])
-
-        last_ring = rings[-1]
-        for j in range(n_lon):
-            jn = (j + 1) % n_lon
-            faces.append([idx_south, last_ring[jn], last_ring[j]])
-
-    def add_annular_boss(
-        center: Tuple[float, float, float],
-        axis: Tuple[float, float, float],
-        r_inner: float,
-        r_outer: float,
-        length: float,
-        stress_outer: float,
-        stress_bore: float,
-        n_sides: int = 24,
-    ) -> None:
-        """
-        Machined hollow cylindrical bearing boss / bolt flange with 45-degree chamfered rims
-        and true keep-out bore (Omega_KOZ). Built as a single closed watertight genus-1
-        toroidal manifold (0 boundary edges, 0 degenerate triangles, 100% outward normals).
-        """
-        ax = np.array(axis, dtype=np.float64)
-        ax = ax / (np.linalg.norm(ax) + 1e-12)
-        up = np.array([0.0, 0.0, 1.0]) if abs(ax[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
-        u = np.cross(up, ax)
-        u = u / (np.linalg.norm(u) + 1e-12)
-        v = np.cross(ax, u)
-
-        c_pt = np.array(center, dtype=np.float64)
-        h_len = 0.5 * length
-        chamfer = min(0.16 * length, 0.16 * (r_outer - r_inner))
-
-        clr_out = stress_color(stress_outer)
-        clr_in = stress_color(stress_bore)
-        clr_cap = stress_color(0.5 * (stress_outer + stress_bore))
-
-        c45, s45 = 0.9238795, 0.3826834
-        profile = [
-            (r_outer, -h_len + chamfer, +c45, -s45, clr_out),
-            (r_outer, +h_len - chamfer, +c45, +s45, clr_out),
-            (r_outer - chamfer, +h_len, +s45, +c45, clr_cap),
-            (r_inner + chamfer, +h_len, -s45, +c45, clr_cap),
-            (r_inner, +h_len - chamfer, -c45, +s45, clr_in),
-            (r_inner, -h_len + chamfer, -c45, -s45, clr_in),
-            (r_inner + chamfer, -h_len, -s45, -c45, clr_cap),
-            (r_outer - chamfer, -h_len, +s45, -c45, clr_cap),
-        ]
-        n_prof = len(profile)
-        angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
-
-        base_idx = len(verts)
-        for a in angles:
-            ca, sa = math.cos(a), math.sin(a)
-            rad_dir = ca * u + sa * v
-            for r_val, z_val, nr, nz, clr in profile:
-                pos = c_pt + z_val * ax + r_val * rad_dir
-                n_vec = nr * rad_dir + nz * ax
-                n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
-                verts.append([float(pos[0]), float(pos[1]), float(pos[2])])
-                normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
-                colors.append(clr)
-
-        for j in range(n_sides):
-            jn = (j + 1) % n_sides
-            b0 = base_idx + j * n_prof
-            b1 = base_idx + jn * n_prof
-            for p in range(n_prof):
-                pn = (p + 1) % n_prof
-                faces.append([b0 + p, b1 + p, b1 + pn])
-                faces.append([b0 + p, b1 + pn, b0 + pn])
 
     # =========================================================================
     # 1. 4 Clamped Bulkhead Mounting Annular Bolt Bosses at X = -0.92
@@ -762,6 +828,340 @@ def build_scen_01_mesh(
                 add_joint_sphere((xs_i, sy * ys_i, sz * zs_i), r_sph, st_stress(xs_i, zs_i), n_lat=8, n_lon=14)
 
     return verts, faces, colors, normals
+
+
+def build_scen_01_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 1 (V=1.00): Fresh prismatic flanged I-billet (X in [-0.94, 0.94]) with
+    4 machined base bolt bosses (X = -0.92, Y = +/-0.54, Z = +/-0.68) and tip
+    clevis pin boss at (0.90, 0.0, 0.0). Watertight 2-manifold with open bores (Omega_KOZ).
+    """
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def stress_color(ratio: float) -> List[float]:
+        return turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
+
+    # 1. 4 Clamped Bulkhead Mounting Annular Bolt Bosses at X = -0.92
+    anchor_coords = [
+        (-0.92, -0.54, 0.68),
+        (-0.92, 0.54, 0.68),
+        (-0.92, -0.54, -0.68),
+        (-0.92, 0.54, -0.68),
+    ]
+    for ax_c, ay_c, az_c in anchor_coords:
+        _add_annular_boss(verts, faces, colors, normals, (ax_c, ay_c, az_c), (1.0, 0.0, 0.0), 0.052, 0.125, 0.090, 0.28, 0.35, n_sides=24)
+
+    # 2. Tip Shear Clevis Pin Boss at (0.90, 0.0, 0.0) with bore along Y
+    _add_annular_boss(verts, faces, colors, normals, (0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.240, 0.75, 0.82, n_sides=24)
+
+    # 3. Root Bulkhead Blocks connecting the base bosses (Y in [-0.46, 0.46] to leave bores open!)
+    clr_root = stress_color(0.32)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, -0.36, 0.36, -0.74, 0.74, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, -0.46, -0.36, 0.60, 0.74, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, 0.36, 0.46, 0.60, 0.74, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, -0.46, -0.36, -0.74, -0.60, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.94, -0.85, 0.36, 0.46, -0.74, -0.60, clr_root)
+
+    # 4. Top Flange (solid rectangular slab from root to tip)
+    clr_top = stress_color(0.24)
+    _add_watertight_box(verts, faces, colors, normals, -0.85, 0.82, -0.46, 0.46, 0.58, 0.74, clr_top)
+
+    # 5. Bottom Flange (solid rectangular slab from root to tip)
+    clr_bot = stress_color(0.24)
+    _add_watertight_box(verts, faces, colors, normals, -0.85, 0.82, -0.46, 0.46, -0.74, -0.58, clr_bot)
+
+    # 6. Central Solid Vertical Web (connecting top and bottom flanges)
+    clr_web = stress_color(0.20)
+    _add_watertight_box(verts, faces, colors, normals, -0.85, 0.82, -0.10, 0.10, -0.58, 0.58, clr_web)
+
+    # 7. Transverse Web-Flange Stiffeners at 3 intermediate stations
+    _add_watertight_box(verts, faces, colors, normals, -0.45, -0.39, -0.46, 0.46, -0.58, 0.58, stress_color(0.18))
+    _add_watertight_box(verts, faces, colors, normals, -0.03, 0.03, -0.46, 0.46, -0.58, 0.58, stress_color(0.18))
+    _add_watertight_box(verts, faces, colors, normals, 0.39, 0.45, -0.46, 0.46, -0.58, 0.58, stress_color(0.22))
+
+    # 8. Tip Clevis Lug Mounting Head
+    clr_tip = stress_color(0.68)
+    _add_watertight_box(verts, faces, colors, normals, 0.82, 0.92, -0.22, -0.12, -0.18, 0.18, clr_tip)
+    _add_watertight_box(verts, faces, colors, normals, 0.82, 0.92, 0.12, 0.22, -0.18, 0.18, clr_tip)
+    _add_watertight_box(verts, faces, colors, normals, 0.82, 0.84, -0.12, 0.12, -0.18, 0.18, clr_tip)
+
+    return verts, faces, colors, normals
+
+
+def build_scen_01_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 2 (V~0.62): Tapered parabolic cantilever hull after outer dead-corner carving,
+    forming a continuous load-bearing envelope without interior through-voids.
+    """
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def stress_color(ratio: float) -> List[float]:
+        return turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
+
+    # 1. 4 Clamped Bulkhead Mounting Annular Bolt Bosses at X = -0.92
+    anchor_coords = [
+        (-0.92, -0.54, 0.68),
+        (-0.92, 0.54, 0.68),
+        (-0.92, -0.54, -0.68),
+        (-0.92, 0.54, -0.68),
+    ]
+    for ax_c, ay_c, az_c in anchor_coords:
+        _add_annular_boss(verts, faces, colors, normals, (ax_c, ay_c, az_c), (1.0, 0.0, 0.0), 0.052, 0.125, 0.090, 0.52, 0.60, n_sides=24)
+
+    # 2. Tip Shear Clevis Pin Boss at (0.90, 0.0, 0.0) with bore along Y
+    _add_annular_boss(verts, faces, colors, normals, (0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.240, 0.78, 0.85, n_sides=24)
+
+    # 3. 5 Tapered Parabolic Chords Stations (Thick Chords, radii 0.066 -> 0.045)
+    stations = [
+        (-0.880, 0.472, 0.592),
+        (-0.425, 0.378, 0.465),
+        (0.020, 0.284, 0.340),
+        (0.440, 0.190, 0.215),
+        (0.832, 0.092, 0.088),
+    ]
+    chord_radii_s2 = [0.048, 0.060, 0.055, 0.050, 0.045]
+    chord_stress_s2 = [0.82, 0.74, 0.62, 0.58, 0.78]
+
+    for sy in [-1.0, 1.0]:
+        for sz in [-1.0, 1.0]:
+            chord_pts = [(xs, sy * ys, sz * zs) for (xs, ys, zs) in stations]
+            _add_spline_tube(verts, faces, colors, normals, chord_pts, chord_radii_s2, chord_stress_s2, subdiv=4, n_sides=14)
+
+    # 4. Continuous Solid Web (no internal diamond voids, genus-0 web)
+    web_radii_s2 = [0.048, 0.052, 0.046, 0.042, 0.038]
+    for sy in [-1.0, 1.0]:
+        mid_web_pts = [(xs, sy * (ys * 0.45), 0.0) for (xs, ys, zs) in stations]
+        _add_spline_tube(verts, faces, colors, normals, mid_web_pts, web_radii_s2, [0.45, 0.42, 0.40, 0.38, 0.55], subdiv=4, n_sides=12)
+
+    for b_idx in range(len(stations) - 1):
+        x0, y0, z0 = stations[b_idx]
+        x1, y1, z1 = stations[b_idx + 1]
+        w0 = z0 / (z0 + z1)
+        xm = x0 + w0 * (x1 - x0)
+        ym = y0 + w0 * (y1 - y0)
+        r_web_s2 = 0.050 - 0.003 * b_idx
+        for sy in [-1.0, 1.0]:
+            _add_spline_tube(verts, faces, colors, normals, [(x0, sy * y0, z0), (xm, sy * ym * 0.95, 0.0), (x1, sy * y1, -z1)], [r_web_s2, r_web_s2, r_web_s2], [0.55, 0.50, 0.55], subdiv=3, n_sides=12)
+            _add_spline_tube(verts, faces, colors, normals, [(x0, sy * y0, -z0), (xm, sy * ym * 0.95, 0.0), (x1, sy * y1, z1)], [r_web_s2, r_web_s2, r_web_s2], [0.55, 0.50, 0.55], subdiv=3, n_sides=12)
+            _add_strut(verts, faces, colors, normals, (xm, sy * ym * 0.95, -0.5 * (z0 + z1) * 0.5), (xm, sy * ym * 0.95, 0.5 * (z0 + z1) * 0.5), r_web_s2, r_web_s2, 0.45, 0.45, n_segs=4, n_sides=10)
+
+    # 5. Station Ties and Root Bulkhead Columns
+    for b_idx, (xs_i, ys_i, zs_i) in enumerate(stations):
+        r_tie = 0.048 - 0.003 * b_idx
+        _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, zs_i), (xs_i, ys_i, zs_i), r_tie, r_tie, 0.65, 0.65, n_segs=6, n_sides=12)
+        _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, -zs_i), (xs_i, ys_i, -zs_i), r_tie, r_tie, 0.65, 0.65, n_segs=6, n_sides=12)
+        if b_idx == 0:
+            _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, -zs_i), (xs_i, -ys_i, zs_i), 0.044, 0.044, 0.82, 0.82, n_segs=6, n_sides=12)
+            _add_strut(verts, faces, colors, normals, (xs_i, ys_i, -zs_i), (xs_i, ys_i, zs_i), 0.044, 0.044, 0.82, 0.82, n_segs=6, n_sides=12)
+        r_sph = 0.055 if b_idx == 0 else 1.25 * chord_radii_s2[b_idx]
+        for sy in [-1.0, 1.0]:
+            for sz in [-1.0, 1.0]:
+                _add_joint_sphere(verts, faces, colors, normals, (xs_i, sy * ys_i, sz * zs_i), r_sph, 0.70, n_lat=8, n_lon=14)
+
+    return verts, faces, colors, normals
+
+
+def build_scen_01_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 3 (V~0.38): Fenestrated web shell with diamond cutouts open along principal shear trajectories.
+    """
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def stress_color(ratio: float) -> List[float]:
+        return turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
+
+    # 1. 4 Clamped Bulkhead Mounting Annular Bolt Bosses at X = -0.92
+    anchor_coords = [
+        (-0.92, -0.54, 0.68),
+        (-0.92, 0.54, 0.68),
+        (-0.92, -0.54, -0.68),
+        (-0.92, 0.54, -0.68),
+    ]
+    for ax_c, ay_c, az_c in anchor_coords:
+        _add_annular_boss(verts, faces, colors, normals, (ax_c, ay_c, az_c), (1.0, 0.0, 0.0), 0.052, 0.125, 0.090, 0.82, 0.88, n_sides=24)
+
+    # 2. Tip Shear Clevis Pin Boss at (0.90, 0.0, 0.0) with bore along Y
+    _add_annular_boss(verts, faces, colors, normals, (0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.240, 0.84, 0.92, n_sides=24)
+
+    # 3. 5 Stations for Catmull-Rom chords (radii 0.048 -> 0.040)
+    stations = [
+        (-0.880, 0.472, 0.592),
+        (-0.425, 0.378, 0.465),
+        (0.020, 0.284, 0.340),
+        (0.440, 0.190, 0.215),
+        (0.832, 0.092, 0.088),
+    ]
+    chord_radii_s3 = [0.048, 0.048, 0.044, 0.041, 0.038]
+    chord_stress_s3 = [0.88, 0.78, 0.65, 0.60, 0.82]
+
+    for sy in [-1.0, 1.0]:
+        for sz in [-1.0, 1.0]:
+            chord_pts = [(xs, sy * ys, sz * zs) for (xs, ys, zs) in stations]
+            _add_spline_tube(verts, faces, colors, normals, chord_pts, chord_radii_s3, chord_stress_s3, subdiv=4, n_sides=14)
+
+    # 4. Diagonal +/-45 deg Shear Web Struts framing open diamond windows
+    def st_stress(xv: float, zv: float) -> float:
+        xn = (xv + 1.0) * 0.5
+        return float(np.clip(0.26 + 0.68 * (1.0 - xn) * (0.45 + 0.55 * abs(zv)) + 0.18 * max(0.0, xn - 0.60), 0.18, 0.95))
+
+    for b_idx in range(len(stations) - 1):
+        x0, y0, z0 = stations[b_idx]
+        x1, y1, z1 = stations[b_idx + 1]
+        w0 = z0 / (z0 + z1)
+        xm = x0 + w0 * (x1 - x0)
+        ym = y0 + w0 * (y1 - y0)
+        r_web_s3 = 0.038 - 0.003 * b_idx
+
+        for sy in [-1.0, 1.0]:
+            _add_spline_tube(verts, faces, colors, normals, [(x0, sy * y0, z0), (xm, sy * ym * 1.01, 0.0), (x1, sy * y1, -z1)], [r_web_s3, r_web_s3 * 0.95, r_web_s3 * 0.92], [st_stress(x0, z0), st_stress(xm, 0.15), st_stress(x1, z1)], subdiv=3, n_sides=12)
+            _add_spline_tube(verts, faces, colors, normals, [(x0, sy * y0, -z0), (xm, sy * ym * 1.01, 0.0), (x1, sy * y1, z1)], [r_web_s3, r_web_s3 * 0.95, r_web_s3 * 0.92], [st_stress(x0, z0), st_stress(xm, 0.15), st_stress(x1, z1)], subdiv=3, n_sides=12)
+            _add_joint_sphere(verts, faces, colors, normals, (xm, sy * ym * 1.01, 0.0), r_web_s3 * 1.20, st_stress(xm, 0.15), n_lat=8, n_lon=14)
+
+        # Transverse tie at neutral axis
+        _add_strut(verts, faces, colors, normals, (xm, -ym * 1.01, 0.0), (xm, ym * 1.01, 0.0), r_web_s3 * 0.80, r_web_s3 * 0.80, st_stress(xm, 0.0) * 0.75, st_stress(xm, 0.0) * 0.75, n_segs=4, n_sides=10)
+
+        # Lateral ties on top and bottom planes
+        for sz in [-1.0, 1.0]:
+            r_lat = 0.030 - 0.002 * b_idx
+            _add_strut(verts, faces, colors, normals, (x0, -y0, sz * z0), (x1, y1, sz * z1), r_lat, r_lat, st_stress(x0, z0) * 0.85, st_stress(x1, z1) * 0.85, n_segs=4, n_sides=10)
+            _add_strut(verts, faces, colors, normals, (x0, y0, sz * z0), (x1, -y1, sz * z1), r_lat, r_lat, st_stress(x0, z0) * 0.85, st_stress(x1, z1) * 0.85, n_segs=4, n_sides=10)
+
+    # 5. Station Ties and Bulkhead Columns
+    for b_idx, (xs_i, ys_i, zs_i) in enumerate(stations):
+        r_tie = 0.040 - 0.003 * b_idx
+        s_fr = st_stress(xs_i, zs_i) * 0.85
+        _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, zs_i), (xs_i, ys_i, zs_i), r_tie, r_tie, s_fr, s_fr, n_segs=6, n_sides=12)
+        _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, -zs_i), (xs_i, ys_i, -zs_i), r_tie, r_tie, s_fr, s_fr, n_segs=6, n_sides=12)
+        if b_idx == 0:
+            _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, -zs_i), (xs_i, -ys_i, zs_i), 0.044, 0.044, 0.88, 0.88, n_segs=6, n_sides=12)
+            _add_strut(verts, faces, colors, normals, (xs_i, ys_i, -zs_i), (xs_i, ys_i, zs_i), 0.044, 0.044, 0.88, 0.88, n_segs=6, n_sides=12)
+        r_sph = 0.055 if b_idx == 0 else 1.25 * chord_radii_s3[b_idx]
+        for sy in [-1.0, 1.0]:
+            for sz in [-1.0, 1.0]:
+                _add_joint_sphere(verts, faces, colors, normals, (xs_i, sy * ys_i, sz * zs_i), r_sph, st_stress(xs_i, zs_i), n_lat=8, n_lon=14)
+
+    return verts, faces, colors, normals
+
+
+build_scen_01_stage_4_mesh = build_scen_01_mesh
+
+
+def build_scen_01_stages(
+    raw_fields: Optional[Dict[str, np.ndarray]] = None,
+    grid_shape: Tuple[int, int, int] = (32, 24, 24),
+    v_budget: float = 0.22,
+) -> List[Dict[str, Any]]:
+    """
+    Construct the 4-stage progressive sequence (S1 -> S2 -> S3 -> S4) for Scenario 01:
+    - S1 (V=1.00): Fresh prismatic flanged I-billet
+    - S2 (V=0.62): Tapered parabolic cantilever hull
+    - S3 (V=0.38): Fenestrated web shell with diamond cutouts
+    - S4 (V=0.22): Converged Michell truss
+    """
+    if raw_fields is None:
+        raw_fields = build_scen_01_fields(grid_shape=grid_shape, v_budget=v_budget)
+
+    Z, Y, X = grid_shape
+    z_coords = np.linspace(-0.80, 0.80, Z)
+    x_coords = np.linspace(-0.94, 0.94, X)
+
+    # Stage 1 2D slice: solid flanged billet
+    rho_s1_2d = [[1.0 for _ in range(X)] for _ in range(Z)]
+
+    # Stage 2 2D slice: tapered parabolic envelope (V ~ 0.62)
+    rho_s2_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            xn = (xv - (-0.94)) / 1.88
+            z_lim = 0.16 + 0.56 * ((1.0 - xn) ** 0.65)
+            row.append(1.0 if abs(zv) <= z_lim else 0.0)
+        rho_s2_2d.append(row)
+
+    # Stage 3 2D slice: fenestrated web with diamond cutouts (V ~ 0.38)
+    rho_s3_2d = []
+    bay_centers = [-0.65, -0.20, 0.23, 0.64]
+    bay_widths = [0.38, 0.36, 0.34, 0.30]
+    bay_heights = [0.42, 0.32, 0.22, 0.12]
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            xn = (xv - (-0.94)) / 1.88
+            z_lim = 0.16 + 0.56 * ((1.0 - xn) ** 0.65)
+            if abs(zv) > z_lim:
+                row.append(0.0)
+            else:
+                in_diamond = False
+                for bc, bw, bh in zip(bay_centers, bay_widths, bay_heights):
+                    dx = abs(xv - bc) / (bw * 0.5)
+                    dz = abs(zv) / bh
+                    if dx + dz < 0.85:
+                        in_diamond = True
+                        break
+                row.append(0.08 if in_diamond else 1.0)
+        rho_s3_2d.append(row)
+
+    # Stage 4 2D slice: converged Michell truss
+    rho_s4_2d = [[round(float(val), 4) for val in row] for row in np.max(raw_fields["rho"], axis=1)]
+
+    # Meshes
+    v1, f1, c1, n1 = build_scen_01_stage_1_mesh()
+    v2, f2, c2, n2 = build_scen_01_stage_2_mesh()
+    v3, f3, c3, n3 = build_scen_01_stage_3_mesh()
+    v4, f4, c4, n4 = build_scen_01_mesh()
+
+    def pack_mesh(v, f, c, n):
+        return {
+            "vertices": [[round(float(coord), 4) for coord in pt] for pt in v],
+            "faces": f,
+            "colors": [[round(float(coord), 4) for coord in clr] for clr in c],
+            "normals": [[round(float(coord), 4) for coord in nrm] for nrm in n],
+        }
+
+    return [
+        {
+            "stage_id": "stage_1_fresh_cad",
+            "label": "STAGE 1: Fresh Flanged I-Billet (V=1.00)",
+            "iter": 0,
+            "volume_fraction": 1.00,
+            "mesh": pack_mesh(v1, f1, c1, n1),
+            "rho_2d_slice": rho_s1_2d,
+        },
+        {
+            "stage_id": "stage_2_coarse_envelope",
+            "label": "STAGE 2: Tapered Parabolic Hull (V=0.62)",
+            "iter": 20,
+            "volume_fraction": 0.62,
+            "mesh": pack_mesh(v2, f2, c2, n2),
+            "rho_2d_slice": rho_s2_2d,
+        },
+        {
+            "stage_id": "stage_3_fenestrated_shell",
+            "label": "STAGE 3: Fenestrated Web Shell (V=0.38)",
+            "iter": 40,
+            "volume_fraction": 0.38,
+            "mesh": pack_mesh(v3, f3, c3, n3),
+            "rho_2d_slice": rho_s3_2d,
+        },
+        {
+            "stage_id": "stage_4_bionic_hybrid",
+            "label": "STAGE 4: Converged Michell Truss (V=0.22)",
+            "iter": 60,
+            "volume_fraction": float(v_budget),
+            "mesh": pack_mesh(v4, f4, c4, n4),
+            "rho_2d_slice": rho_s4_2d,
+        },
+    ]
+
 
 
 def build_scen_01_fields(
@@ -946,7 +1346,12 @@ def build_scen_01_data(
         anisotropy_eps=anisotropy_eps,
         thermal_delta_t=thermal_delta_t,
     )
-    verts, faces, colors, normals = build_scen_01_mesh()
+    stages = build_scen_01_stages(
+        raw_fields=raw_fields,
+        grid_shape=grid_shape,
+        v_budget=v_budget,
+    )
+    s4_mesh = stages[3]["mesh"]
 
     supports = [
         [-0.94, -0.54, 0.68, -1.0, 0.0, 0.0],
@@ -986,12 +1391,8 @@ def build_scen_01_data(
             "anisotropy_eps": float(anisotropy_eps),
             "thermal_delta_t": t_out,
             "fields_b64": fields_b64,
-            "mesh": {
-                "vertices": [[round(float(c), 4) for c in v] for v in verts],
-                "faces": faces,
-                "colors": [[round(float(c), 4) for c in clr] for clr in colors],
-                "normals": [[round(float(c), 4) for c in n] for n in normals],
-            },
+            "stages": stages,
+            "mesh": s4_mesh,
             "supports": supports,
             "force": force_info,
             "baselines": build_scen_01_baselines(),

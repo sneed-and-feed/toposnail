@@ -770,3 +770,270 @@ class TestStudioInteractiveAndFirefoxFix:
                 "studio/toposnail_portable_studio.html is out of sync with generate_studio_html()"
             )
 
+
+# =============================================================================
+# 8. Milestone M4: CADToBionicPipeline & Progressive Manifold Verification
+# =============================================================================
+
+class TestCADToBionicPipeline:
+    """Unit and integration tests for CADToBionicPipeline (Milestone M4)."""
+
+    def test_domain_partitioning_3zone(self):
+        """
+        Verify 3-zone domain partitioning: Omega = Omega_design union Omega_solid union Omega_KOZ.
+        Partition must be mutually exclusive and exhaustively cover the domain.
+        """
+        from toposnail.cad_to_bionic import CADToBionicConfig, CADToBionicPipeline
+        from toposnail.scenarios import build_scenario
+
+        pipeline = CADToBionicPipeline(CADToBionicConfig(backend="numpy"))
+        for s_id in ["01_cantilever_michell_truss", "02_aerospace_jet_bracket"]:
+            scenario = build_scenario(s_id)
+            partition = pipeline.partition_domain(scenario)
+
+            # Verification of partition integrity
+            assert partition.validate_partition() is True
+            assert np.any(partition.designable_mask), f"{s_id}: Omega_design must not be empty"
+
+            if s_id == "02_aerospace_jet_bracket":
+                assert np.any(partition.solid_mask), f"{s_id}: Omega_solid must not be empty"
+                assert np.any(partition.koz_mask), f"{s_id}: Omega_KOZ must not be empty"
+                assert len(partition.solid_primitives) > 0, f"{s_id}: missing solid primitives"
+                assert len(partition.koz_primitives) > 0, f"{s_id}: missing KOZ primitives"
+            elif s_id == "01_cantilever_michell_truss":
+                assert len(partition.solid_primitives) > 0, f"{s_id}: missing solid primitives"
+                assert len(partition.koz_primitives) > 0, f"{s_id}: missing KOZ primitives"
+
+            # Mutual exclusivity
+            assert not np.any(partition.solid_mask & partition.koz_mask)
+            assert not np.any(partition.solid_mask & partition.designable_mask)
+            assert not np.any(partition.koz_mask & partition.designable_mask)
+
+            # Completeness
+            total_mask = partition.solid_mask | partition.koz_mask | partition.designable_mask
+            assert np.all(total_mask), f"{s_id}: Partition does not cover full grid domain"
+
+    def test_volume_monotonicity_and_boss_preservation(self):
+        """
+        Verify strictly monotonic volume reduction V_S1 > V_S2 > V_S3 > V_S4,
+        preserved Omega_solid boss vertices, and open Omega_KOZ bores across stages.
+        """
+        from toposnail.cad_to_bionic import CADToBionicConfig, CADToBionicPipeline
+
+        pipeline = CADToBionicPipeline(CADToBionicConfig(backend="numpy"))
+        for s_id in ["01_cantilever_michell_truss", "02_aerospace_jet_bracket"]:
+            stages = pipeline.run(s_id)
+            assert len(stages) == 4, f"{s_id}: expected 4 stages"
+
+            vols = [s.volume_fraction for s in stages]
+            # Strict volume monotonicity
+            assert vols[0] > vols[1] > vols[2] > vols[3], (
+                f"{s_id}: Expected strictly decreasing volume fractions, got {vols}"
+            )
+            assert vols[0] >= 1.00, f"{s_id}: Stage 1 fresh CAD must have volume >= 1.00"
+            assert vols[3] <= 0.35, f"{s_id}: Stage 4 bionic hybrid must meet volume budget"
+
+            # Preserved bosses in Stage 1 and Stage 4
+            s1_verts = np.asarray(stages[0].vertices, dtype=np.float64)
+            s4_verts = np.asarray(stages[3].vertices, dtype=np.float64)
+
+            if s_id == "01_cantilever_michell_truss":
+                # Bolt bosses at X = -0.92, clevis tip lug at X = +0.90
+                assert np.any(s1_verts[:, 0] <= -0.88), "S1 missing base bolt bosses"
+                assert np.any(s4_verts[:, 0] <= -0.88), "S4 missing preserved base bolt bosses"
+                assert np.any(s1_verts[:, 0] >= 0.88), "S1 missing tip clevis lug"
+                assert np.any(s4_verts[:, 0] >= 0.88), "S4 missing preserved tip clevis lug"
+            elif s_id == "02_aerospace_jet_bracket":
+                # 4 counterbored base bosses (Z <= -0.45) and twin clevis ears (Z >= 0.50)
+                assert np.any(s1_verts[:, 2] <= -0.45), "S1 missing base flange"
+                assert np.any(s4_verts[:, 2] <= -0.45), "S4 missing preserved base flange"
+                assert np.any(s1_verts[:, 2] >= 0.50), "S1 missing clevis ears"
+                assert np.any(s4_verts[:, 2] >= 0.50), "S4 missing preserved clevis ears"
+
+    def test_binary_stl_export_all_stages(self):
+        """
+        Verify binary .STL export produces valid 80-byte header, uint32 triangle count,
+        and exact IEEE 754 float32 byte layout (84 + 50 * N bytes) for all 4 stages.
+        """
+        from toposnail.cad_to_bionic import CADToBionicConfig, CADToBionicPipeline
+
+        pipeline = CADToBionicPipeline(CADToBionicConfig(backend="numpy"))
+        stages = pipeline.run("01_cantilever_michell_truss")
+        assert len(stages) == 4
+
+        for stage in stages:
+            stl_bytes = stage.export_stl()
+            assert isinstance(stl_bytes, bytes)
+            assert len(stl_bytes) >= 84, "Binary STL must have at least 84 bytes"
+
+            # 80-byte header + uint32 triangle count
+            num_triangles = struct.unpack("<I", stl_bytes[80:84])[0]
+            assert num_triangles == len(stage.faces), (
+                f"STL triangle count mismatch: {num_triangles} vs {len(stage.faces)}"
+            )
+            expected_size = 84 + num_triangles * 50
+            assert len(stl_bytes) == expected_size, (
+                f"STL byte length mismatch: got {len(stl_bytes)}, expected {expected_size}"
+            )
+
+    def test_dual_mode_execution_numpy_and_blender(self):
+        """
+        Verify dual execution modes: pure-NumPy/SciPy fallback and Blender 5.2 backend.
+        Both modes must produce 4 watertight 2-manifold stages.
+        """
+        from toposnail.cad_to_bionic import CADToBionicConfig, CADToBionicPipeline
+
+        # 1. Pure NumPy fallback
+        pipeline_np = CADToBionicPipeline(CADToBionicConfig(backend="numpy"))
+        stages_np = pipeline_np.run("01_cantilever_michell_truss")
+        assert len(stages_np) == 4
+        for s in stages_np:
+            aud = s.audit_manifold()
+            assert aud["is_manifold_2d"] is True, f"NumPy stage {s.stage_id} not 2-manifold: {aud}"
+
+        # 2. Blender backend if available
+        if pipeline_np._blender_path and Path(pipeline_np._blender_path).exists():
+            pipeline_bl = CADToBionicPipeline(CADToBionicConfig(backend="blender"))
+            stages_bl = pipeline_bl.run("01_cantilever_michell_truss")
+            assert len(stages_bl) == 4
+            for s in stages_bl:
+                aud = s.audit_manifold()
+                assert aud["is_manifold_2d"] is True, f"Blender stage {s.stage_id} not 2-manifold: {aud}"
+
+
+class TestProgressive20StageManifoldAudit:
+    """Strict 2-manifold topological audit across all 20 scenario stage meshes (5 scenarios x 4 stages)."""
+
+    def test_all_20_stage_meshes_strict_2manifold(self):
+        """
+        Verify that every one of the 20 scenario stage meshes satisfies:
+        - boundary_edges == 0 (no open boundaries)
+        - non_manifold_edges == 0 (strictly paired half-edges with opposite winding)
+        - 0 degenerate faces (triangle area > 1e-12)
+        - min_dot > 0.05 (signed outward normal alignment without np.abs masking)
+        """
+        from toposnail.models import SCENARIO_STAGE_BUILDERS, audit_mesh_2manifold
+
+        assert len(SCENARIO_STAGE_BUILDERS) == 5, "Expected 5 scenario stage builders"
+
+        total_audited = 0
+        for s_id, builder in SCENARIO_STAGE_BUILDERS.items():
+            stages = builder()
+            assert len(stages) == 4, f"{s_id}: expected 4 stages, got {len(stages)}"
+
+            for s_idx, st in enumerate(stages):
+                total_audited += 1
+                mesh = st["mesh"]
+                verts = np.asarray(mesh["vertices"], dtype=np.float64)
+                faces = np.asarray(mesh["faces"], dtype=np.int32)
+                normals = np.asarray(mesh["normals"], dtype=np.float64)
+
+                # Sufficient geometric density
+                assert len(verts) >= 1000, f"{s_id} Stage {s_idx + 1}: vertex count {len(verts)} < 1000"
+                assert len(faces) >= 2000, f"{s_id} Stage {s_idx + 1}: face count {len(faces)} < 2000"
+
+                # Rigorous 2-manifold audit
+                audit = audit_mesh_2manifold(verts, faces, normals)
+                assert audit["boundary_edges"] == 0, (
+                    f"{s_id} Stage {s_idx + 1} ({st.get('stage_id', '')}): "
+                    f"open boundary edges = {audit['boundary_edges']}"
+                )
+                assert audit["non_manifold_edges"] == 0, (
+                    f"{s_id} Stage {s_idx + 1} ({st.get('stage_id', '')}): "
+                    f"non-manifold edges = {audit['non_manifold_edges']}"
+                )
+                assert audit["degenerate_triangles"] == 0, (
+                    f"{s_id} Stage {s_idx + 1} ({st.get('stage_id', '')}): "
+                    f"degenerate faces = {audit['degenerate_triangles']}"
+                )
+                assert audit["min_normal_dot"] > 0.05, (
+                    f"{s_id} Stage {s_idx + 1} ({st.get('stage_id', '')}): "
+                    f"inverted outward normals (min_normal_dot = {audit['min_normal_dot']:.4f} <= 0.05)"
+                )
+                assert audit["passed"] is True, (
+                    f"{s_id} Stage {s_idx + 1} ({st.get('stage_id', '')}): audit failed: {audit}"
+                )
+
+        assert total_audited == 20, f"Expected 20 audited meshes, got {total_audited}"
+
+    def test_all_20_stage_volume_monotonicity(self):
+        """
+        Verify that for all 5 scenarios, the stage volumes computed via divergence theorem
+        satisfy strict volume monotonicity: V_S1 > V_S2 > V_S3 > V_S4.
+        """
+        from toposnail.models import SCENARIO_STAGE_BUILDERS
+
+        def compute_mesh_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+            v0 = verts[faces[:, 0]]
+            v1 = verts[faces[:, 1]]
+            v2 = verts[faces[:, 2]]
+            cross = np.cross(v0, v1)
+            return float(np.sum(cross * v2) / 6.0)
+
+        for s_id, builder in SCENARIO_STAGE_BUILDERS.items():
+            stages = builder()
+            vols = [
+                compute_mesh_volume(
+                    np.asarray(st["mesh"]["vertices"], dtype=np.float64),
+                    np.asarray(st["mesh"]["faces"], dtype=np.int32),
+                )
+                for st in stages
+            ]
+            assert vols[0] > vols[1] > vols[2] > vols[3], (
+                f"{s_id}: Non-monotonic volume sequence: {vols}"
+            )
+
+
+class TestStudioOrbitAndStageControls:
+    """Regression tests for Studio orbit direction and stage lineup controls."""
+
+    def test_studio_orbit_direction_regression(self):
+        """
+        Regression check for mouse/touch orbit directions in studio HTML:
+        - STATE.camRotY -= xSign * dx * 0.01; (natural turntable rotation in Quad A)
+        - STATE.quadBRotZ -= dx * 0.01; (natural azimuth rotation in Quad B)
+        - ArrowLeft/Right keys rotate consistently.
+        """
+        studio_path = Path("studio/toposnail_portable_studio.html")
+        html = studio_path.read_text(encoding="utf-8") if studio_path.exists() else generate_studio_html()
+
+        assert "STATE.camRotY -= xSign * dx * 0.01;" in html, (
+            "Quad A orbit direction inverted: missing 'STATE.camRotY -= xSign * dx * 0.01;'"
+        )
+        assert "STATE.quadBRotZ -= dx * 0.01;" in html, (
+            "Quad B orbit direction inverted: missing 'STATE.quadBRotZ -= dx * 0.01;'"
+        )
+        assert "STATE.camRotY += xSign * 0.08;" in html, "ArrowLeft key turntable handler missing"
+        assert "STATE.camRotY -= xSign * 0.08;" in html, "ArrowRight key turntable handler missing"
+
+    def test_studio_stage_lineup_controls_and_shortcuts(self):
+        """
+        Regression check for stage buttons, keyboard shortcuts, and 4-STAGE LINEUP mode:
+        - Buttons: btnStageS1, btnStageS2, btnStageS3, btnStageS4, btnStageLineup
+        - Shortcuts: keys 8, 9, F1, F2, F3, F4
+        - Functions: renderQuadALineup, setStageView
+        - URL query parameter handling: stage=lineup or #lineup
+        """
+        studio_path = Path("studio/toposnail_portable_studio.html")
+        html = studio_path.read_text(encoding="utf-8") if studio_path.exists() else generate_studio_html()
+
+        for token in [
+            'id="btnStageS1"',
+            'id="btnStageS2"',
+            'id="btnStageS3"',
+            'id="btnStageS4"',
+            'id="btnStageLineup"',
+            "function setStageView(",
+            "function renderQuadALineup(",
+            "LINEUP 1&rarr;4",
+            'e.key === "8"',
+            'e.key === "9"',
+            'e.key === "F1"',
+            'e.key === "F2"',
+            'e.key === "F3"',
+            'e.key === "F4"',
+            'url.searchParams.get("stage")',
+        ]:
+            assert token in html, f"Missing stage control token in studio HTML: {token}"
+
+

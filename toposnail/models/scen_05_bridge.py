@@ -1016,6 +1016,482 @@ def build_scen_05_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[
     return rounded_verts, clean_faces, rounded_colors, rounded_normals
 
 
+def _smooth_normals(verts: List[List[float]], faces: List[List[int]]) -> List[List[float]]:
+    v = np.array(verts, dtype=np.float64)
+    f = np.array(faces, dtype=np.int32)
+    v0, v1, v2 = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
+    cross = np.cross(v1 - v0, v2 - v0)
+    fn = cross / (np.linalg.norm(cross, axis=1, keepdims=True) + 1e-12)
+    vn = np.zeros_like(v)
+    for i in range(3):
+        np.add.at(vn, f[:, i], fn)
+    vn = vn / (np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12)
+    return [[round(float(c), 4) for c in row] for row in vn]
+
+
+def _add_annular_boss_capped(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    center: Tuple[float, float, float],
+    axis: Tuple[float, float, float],
+    r_inner: float,
+    r_outer: float,
+    length: float,
+    stress_outer: float,
+    stress_bore: float,
+    n_sides: int = 16,
+    cap_bore_top: bool = False,
+) -> None:
+    ax = np.array(axis, dtype=np.float64)
+    ax = ax / (np.linalg.norm(ax) + 1e-12)
+    up = np.array([0.0, 0.0, 1.0]) if abs(ax[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
+    u = np.cross(ax, up)
+    u = u / (np.linalg.norm(u) + 1e-12)
+    v = np.cross(ax, u)
+    c_pt = np.array(center, dtype=np.float64)
+    h_len = 0.5 * length
+    angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
+    clr_out = _turbo_colormap(float(np.clip(stress_outer, 0.02, 0.98)))
+    clr_in = _turbo_colormap(float(np.clip(stress_bore, 0.02, 0.98)))
+    clr_cap = _turbo_colormap(float(np.clip(0.5 * (stress_outer + stress_bore), 0.02, 0.98)))
+
+    base_idx = len(verts)
+    for a in angles:
+        ca, sa = math.cos(a), math.sin(a)
+        rad_dir = ca * u + sa * v
+        p_out_0 = c_pt - h_len * ax + r_outer * rad_dir
+        p_out_1 = c_pt + h_len * ax + r_outer * rad_dir
+        p_in_1 = c_pt + h_len * ax + r_inner * rad_dir
+        p_in_0 = c_pt - h_len * ax + r_inner * rad_dir
+
+        n_out_0 = rad_dir - 0.35 * ax
+        n_out_0 = n_out_0 / (np.linalg.norm(n_out_0) + 1e-12)
+        n_out_1 = rad_dir + 0.35 * ax
+        n_out_1 = n_out_1 / (np.linalg.norm(n_out_1) + 1e-12)
+        n_in_1 = ax if cap_bore_top else (-rad_dir + 0.35 * ax)
+        n_in_1 = n_in_1 / (np.linalg.norm(n_in_1) + 1e-12)
+        n_in_0 = (-ax) if cap_bore_top else (-rad_dir - 0.35 * ax)
+        n_in_0 = n_in_0 / (np.linalg.norm(n_in_0) + 1e-12)
+
+        verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
+        normals.append([float(n_out_0[0]), float(n_out_0[1]), float(n_out_0[2])])
+        colors.append(clr_out)
+
+        verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
+        normals.append([float(n_out_1[0]), float(n_out_1[1]), float(n_out_1[2])])
+        colors.append(clr_out)
+
+        verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
+        normals.append([float(n_in_1[0]), float(n_in_1[1]), float(n_in_1[2])])
+        colors.append(clr_cap if cap_bore_top else clr_in)
+
+        verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
+        normals.append([float(n_in_0[0]), float(n_in_0[1]), float(n_in_0[2])])
+        colors.append(clr_cap if cap_bore_top else clr_in)
+
+    stride = 4
+    for j in range(n_sides):
+        jn = (j + 1) % n_sides
+        b0 = base_idx + j * stride
+        b1 = base_idx + jn * stride
+        faces.append([b0 + 0, b1 + 0, b1 + 1])
+        faces.append([b0 + 0, b1 + 1, b0 + 1])
+        faces.append([b0 + 1, b1 + 1, b1 + 2])
+        faces.append([b0 + 1, b1 + 2, b0 + 2])
+        if not cap_bore_top:
+            faces.append([b0 + 2, b1 + 2, b1 + 3])
+            faces.append([b0 + 2, b1 + 3, b0 + 3])
+        faces.append([b0 + 3, b1 + 3, b1 + 0])
+        faces.append([b0 + 3, b1 + 0, b0 + 0])
+
+    if cap_bore_top:
+        top_center = c_pt + h_len * ax
+        c_top_idx = len(verts)
+        verts.append([float(top_center[0]), float(top_center[1]), float(top_center[2])])
+        normals.append([float(ax[0]), float(ax[1]), float(ax[2])])
+        colors.append(clr_in)
+        bot_center = c_pt - h_len * ax
+        c_bot_idx = len(verts)
+        verts.append([float(bot_center[0]), float(bot_center[1]), float(bot_center[2])])
+        normals.append([float(-ax[0]), float(-ax[1]), float(-ax[2])])
+        colors.append(clr_in)
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            b0 = base_idx + j * stride
+            b1 = base_idx + jn * stride
+            faces.append([c_top_idx, b0 + 2, b1 + 2])
+            faces.append([c_bot_idx, b1 + 3, b0 + 3])
+
+
+def _add_bridge_accessories(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+) -> None:
+    from toposnail.models.scen_01_cantilever import _add_joint_sphere, _add_strut, _add_tube_along_curve
+
+    for sx_ab in [-1.18, 1.18]:
+        for sy_ab in [-0.31, 0.31]:
+            _add_tube_along_curve(
+                verts,
+                faces,
+                colors,
+                normals,
+                [(sx_ab, sy_ab, -0.60), (sx_ab, sy_ab, -0.55), (sx_ab, sy_ab, -0.48)],
+                [0.088, 0.080, 0.068],
+                [0.88, 0.84, 0.78],
+                n_sides=14,
+                ry_scale=1.05,
+                rz_scale=1.0,
+                cap_ends=True,
+            )
+            _add_joint_sphere(
+                verts,
+                faces,
+                colors,
+                normals,
+                (sx_ab, sy_ab, -0.535),
+                0.068,
+                0.84,
+                n_lat=8,
+                n_lon=14,
+                scale_xyz=(1.08, 0.98, 1.04),
+            )
+        _add_strut(
+            verts,
+            faces,
+            colors,
+            normals,
+            (sx_ab, -0.31, -0.55),
+            (sx_ab, 0.31, -0.55),
+            0.050,
+            0.050,
+            0.78,
+            0.78,
+            n_segs=6,
+            n_sides=12,
+            flare=0.24,
+        )
+
+    for lx_load in [-0.72, 0.0, 0.72]:
+        s_pad = 0.92 if abs(lx_load) < 0.1 else 0.84
+        _add_annular_boss_capped(
+            verts,
+            faces,
+            colors,
+            normals,
+            (lx_load, 0.0, 0.4594),
+            (0.0, 0.0, 1.0),
+            0.018,
+            0.064,
+            0.046,
+            s_pad,
+            min(0.97, s_pad + 0.05),
+            n_sides=16,
+            cap_bore_top=True,
+        )
+
+
+def build_scen_05_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 1 (V=1.00): Solid prismatic bridge stock block spanning the 4 base abutment bosses
+    with full-depth vertical side walls and deck. Watertight 2-manifold with 0 boundary edges.
+    """
+    from toposnail.models.scen_01_cantilever import _add_watertight_box
+
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def sc(val: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(val, 0.02, 0.98)))
+
+    # Solid prismatic main block
+    _add_watertight_box(verts, faces, colors, normals, -1.21, 1.21, -0.32, 0.32, -0.55, 0.46, sc(0.20))
+    _add_bridge_accessories(verts, faces, colors, normals)
+    sm_normals = _smooth_normals(verts, faces)
+    return verts, faces, colors, sm_normals
+
+
+def build_scen_05_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 2 (V~0.60): Under-arch vault carved out beneath the roadway deck, leaving thick
+    continuous solid funicular spandrel arch walls spanning the 4 abutments.
+    """
+    from toposnail.models.scen_01_cantilever import _add_watertight_box
+
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def sc(val: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(val, 0.02, 0.98)))
+
+    # Upper deck slab
+    _add_watertight_box(verts, faces, colors, normals, -1.21, 1.21, -0.32, 0.32, 0.32, 0.46, sc(0.35))
+    # Heavy abutment end blocks
+    _add_watertight_box(verts, faces, colors, normals, -1.21, -0.92, -0.32, 0.32, -0.55, 0.32, sc(0.72))
+    _add_watertight_box(verts, faces, colors, normals, 0.92, 1.21, -0.32, 0.32, -0.55, 0.32, sc(0.72))
+
+    # Spandrel arch walls
+    span_half = 1.18
+    z_crown = 0.30
+    z_spring = -0.55
+    n_slices = 20
+    xs = np.linspace(-0.92, 0.92, n_slices + 1)
+    for k in range(n_slices):
+        x_mid = 0.5 * (xs[k] + xs[k + 1])
+        z_vault = z_crown - (z_crown - z_spring) * ((x_mid / span_half) ** 2)
+        z_bottom = max(-0.55, z_vault - 0.08)
+        s_val = 0.45 + 0.35 * (1.0 - abs(x_mid / span_half))
+        # Front spandrel wall
+        _add_watertight_box(verts, faces, colors, normals, xs[k], xs[k + 1], -0.32, -0.10, z_bottom, 0.32, sc(s_val))
+        # Rear spandrel wall
+        _add_watertight_box(verts, faces, colors, normals, xs[k], xs[k + 1], 0.10, 0.32, z_bottom, 0.32, sc(s_val))
+
+    # Central keel arch tie
+    _add_watertight_box(verts, faces, colors, normals, -0.50, 0.50, -0.10, 0.10, 0.22, 0.32, sc(0.60))
+    _add_bridge_accessories(verts, faces, colors, normals)
+    sm_normals = _smooth_normals(verts, faces)
+    return verts, faces, colors, sm_normals
+
+
+def build_scen_05_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 3 (V~0.38): Spandrel web windows and self-draining deck bays punched open (beta_1 > 0, beta_2 = 0),
+    forming discrete vertical columns and continuous twin arch ribs.
+    """
+    from toposnail.models.scen_01_cantilever import (
+        _add_joint_sphere,
+        _add_strut,
+        _add_tube_along_curve,
+        _add_watertight_box,
+    )
+
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def sc(val: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(val, 0.02, 0.98)))
+
+    span_half = 1.18
+    z_crown = 0.385
+    z_spring = -0.56
+    z_deck = 0.44
+
+    def arch_z_fn(x_val: float) -> float:
+        return z_crown - (z_crown - z_spring) * ((x_val / span_half) ** 2)
+
+    # Roadway deck superstructure
+    # Outer longitudinal girders
+    xs_deck = np.linspace(-1.21, 1.21, 29)
+    for y_rib in [-0.31, 0.31]:
+        deck_pts = [(float(xv), y_rib, z_deck) for xv in xs_deck]
+        deck_radii = [float(0.068 + 0.008 * math.exp(-((xv / 0.26) ** 2))) for xv in xs_deck]
+        deck_stress = [float(0.40 + 0.45 * (1.0 - (xv / 1.21) ** 2)) for xv in xs_deck]
+        _add_tube_along_curve(
+            verts, faces, colors, normals, deck_pts, deck_radii, deck_stress, n_sides=14, ry_scale=1.12, rz_scale=0.95
+        )
+
+    # Center spine girder
+    xs_str = np.linspace(-1.18, 1.18, 25)
+    spine_pts = [(float(xv), 0.0, z_deck) for xv in xs_str]
+    spine_stress = [float(0.48 + 0.40 * (1.0 - (xv / 1.18) ** 2)) for xv in xs_str]
+    _add_tube_along_curve(
+        verts, faces, colors, normals, spine_pts, [0.052] * len(xs_str), spine_stress, n_sides=12, ry_scale=1.18, rz_scale=0.90
+    )
+
+    # Inner stringers framing drainage bays
+    for y_str in [-0.14, 0.14]:
+        str_pts = [(float(xv), y_str, z_deck) for xv in xs_str]
+        str_stress = [float(0.42 + 0.35 * (1.0 - (xv / 1.18) ** 2)) for xv in xs_str]
+        _add_tube_along_curve(
+            verts, faces, colors, normals, str_pts, [0.042] * len(xs_str), str_stress, n_sides=10, ry_scale=1.15, rz_scale=0.88
+        )
+
+    # Twin parabolic funicular arch ribs
+    n_arch = 41
+    xs_arch = np.linspace(-span_half, span_half, n_arch)
+    for y_rib in [-0.31, 0.31]:
+        arch_pts = [(float(xv), y_rib, float(arch_z_fn(xv))) for xv in xs_arch]
+        arch_radii = [float(0.082 + 0.024 * (abs(xv / span_half) ** 1.15)) for xv in xs_arch]
+        arch_stress = [float(0.62 + 0.30 * math.exp(-((xv / 0.34) ** 2))) for xv in xs_arch]
+        _add_tube_along_curve(
+            verts, faces, colors, normals, arch_pts, arch_radii, arch_stress, n_sides=16, ry_scale=0.95, rz_scale=1.18
+        )
+
+    # Spandrel columns (heavy, with open windows between them)
+    spandrel_stations = [-1.18, -0.96, -0.72, -0.46, -0.24, 0.24, 0.46, 0.72, 0.96, 1.18]
+    for y_rib in [-0.31, 0.31]:
+        for sx in spandrel_stations:
+            za = arch_z_fn(sx)
+            is_end = abs(abs(sx) - 1.18) < 0.02
+            r_col = 0.056 if is_end else 0.050
+            s_col = float(0.55 + 0.35 * (1.0 - abs(sx / span_half)))
+            _add_strut(
+                verts,
+                faces,
+                colors,
+                normals,
+                (sx, y_rib, za + 0.006),
+                (sx, y_rib, z_deck - 0.008),
+                r_col,
+                r_col * 0.95,
+                s_col,
+                s_col,
+                n_segs=6,
+                n_sides=12,
+                flare=0.15,
+            )
+            _add_joint_sphere(verts, faces, colors, normals, (sx, y_rib, za), r_col * 1.25, s_col, n_lat=8, n_lon=14)
+
+    # Transverse crossbeams connecting front and rear arch footings and deck stations
+    for sx in spandrel_stations:
+        za = arch_z_fn(sx)
+        _add_strut(
+            verts, faces, colors, normals, (sx, -0.31, za), (sx, 0.31, za), 0.045, 0.045, 0.65, 0.65, n_segs=6, n_sides=10, flare=0.12
+        )
+        _add_strut(
+            verts, faces, colors, normals, (sx, -0.31, z_deck), (sx, 0.31, z_deck), 0.042, 0.042, 0.55, 0.55, n_segs=6, n_sides=10, flare=0.12
+        )
+
+    # Solid deck slabs over the 3 traffic load stations
+    for lx in [-0.72, 0.0, 0.72]:
+        _add_watertight_box(verts, faces, colors, normals, lx - 0.12, lx + 0.12, -0.28, 0.28, 0.38, 0.46, sc(0.80))
+
+    _add_bridge_accessories(verts, faces, colors, normals)
+    sm_normals = _smooth_normals(verts, faces)
+    return verts, faces, colors, sm_normals
+
+
+build_scen_05_stage_4_mesh = build_scen_05_mesh
+
+
+def build_scen_05_stages(
+    raw_fields: Optional[Dict[str, np.ndarray]] = None,
+    grid_shape: Tuple[int, int, int] = (32, 24, 24),
+    v_budget: float = 0.24,
+    anisotropy_eps: float = 0.24,
+    thermal_delta_t: float = 0.0,
+) -> List[Dict[str, Any]]:
+    """
+    Construct the 4-stage progressive sequence (S1 -> S2 -> S3 -> S4) for Scenario 05:
+    - S1 (V=1.00): Solid Prismatic Bridge Stock Envelope
+    - S2 (V~0.60): Coarse Carved Envelope with Under-Arch Vault
+    - S3 (V~0.38): Fenestrated Spandrel Web with Self-Draining Deck Bays
+    - S4 (V~0.24): Converged Maillart/Michell Funicular Arch Bridge
+    """
+    if raw_fields is None:
+        raw_fields = build_scen_05_fields(
+            grid_shape=grid_shape,
+            v_budget=v_budget,
+            anisotropy_eps=anisotropy_eps,
+            thermal_delta_t=thermal_delta_t,
+        )
+
+    Z, Y, X = grid_shape
+    z_coords = np.linspace(-0.60, 0.49, Z)
+    x_coords = np.linspace(-1.21, 1.21, X)
+
+    # Stage 1 2D slice: solid bridge block
+    rho_s1_2d = [[1.0 for _ in range(X)] for _ in range(Z)]
+
+    # Stage 2 2D slice: vaulted arch under deck
+    rho_s2_2d = []
+    span_half = 1.18
+    z_crown = 0.30
+    z_spring = -0.55
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            z_vault = z_crown - (z_crown - z_spring) * ((xv / span_half) ** 2)
+            if zv >= 0.32:
+                row.append(1.0)
+            elif abs(xv) >= 0.92:
+                row.append(1.0)
+            elif zv >= z_vault - 0.08:
+                row.append(1.0)
+            else:
+                row.append(0.0)
+        rho_s2_2d.append(row)
+
+    # Stage 3 2D slice: spandrel web windows punched open
+    rho_s3_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            z_vault = z_crown - (z_crown - z_spring) * ((xv / span_half) ** 2)
+            if zv >= 0.38:
+                row.append(1.0)
+            elif abs(xv) >= 1.05:
+                row.append(1.0)
+            elif abs(zv - z_vault) < 0.10:
+                row.append(1.0)
+            elif any(abs(xv - st) < 0.06 for st in [-0.72, -0.46, -0.24, 0.24, 0.46, 0.72]):
+                row.append(1.0 if zv >= z_vault else 0.0)
+            else:
+                row.append(0.0)
+        rho_s3_2d.append(row)
+
+    # Stage 4 2D slice: authentic 2D Y-projection of 3D density field
+    rho_s4_2d = [[round(float(val), 4) for val in row] for row in np.max(raw_fields["rho"], axis=1)]
+
+    v1, f1, c1, n1 = build_scen_05_stage_1_mesh()
+    v2, f2, c2, n2 = build_scen_05_stage_2_mesh()
+    v3, f3, c3, n3 = build_scen_05_stage_3_mesh()
+    v4, f4, c4, n4 = build_scen_05_mesh()
+
+    def pack_mesh(v, f, c, n):
+        return {
+            "vertices": [[round(float(coord), 4) for coord in pt] for pt in v],
+            "faces": f,
+            "colors": [[round(float(coord), 4) for coord in clr] for clr in c],
+            "normals": [[round(float(coord), 4) for coord in nrm] for nrm in n],
+        }
+
+    return [
+        {
+            "stage_id": "stage_1_fresh_cad",
+            "label": "STAGE 1: Solid Bridge Stock (V=1.00)",
+            "iter": 0,
+            "volume_fraction": 1.00,
+            "mesh": pack_mesh(v1, f1, c1, n1),
+            "rho_2d_slice": rho_s1_2d,
+        },
+        {
+            "stage_id": "stage_2_coarse_envelope",
+            "label": "STAGE 2: Under-Arch Vault (V=0.60)",
+            "iter": 20,
+            "volume_fraction": 0.60,
+            "mesh": pack_mesh(v2, f2, c2, n2),
+            "rho_2d_slice": rho_s2_2d,
+        },
+        {
+            "stage_id": "stage_3_fenestrated_shell",
+            "label": "STAGE 3: Fenestrated Web & Bays (V=0.38)",
+            "iter": 40,
+            "volume_fraction": 0.38,
+            "mesh": pack_mesh(v3, f3, c3, n3),
+            "rho_2d_slice": rho_s3_2d,
+        },
+        {
+            "stage_id": "stage_4_bionic_hybrid",
+            "label": "STAGE 4: Converged Funicular Arch (V=0.24)",
+            "iter": 60,
+            "volume_fraction": float(v_budget),
+            "mesh": pack_mesh(v4, f4, c4, n4),
+            "rho_2d_slice": rho_s4_2d,
+        },
+    ]
+
+
 def get_scen_05_baselines() -> List[Dict[str, Any]]:
     """Return calibrated 5-solver Mode B comparison table for Scenario 05."""
     return [
@@ -1110,7 +1586,13 @@ def build_scen_05_data(
     curl_sal = raw_fields["curl_sal"]
     fiber_angle = raw_fields["fiber_angle"]
 
-    verts, faces, colors, normals = build_scen_05_mesh()
+    stages = build_scen_05_stages(
+        raw_fields=raw_fields,
+        grid_shape=grid_shape,
+        v_budget=v_budget,
+        anisotropy_eps=anisotropy_eps,
+        thermal_delta_t=thermal_delta_t,
+    )
 
     # 4 Clamped Abutment Supports at (-1.18, +/-0.31, -0.60) and (+1.18, +/-0.31, -0.60)
     supports: List[List[float]] = [
@@ -1148,12 +1630,8 @@ def build_scen_05_data(
         "anisotropy_eps": float(anisotropy_eps),
         "thermal_delta_t": float(np.max(thermal_delta_t)) if isinstance(thermal_delta_t, np.ndarray) else float(thermal_delta_t),
         "fields_b64": fields_b64,
-        "mesh": {
-            "vertices": verts,
-            "faces": faces,
-            "colors": colors,
-            "normals": normals,
-        },
+        "stages": stages,
+        "mesh": stages[3]["mesh"],
         "supports": supports,
         "force": force_info,
         "baselines": get_scen_05_baselines(),

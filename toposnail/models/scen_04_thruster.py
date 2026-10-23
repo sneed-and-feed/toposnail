@@ -1320,6 +1320,375 @@ def build_scen_04_baselines(v_budget: float = 0.30) -> List[Dict[str, Any]]:
     ]
 
 
+def _smooth_normals(verts: List[List[float]], faces: List[List[int]]) -> List[List[float]]:
+    v = np.array(verts, dtype=np.float64)
+    f = np.array(faces, dtype=np.int32)
+    v0, v1, v2 = v[f[:, 0]], v[f[:, 1]], v[f[:, 2]]
+    cross = np.cross(v1 - v0, v2 - v0)
+    fn = cross / (np.linalg.norm(cross, axis=1, keepdims=True) + 1e-12)
+    vn = np.zeros_like(v)
+    for i in range(3):
+        np.add.at(vn, f[:, i], fn)
+    vn = vn / (np.linalg.norm(vn, axis=1, keepdims=True) + 1e-12)
+    return [[round(float(c), 4) for c in row] for row in vn]
+
+
+def _add_thruster_accessories(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    r_ring_tube: float = 0.050,
+) -> None:
+    from toposnail.models.scen_01_cantilever import _add_annular_boss, _add_tube_along_curve
+
+    trunnions = [
+        ((0.74, 0.0, 0.56), (1.0, 0.0, 0.0)),
+        ((-0.74, 0.0, 0.56), (-1.0, 0.0, 0.0)),
+        ((0.0, 0.74, 0.56), (0.0, 1.0, 0.0)),
+        ((0.0, -0.74, 0.56), (0.0, -1.0, 0.0)),
+    ]
+    for c_t, ax_t in trunnions:
+        _add_annular_boss(verts, faces, colors, normals, c_t, ax_t, 0.052, 0.098, 0.12, 0.42, 0.65, n_sides=16)
+
+    ring_angles = np.linspace(0.0, 2.0 * math.pi, 25)
+    ring_pts = [(0.74 * math.cos(a), 0.74 * math.sin(a), 0.56) for a in ring_angles]
+    _add_tube_along_curve(verts, faces, colors, normals, ring_pts, [r_ring_tube] * 25, [0.42] * 25, n_sides=14, cap_ends=True)
+
+
+def build_scen_04_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 1: Heavy Forging Blank.
+    Features cylindrical-conical outer stock with open central gas flow bore along Z (r_min >= 0.21),
+    4 Cardan trunnion bosses, and heavy gimbal ring.
+    """
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def sc(s: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
+
+    n_z, n_th = 28, 32
+    z_vals = np.linspace(-0.84, 0.70, n_z)
+    thetas = np.linspace(0.0, 2.0 * math.pi, n_th, endpoint=False)
+
+    base_inner = len(verts)
+    for zv in z_vals:
+        r_in, dr_dz = r_delaval_contour(float(zv))
+        clr = sc(0.25 + 0.35 * math.exp(-((zv - 0.20) / 0.35) ** 2))
+        for th in thetas:
+            ca, sa = math.cos(th), math.sin(th)
+            verts.append([round(float(r_in * ca), 4), round(float(r_in * sa), 4), round(float(zv), 4)])
+            normals.append([0.0, 0.0, 1.0])
+            colors.append(clr)
+
+    base_outer = len(verts)
+    for zv in z_vals:
+        r_out = 0.60 + 0.08 * ((zv - (-0.84)) / 1.54)
+        clr = sc(0.18 + 0.15 * math.exp(-((zv - 0.20) / 0.40) ** 2))
+        for th in thetas:
+            ca, sa = math.cos(th), math.sin(th)
+            verts.append([round(float(r_out * ca), 4), round(float(r_out * sa), 4), round(float(zv), 4)])
+            normals.append([0.0, 0.0, 1.0])
+            colors.append(clr)
+
+    for iz in range(n_z - 1):
+        ri0, ri1 = base_inner + iz * n_th, base_inner + (iz + 1) * n_th
+        ro0, ro1 = base_outer + iz * n_th, base_outer + (iz + 1) * n_th
+        for j in range(n_th):
+            jn = (j + 1) % n_th
+            faces.append([ri0 + j, ri1 + j, ri0 + jn])
+            faces.append([ri0 + jn, ri1 + j, ri1 + jn])
+            faces.append([ro0 + j, ro0 + jn, ro1 + j])
+            faces.append([ro0 + jn, ro1 + jn, ro1 + j])
+
+    for j in range(n_th):
+        jn = (j + 1) % n_th
+        bi0, bi1 = base_inner + j, base_inner + jn
+        bo0, bo1 = base_outer + j, base_outer + jn
+        faces.append([bi0, bi1, bo0])
+        faces.append([bi1, bo1, bo0])
+        ti0 = base_inner + (n_z - 1) * n_th + j
+        ti1 = base_inner + (n_z - 1) * n_th + jn
+        to0 = base_outer + (n_z - 1) * n_th + j
+        to1 = base_outer + (n_z - 1) * n_th + jn
+        faces.append([ti0, to0, ti1])
+        faces.append([ti1, to0, to1])
+
+    _add_thruster_accessories(verts, faces, colors, normals, r_ring_tube=0.065)
+    smooth_n = _smooth_normals(verts, faces)
+    return verts, faces, colors, smooth_n
+
+
+def build_scen_04_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 2: Coarse Carved Envelope (Rao Parabolic Nozzle Shroud).
+    Features turned Rao parabolic outer contour with solid wall (no channels yet),
+    4 Cardan trunnions, and structural gimbal ring.
+    """
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def sc(s: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
+
+    n_z, n_th = 28, 32
+    z_vals = np.linspace(-0.84, 0.70, n_z)
+    thetas = np.linspace(0.0, 2.0 * math.pi, n_th, endpoint=False)
+
+    base_inner = len(verts)
+    for zv in z_vals:
+        r_in, dr_dz = r_delaval_contour(float(zv))
+        clr = sc(0.35 + 0.45 * math.exp(-((zv - 0.20) / 0.30) ** 2))
+        for th in thetas:
+            ca, sa = math.cos(th), math.sin(th)
+            verts.append([round(float(r_in * ca), 4), round(float(r_in * sa), 4), round(float(zv), 4)])
+            normals.append([0.0, 0.0, 1.0])
+            colors.append(clr)
+
+    base_outer = len(verts)
+    for zv in z_vals:
+        r_in, dr_dz = r_delaval_contour(float(zv))
+        r_out = r_in + 0.14 + 0.05 * math.exp(-((zv - 0.20) / 0.28) ** 2)
+        clr = sc(0.28 + 0.38 * math.exp(-((zv - 0.20) / 0.32) ** 2))
+        for th in thetas:
+            ca, sa = math.cos(th), math.sin(th)
+            verts.append([round(float(r_out * ca), 4), round(float(r_out * sa), 4), round(float(zv), 4)])
+            normals.append([0.0, 0.0, 1.0])
+            colors.append(clr)
+
+    for iz in range(n_z - 1):
+        ri0, ri1 = base_inner + iz * n_th, base_inner + (iz + 1) * n_th
+        ro0, ro1 = base_outer + iz * n_th, base_outer + (iz + 1) * n_th
+        for j in range(n_th):
+            jn = (j + 1) % n_th
+            faces.append([ri0 + j, ri1 + j, ri0 + jn])
+            faces.append([ri0 + jn, ri1 + j, ri1 + jn])
+            faces.append([ro0 + j, ro0 + jn, ro1 + j])
+            faces.append([ro0 + jn, ro1 + jn, ro1 + j])
+
+    for j in range(n_th):
+        jn = (j + 1) % n_th
+        bi0, bi1 = base_inner + j, base_inner + jn
+        bo0, bo1 = base_outer + j, base_outer + jn
+        faces.append([bi0, bi1, bo0])
+        faces.append([bi1, bo1, bo0])
+        ti0 = base_inner + (n_z - 1) * n_th + j
+        ti1 = base_inner + (n_z - 1) * n_th + jn
+        to0 = base_outer + (n_z - 1) * n_th + j
+        to1 = base_outer + (n_z - 1) * n_th + jn
+        faces.append([ti0, to0, ti1])
+        faces.append([ti1, to0, to1])
+
+    _add_thruster_accessories(verts, faces, colors, normals, r_ring_tube=0.055)
+    smooth_n = _smooth_normals(verts, faces)
+    return verts, faces, colors, smooth_n
+
+
+def build_scen_04_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 3: Fenestrated Shell (Recessed Throat Jacket & Truss Gimbal).
+    Features thinned nozzle jacket with recessed throat, manifold toroid rings,
+    and A-frame gimbal trunnion supports.
+    """
+    from toposnail.models.scen_01_cantilever import _add_tube_along_curve
+
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def sc(s: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
+
+    n_z, n_th = 28, 32
+    z_vals = np.linspace(-0.84, 0.70, n_z)
+    thetas = np.linspace(0.0, 2.0 * math.pi, n_th, endpoint=False)
+
+    base_inner = len(verts)
+    for zv in z_vals:
+        r_in, dr_dz = r_delaval_contour(float(zv))
+        clr = sc(0.35 + 0.45 * math.exp(-((zv - 0.20) / 0.30) ** 2))
+        for th in thetas:
+            ca, sa = math.cos(th), math.sin(th)
+            verts.append([round(float(r_in * ca), 4), round(float(r_in * sa), 4), round(float(zv), 4)])
+            normals.append([0.0, 0.0, 1.0])
+            colors.append(clr)
+
+    base_outer = len(verts)
+    for zv in z_vals:
+        r_in, dr_dz = r_delaval_contour(float(zv))
+        r_out = r_in + 0.082 + 0.025 * math.exp(-((zv - 0.20) / 0.28) ** 2)
+        clr = sc(0.28 + 0.38 * math.exp(-((zv - 0.20) / 0.32) ** 2))
+        for th in thetas:
+            ca, sa = math.cos(th), math.sin(th)
+            verts.append([round(float(r_out * ca), 4), round(float(r_out * sa), 4), round(float(zv), 4)])
+            normals.append([0.0, 0.0, 1.0])
+            colors.append(clr)
+
+    for iz in range(n_z - 1):
+        ri0, ri1 = base_inner + iz * n_th, base_inner + (iz + 1) * n_th
+        ro0, ro1 = base_outer + iz * n_th, base_outer + (iz + 1) * n_th
+        for j in range(n_th):
+            jn = (j + 1) % n_th
+            faces.append([ri0 + j, ri1 + j, ri0 + jn])
+            faces.append([ri0 + jn, ri1 + j, ri1 + jn])
+            faces.append([ro0 + j, ro0 + jn, ro1 + j])
+            faces.append([ro0 + jn, ro1 + jn, ro1 + j])
+
+    for j in range(n_th):
+        jn = (j + 1) % n_th
+        bi0, bi1 = base_inner + j, base_inner + jn
+        bo0, bo1 = base_outer + j, base_outer + jn
+        faces.append([bi0, bi1, bo0])
+        faces.append([bi1, bo1, bo0])
+        ti0 = base_inner + (n_z - 1) * n_th + j
+        ti1 = base_inner + (n_z - 1) * n_th + jn
+        to0 = base_outer + (n_z - 1) * n_th + j
+        to1 = base_outer + (n_z - 1) * n_th + jn
+        faces.append([ti0, to0, ti1])
+        faces.append([ti1, to0, to1])
+
+    # Circumferential toroid manifold bands
+    for z_ring, r_ring in [(-0.72, 0.58), (0.20, 0.36), (0.52, 0.44)]:
+        ring_angles = np.linspace(0.0, 2.0 * math.pi, 25)
+        pts = [(r_ring * math.cos(a), r_ring * math.sin(a), z_ring) for a in ring_angles]
+        _add_tube_along_curve(verts, faces, colors, normals, pts, [0.038] * 25, [0.55] * 25, n_sides=12, cap_ends=True)
+
+    _add_thruster_accessories(verts, faces, colors, normals, r_ring_tube=0.048)
+    smooth_n = _smooth_normals(verts, faces)
+    return verts, faces, colors, smooth_n
+
+
+build_scen_04_stage_4_mesh = build_scen_04_mesh
+
+
+def build_scen_04_stages(
+    raw_fields: Optional[Dict[str, np.ndarray]] = None,
+    grid_shape: Tuple[int, int, int] = (32, 24, 24),
+    v_budget: float = 0.30,
+    thermal_delta_t: Any = 1200.0,
+) -> List[Dict[str, Any]]:
+    """
+    Construct the 4-stage progressive sequence (S1 -> S2 -> S3 -> S4) for Scenario 04:
+    - S1 (V=1.00): Heavy Forging Blank with Open Hot-Gas Bore
+    - S2 (V=0.66): Coarse Carved Envelope (Rao Parabolic Nozzle Shroud)
+    - S3 (V=0.44): Fenestrated Shell (Recessed Throat Jacket & Truss Gimbal)
+    - S4 (V=0.30): Converged Bionic Hybrid (CuCrZr Liner + 16 Helical Channels)
+    """
+    t_out = _scalar_thermal_delta_t(thermal_delta_t)
+    if raw_fields is None:
+        raw_fields = build_scen_04_fields(
+            grid_shape=grid_shape,
+            v_budget=v_budget,
+            thermal_delta_t=t_out,
+        )
+
+    Z, Y, X = grid_shape
+    z_coords = np.linspace(-0.84, 0.70, Z)
+    r_coords = np.linspace(0.0, 0.85, X)
+
+    # Stage 1 2D slice: heavy forging blank profile with central bore
+    rho_s1_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        r_in, _ = r_delaval_contour(float(zv))
+        r_out = 0.60 + 0.08 * ((zv - (-0.84)) / 1.54)
+        for xi, xv in enumerate(r_coords):
+            if xv < r_in:
+                row.append(0.0)
+            elif xv <= r_out:
+                row.append(1.0)
+            else:
+                row.append(1.0 if (abs(zv - 0.56) < 0.06 and xv <= 0.76) else 0.0)
+        rho_s1_2d.append(row)
+
+    # Stage 2 2D slice: turned Rao parabolic shell profile
+    rho_s2_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        r_in, _ = r_delaval_contour(float(zv))
+        r_out = r_in + 0.14 + 0.05 * math.exp(-((zv - 0.20) / 0.28) ** 2)
+        for xi, xv in enumerate(r_coords):
+            if xv < r_in:
+                row.append(0.0)
+            elif xv <= r_out:
+                row.append(1.0)
+            else:
+                row.append(1.0 if (abs(zv - 0.56) < 0.05 and xv <= 0.75) else 0.0)
+        rho_s2_2d.append(row)
+
+    # Stage 3 2D slice: fenestrated jacket profile
+    rho_s3_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        r_in, _ = r_delaval_contour(float(zv))
+        r_out = r_in + 0.082 + 0.025 * math.exp(-((zv - 0.20) / 0.28) ** 2)
+        for xi, xv in enumerate(r_coords):
+            if xv < r_in:
+                row.append(0.0)
+            elif xv <= r_out:
+                row.append(1.0)
+            else:
+                row.append(1.0 if (abs(zv - 0.56) < 0.04 and xv <= 0.74) else 0.0)
+        rho_s3_2d.append(row)
+
+    # Stage 4 2D slice: converged bionic hybrid
+    rho_s4_2d = [[round(float(val), 4) for val in row] for row in np.max(raw_fields["rho"], axis=1)]
+
+    v1, f1, c1, n1 = build_scen_04_stage_1_mesh()
+    v2, f2, c2, n2 = build_scen_04_stage_2_mesh()
+    v3, f3, c3, n3 = build_scen_04_stage_3_mesh()
+    v4, f4, c4, n4 = build_scen_04_mesh(raw_fields["rho"], raw_fields["vm"], thermal_delta_t=t_out)
+
+    def pack_mesh(v, f, c, n):
+        return {
+            "vertices": [[round(float(coord), 4) for coord in pt] for pt in v],
+            "faces": f,
+            "colors": [[round(float(coord), 4) for coord in clr] for clr in c],
+            "normals": [[round(float(coord), 4) for coord in nrm] for nrm in n],
+        }
+
+    return [
+        {
+            "stage_id": "stage_1_fresh_cad",
+            "label": "STAGE 1: Heavy Forging Blank (V=1.00)",
+            "iter": 0,
+            "volume_fraction": 1.00,
+            "mesh": pack_mesh(v1, f1, c1, n1),
+            "rho_2d_slice": rho_s1_2d,
+        },
+        {
+            "stage_id": "stage_2_coarse_envelope",
+            "label": "STAGE 2: Rao Parabolic Shroud (V=0.66)",
+            "iter": 20,
+            "volume_fraction": 0.66,
+            "mesh": pack_mesh(v2, f2, c2, n2),
+            "rho_2d_slice": rho_s2_2d,
+        },
+        {
+            "stage_id": "stage_3_fenestrated_shell",
+            "label": "STAGE 3: Fenestrated Shell & Gimbal (V=0.44)",
+            "iter": 40,
+            "volume_fraction": 0.44,
+            "mesh": pack_mesh(v3, f3, c3, n3),
+            "rho_2d_slice": rho_s3_2d,
+        },
+        {
+            "stage_id": "stage_4_bionic_hybrid",
+            "label": "STAGE 4: Converged Bionic Hybrid (V=0.30)",
+            "iter": 60,
+            "volume_fraction": float(v_budget),
+            "mesh": pack_mesh(v4, f4, c4, n4),
+            "rho_2d_slice": rho_s4_2d,
+        },
+    ]
+
+
 def build_scen_04_data(
     grid_shape: Tuple[int, int, int] = (32, 24, 24),
     v_budget: float = 0.30,
@@ -1330,7 +1699,8 @@ def build_scen_04_data(
     Build complete Scenario 04 (`04_regenerative_thruster_gimbal_thermo`) dictionary.
 
     Returns a `ScenarioPayloadDict` (subclass of `dict`) containing:
-    - `mesh`: `{vertices, faces, colors, normals}`
+    - `stages`: List of 4 progressive stage dicts (S1..S4)
+    - `mesh`: `{vertices, faces, colors, normals}` (points to Stage 4 bionic hybrid)
     - `fields_b64`: Base64-encoded uint8 3D scalar fields for WebGL2 studio
     - Raw 3D numpy arrays accessible via `data["rho"]`, `data["vm"]`, `data["th"]`,
       `data["u_strain"]`, `data["curl_sal"]`, `data["fiber_angle"]`, and `data["fields"]`
@@ -1353,11 +1723,13 @@ def build_scen_04_data(
     curl_sal = raw_fields["curl_sal"]
     fiber_angle = raw_fields["fiber_angle"]
 
-    verts, faces, colors, normals = build_scen_04_mesh(
-        rho=rho,
-        vm=vm,
+    stages = build_scen_04_stages(
+        raw_fields=raw_fields,
+        grid_shape=grid_shape,
+        v_budget=v_budget,
         thermal_delta_t=t_out,
     )
+    s4_mesh = stages[3]["mesh"]
 
     supports: List[List[float]] = [
         [-0.74, 0.0, 0.56, -1.0, 0.0, 0.0],
@@ -1389,12 +1761,8 @@ def build_scen_04_data(
         "anisotropy_eps": float(anisotropy_eps),
         "thermal_delta_t": t_out,
         "fields_b64": fields_b64,
-        "mesh": {
-            "vertices": verts,
-            "faces": faces,
-            "colors": colors,
-            "normals": normals,
-        },
+        "stages": stages,
+        "mesh": s4_mesh,
         "supports": supports,
         "force": force_info,
         "baselines": build_scen_04_baselines(v_budget=v_budget),

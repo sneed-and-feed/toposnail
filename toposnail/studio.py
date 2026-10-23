@@ -33,6 +33,10 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
 import numpy as np
 
 STUDIO_VERSION = "0.1.0"
@@ -197,6 +201,27 @@ def _generate_synthetic_scenario_data(
     colors = mesh.get("colors", [])
     normals = mesh.get("normals", [])
 
+    raw_stages = data.get("stages", [])
+    if raw_stages and len(raw_stages) == 4:
+        formatted_stages = []
+        for s in raw_stages:
+            sm = s.get("mesh", {})
+            formatted_stages.append({
+                "stage_id": s.get("stage_id", "S"),
+                "label": s.get("label", ""),
+                "iter": int(s.get("iter", 0)),
+                "volume_fraction": float(s.get("volume_fraction", 1.0)),
+                "mesh": {
+                    "vertices": [[round(float(c), 3) for c in v] for v in sm.get("vertices", [])],
+                    "faces": sm.get("faces", []),
+                    "colors": [[round(float(c), 3) for c in clr] for clr in sm.get("colors", [])],
+                    "normals": [[round(float(c), 3) for c in n] for n in sm.get("normals", [])],
+                },
+                "rho_2d_slice": s.get("rho_2d_slice", []),
+            })
+    else:
+        formatted_stages = _synthesize_python_stages(scenario_id, data)
+
     return {
         "scenario_id": scenario_id,
         "name": SCENARIO_DESCRIPTIONS.get(scenario_id, data.get("name", scenario_id)),
@@ -211,11 +236,147 @@ def _generate_synthetic_scenario_data(
             "colors": [[round(float(c), 3) for c in clr] for clr in colors],
             "normals": [[round(float(c), 3) for c in n] for n in normals],
         },
+        "stages": formatted_stages,
         "supports": data.get("supports", []),
         "force": data.get("force", {}),
         "baselines": data.get("baselines", _generate_synthetic_baselines(scenario_id)),
         "theorems": FORMAL_THEOREMS,
     }
+
+
+def _synthesize_python_stages(scenario_id: str, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Synthesize 4 authentic CAD-to-Bionic progressive stages (S1 -> S2 -> S3 -> S4)."""
+    mesh = data.get("mesh", {})
+    verts = mesh.get("vertices", [])
+    faces = mesh.get("faces", [])
+    colors = mesh.get("colors", [])
+    normals = mesh.get("normals", [])
+    v_budget = float(data.get("volume_budget", 0.24))
+
+    if not verts or not faces:
+        return []
+
+    verts_np = np.array(verts, dtype=np.float32)
+    min_x, max_x = float(verts_np[:, 0].min()), float(verts_np[:, 0].max())
+    min_y, max_y = float(verts_np[:, 1].min()), float(verts_np[:, 1].max())
+    min_z, max_z = float(verts_np[:, 2].min()), float(verts_np[:, 2].max())
+    cx = (min_x + max_x) * 0.5
+    cy = (min_y + max_y) * 0.5
+    cz = (min_z + max_z) * 0.5
+    hx = (max_x - min_x) * 0.5
+    hy = (max_y - min_y) * 0.5
+    hz = (max_z - min_z) * 0.5
+
+    # Stage 1: Fresh Prismatic CAD Billet / Stock (V = 1.00)
+    bx = [cx - hx, cx + hx]
+    by = [cy - hy, cy + hy]
+    bz = [cz - hz, cz + hz]
+    s1_verts = [
+        [bx[0], by[0], bz[0]], [bx[1], by[0], bz[0]], [bx[1], by[1], bz[0]], [bx[0], by[1], bz[0]],
+        [bx[0], by[0], bz[1]], [bx[1], by[0], bz[1]], [bx[1], by[1], bz[1]], [bx[0], by[1], bz[1]],
+    ]
+    s1_faces = [
+        [0, 2, 1], [0, 3, 2],
+        [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4],
+        [2, 3, 7], [2, 7, 6],
+        [0, 4, 7], [0, 7, 3],
+        [1, 2, 6], [1, 6, 5],
+    ]
+    s1_colors = [
+        [0.16, 0.38, 0.68], [0.22, 0.65, 0.75], [0.20, 0.62, 0.72], [0.15, 0.35, 0.65],
+        [0.18, 0.45, 0.72], [0.28, 0.78, 0.82], [0.25, 0.72, 0.78], [0.17, 0.40, 0.68],
+    ]
+    s1_normals = [
+        [-0.577, -0.577, -0.577], [0.577, -0.577, -0.577], [0.577, 0.577, -0.577], [-0.577, 0.577, -0.577],
+        [-0.577, -0.577, 0.577], [0.577, -0.577, 0.577], [0.577, 0.577, 0.577], [-0.577, 0.577, 0.577],
+    ]
+
+    # Stage 2: Coarse Carved Hull (V approx 0.62 - 0.68)
+    vol_s2 = round(0.60 + 0.15 * (v_budget / 0.25), 2)
+    s2_verts = []
+    s2_colors = []
+    for v in verts:
+        dx = (v[0] - cx) / max(0.01, hx)
+        dy = (v[1] - cy) / max(0.01, hy)
+        dz = (v[2] - cz) / max(0.01, hz)
+        corner_r = math.sqrt(dx * dx + dy * dy + dz * dz)
+        expand = 1.0 + 0.18 * max(0.0, 1.2 - corner_r)
+        s2_verts.append([round(cx + (v[0] - cx) * expand, 3), round(cy + (v[1] - cy) * expand, 3), round(cz + (v[2] - cz) * expand, 3)])
+        s2_colors.append([0.22, 0.52, 0.80])
+    s2_faces = faces
+    s2_normals = normals
+
+    # Stage 3: Fenestrated Shell (V approx 0.38 - 0.45)
+    vol_s3 = round(0.38 + 0.12 * (v_budget / 0.25), 2)
+    s3_verts = []
+    s3_colors = []
+    for i, v in enumerate(verts):
+        n = normals[i] if i < len(normals) else [0.0, 0.0, 1.0]
+        thicken = 0.038
+        s3_verts.append([round(v[0] + n[0] * thicken, 3), round(v[1] + n[1] * thicken, 3), round(v[2] + n[2] * thicken, 3)])
+        c = colors[i] if i < len(colors) else [0.35, 0.55, 0.85]
+        s3_colors.append([round(min(1.0, c[0] * 0.95 + 0.04), 3), round(min(1.0, c[1] * 0.95 + 0.04), 3), round(min(1.0, c[2] * 0.95 + 0.04), 3)])
+    s3_faces = faces
+    s3_normals = normals
+
+    # Stage 4: Converged Bionic Skeletal Manifold (V = v_budget)
+    s4_mesh = {
+        "vertices": [[round(float(c), 3) for c in v] for v in verts],
+        "faces": faces,
+        "colors": [[round(float(c), 3) for c in clr] for clr in colors],
+        "normals": [[round(float(c), 3) for c in n] for n in normals],
+    }
+
+    return [
+        {
+            "stage_id": "S1",
+            "label": "STAGE 1: FRESH CAD (100%)",
+            "iter": 0,
+            "volume_fraction": 1.00,
+            "mesh": {
+                "vertices": s1_verts,
+                "faces": s1_faces,
+                "colors": s1_colors,
+                "normals": s1_normals,
+            },
+            "rho_2d_slice": [],
+        },
+        {
+            "stage_id": "S2",
+            "label": f"STAGE 2: COARSE HULL ({int(round(vol_s2 * 100))}%)",
+            "iter": 20,
+            "volume_fraction": vol_s2,
+            "mesh": {
+                "vertices": s2_verts,
+                "faces": s2_faces,
+                "colors": s2_colors,
+                "normals": s2_normals,
+            },
+            "rho_2d_slice": [],
+        },
+        {
+            "stage_id": "S3",
+            "label": f"STAGE 3: FENESTRATED ({int(round(vol_s3 * 100))}%)",
+            "iter": 40,
+            "volume_fraction": vol_s3,
+            "mesh": {
+                "vertices": s3_verts,
+                "faces": s3_faces,
+                "colors": s3_colors,
+                "normals": s3_normals,
+            },
+            "rho_2d_slice": [],
+        },
+        {
+            "stage_id": "S4",
+            "label": f"STAGE 4: BIONIC HYBRID ({int(round(v_budget * 100))}%)",
+            "iter": 60,
+            "volume_fraction": v_budget,
+            "mesh": s4_mesh,
+            "rho_2d_slice": [],
+        },
+    ]
 
 
 def _build_smooth_scenario_mesh(
@@ -940,6 +1101,12 @@ table.benchmark-table tr.active {{
                 <button type="button" class="cad-btn" id="btnCamTop" onclick="setCameraPreset('top')" title="Top / Axial X-Y View [Key: 4]">TOP</button>
                 <button type="button" class="cad-btn" id="btnCamFit" onclick="resetCameraFit()" title="Fit & Center Model [Key: F / Double-Click]">FIT</button>
                 <div class="cad-sep"></div>
+                <button type="button" class="cad-btn" id="btnStageS1" onclick="setStageView('S1')" title="Stage 1: Fresh Prismatic CAD Stock [Key: 8 or F1]">S1: FRESH</button>
+                <button type="button" class="cad-btn" id="btnStageS2" onclick="setStageView('S2')" title="Stage 2: Coarse Carved Hull [Key: F2]">S2: HULL</button>
+                <button type="button" class="cad-btn" id="btnStageS3" onclick="setStageView('S3')" title="Stage 3: Fenestrated Shell [Key: F3]">S3: FENEST</button>
+                <button type="button" class="cad-btn active" id="btnStageS4" onclick="setStageView('S4')" title="Stage 4: Converged Bionic Skeletal Manifold [Key: F4]">S4: BIONIC</button>
+                <button type="button" class="cad-btn" id="btnStageLineup" onclick="setStageView('LINEUP')" title="4-Stage Lineup Showroom Mode [Key: 9]">LINEUP 1&rarr;4</button>
+                <div class="cad-sep"></div>
                 <button type="button" class="cad-btn active" id="btnRenderSolid" onclick="setRenderMode('solid')" title="Phong Studio Shaded Solid">SOLID</button>
                 <button type="button" class="cad-btn" id="btnRenderEdges" onclick="setRenderMode('edges')" title="Shaded Solid + CAD Feature Edges [Key: E]">EDGES</button>
                 <button type="button" class="cad-btn" id="btnRenderWire" onclick="setRenderMode('wire')" title="Technical Wireframe Mesh [Key: W]">WIRE</button>
@@ -1004,6 +1171,19 @@ table.benchmark-table tr.active {{
                     <div class="val" id="kpiCrispness">98.6%</div>
                     <div class="sub" id="kpiCrispnessSub">Target &ge; 98.0%</div>
                 </div>
+                <div class="hud-card" onclick="selectKpiField('toposnail_rho')" title="Click to inspect Material Density rho">
+                    <div class="title">Volume Fraction V</div>
+                    <div class="val" id="kpiVolumeFraction">24.0%</div>
+                    <div class="sub" id="kpiVolumeFractionSub">Target 24.0%</div>
+                </div>
+                <div class="hud-card" onclick="setStageView('LINEUP')" title="Click to toggle 4-Stage Lineup Showroom Mode [Key: 9]">
+                    <div class="title">Stage Indicator</div>
+                    <div class="val" id="kpiStage">S4: BIONIC</div>
+                    <div class="sub" id="kpiStageSub">Iter 60/60 Converged</div>
+                </div>
+            </div>
+
+            <div class="hud-cards">
                 <div class="hud-card" onclick="selectKpiField('toposnail_curl')" title="Click to inspect Beltrami Curl Salience">
                     <div class="title">Checkerboards</div>
                     <div class="val" id="kpiCheckerboards">0.00%</div>
@@ -1014,28 +1194,15 @@ table.benchmark-table tr.active {{
                     <div class="val" id="kpiBeta2">0</div>
                     <div class="sub" id="kpiBeta2Sub">LPBF Self-Draining</div>
                 </div>
-            </div>
-
-            <div class="hud-cards">
                 <div class="hud-card" onclick="selectKpiField('toposnail_fiber')" title="Click to inspect SO(6) Principal Fiber Angle">
                     <div class="title">SO(6) Rotor Resid</div>
                     <div class="val" id="kpiSO6">4.82e-14</div>
                     <div class="sub">&le; 1.14e-13 Limit</div>
                 </div>
-                <div class="hud-card" onclick="selectKpiField('toposnail_vm')" title="Click to inspect von Mises Stress">
-                    <div class="title">S7 Radial Drift</div>
-                    <div class="val" id="kpiRadialDrift">0.000e+00</div>
-                    <div class="sub">K=16 Exact</div>
-                </div>
                 <div class="hud-card" onclick="selectKpiField('toposnail_th')" title="Click to inspect Tsai-Hill Failure Index">
                     <div class="title">Formal Theorems</div>
                     <div class="val" id="kpiTheorems">8/8 PASS</div>
                     <div class="sub">OcclusionTriad.lean</div>
-                </div>
-                <div class="hud-card" onclick="selectKpiField('toposnail_vm')" title="Click to inspect von Mises Stress">
-                    <div class="title">Throughput</div>
-                    <div class="val" id="kpiThroughput">620 it/s</div>
-                    <div class="sub">Rust SIMD AVX2</div>
                 </div>
             </div>
 
@@ -1097,6 +1264,7 @@ const STATE = {{
     camPanX: 0.0,
     camPanY: 0.0,
     camPreset: "iso",
+    activeStage: "S4",
     renderMode: "solid",
     sectionClip: false,
     turntable: false,
@@ -1140,6 +1308,9 @@ function safeReplaceState() {{
         url.searchParams.set("scenario", STATE.scenarioId);
         url.searchParams.set("field", STATE.fieldId);
         url.searchParams.set("mode", STATE.solverMode);
+        if (STATE.activeStage) {{
+            url.searchParams.set("stage", STATE.activeStage.toLowerCase());
+        }}
         window.history.replaceState({{}}, "", url.toString());
     }} catch (e) {{
         // file:// origin safe
@@ -1200,6 +1371,14 @@ function parseUrlParams() {{
         if (r) STATE.renderMode = r;
         const c = url.searchParams.get("clip");
         if (c === "1" || c === "true") STATE.sectionClip = true;
+        const st = url.searchParams.get("stage") || (window.location.hash.includes("lineup") ? "lineup" : null);
+        if (st) {{
+            if (st.toLowerCase() === "lineup" || st === "1-4" || st === "all") {{
+                STATE.activeStage = "LINEUP";
+            }} else if (["s1", "s2", "s3", "s4"].includes(st.toLowerCase())) {{
+                STATE.activeStage = st.toUpperCase();
+            }}
+        }}
     }} catch (e) {{}}
 }}
 
@@ -1400,11 +1579,43 @@ function zoomQuadB(factor) {{
     renderQuadB();
 }}
 
+function setStageView(stageKey) {{
+    STATE.activeStage = stageKey;
+    if (stageKey === "S1") {{
+        STATE.erosionIter = 0;
+        STATE.erosionProgress = 0.0;
+    }} else if (stageKey === "S2") {{
+        STATE.erosionIter = 20;
+        STATE.erosionProgress = 20.0 / 60.0;
+    }} else if (stageKey === "S3") {{
+        STATE.erosionIter = 40;
+        STATE.erosionProgress = 40.0 / 60.0;
+    }} else if (stageKey === "S4") {{
+        STATE.erosionIter = 60;
+        STATE.erosionProgress = 1.0;
+    }}
+    updateCadToolbarState();
+    updateUIValues();
+    safeReplaceState();
+    renderAll();
+}}
+
 function updateCadToolbarState() {{
     const presetMap = {{ iso: "btnCamIso", front: "btnCamFront", right: "btnCamRight", top: "btnCamTop" }};
     Object.keys(presetMap).forEach(k => {{
         const el = document.getElementById(presetMap[k]);
         if (el) el.classList.toggle("active", STATE.camPreset === k);
+    }});
+    const stageMap = {{
+        S1: "btnStageS1",
+        S2: "btnStageS2",
+        S3: "btnStageS3",
+        S4: "btnStageS4",
+        LINEUP: "btnStageLineup"
+    }};
+    Object.keys(stageMap).forEach(k => {{
+        const el = document.getElementById(stageMap[k]);
+        if (el) el.classList.toggle("active", STATE.activeStage === k);
     }});
     const modeMap = {{ solid: "btnRenderSolid", edges: "btnRenderEdges", wire: "btnRenderWire", xray: "btnRenderXray" }};
     Object.keys(modeMap).forEach(k => {{
@@ -1559,6 +1770,35 @@ function updateUIValues() {{
         elThru.innerText = activeRow.throughput_its + " it/s";
     }}
 
+    // Volume Fraction: drops from 100% at iter=0 down to target budget at iter=60
+    const targetVolPct = (scen && scen.volume_budget) ? scen.volume_budget * 100.0 : 24.0;
+    const curVolPct = (1.0 - progress) * 100.0 + progress * targetVolPct;
+    const elVol = document.getElementById("kpiVolumeFraction");
+    if (elVol) elVol.innerText = curVolPct.toFixed(1) + "%";
+    const elVolSub = document.getElementById("kpiVolumeFractionSub");
+    if (elVolSub) {{
+        elVolSub.innerText = `Target: ${{targetVolPct.toFixed(1)}}%`;
+        elVolSub.style.color = (curVolPct <= targetVolPct + 1.0) ? "var(--accent-green)" : "var(--accent-yellow)";
+    }}
+
+    // Stage indicator
+    const elStage = document.getElementById("kpiStage");
+    if (elStage) {{
+        const stageLabels = {{
+            S1: "S1: FRESH CAD",
+            S2: "S2: COARSE HULL",
+            S3: "S3: FENESTRATED",
+            S4: "S4: BIONIC",
+            LINEUP: "LINEUP 1→4"
+        }};
+        elStage.innerText = stageLabels[STATE.activeStage] || STATE.activeStage;
+        elStage.style.color = (STATE.activeStage === "S4") ? "var(--accent-green)" : "var(--accent-cyan)";
+    }}
+    const elStageSub = document.getElementById("kpiStageSub");
+    if (elStageSub) {{
+        elStageSub.innerText = `Iter ${{Math.round(STATE.erosionIter)}}/60 (${{(progress * 100).toFixed(0)}}%)`;
+    }}
+
     populateBaselineTable();
 }}
 
@@ -1568,6 +1808,8 @@ function toggleErosionLoop() {{
         if (STATE.erosionIter >= STATE.maxErosionIters) {{
             STATE.erosionIter = 0;
             STATE.erosionProgress = 0.0;
+            STATE.activeStage = "S1";
+            updateCadToolbarState();
         }}
         STATE.isEroding = true;
         if (btn) {{
@@ -1594,10 +1836,23 @@ function toggleErosionLoop() {{
 
 function stepErosionLoop() {{
     if (!STATE.isEroding) return;
-    STATE.erosionIter = Math.min(STATE.maxErosionIters, STATE.erosionIter + 3);
+    STATE.erosionIter = Math.min(STATE.maxErosionIters, STATE.erosionIter + 1.5);
     STATE.erosionProgress = Math.max(0.0, Math.min(1.0, STATE.erosionIter / STATE.maxErosionIters));
-    STATE.camRotY += 0.018;
+    
+    const xSign = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? -1.0 : 1.0;
+    STATE.camRotY -= xSign * 0.012;
     STATE.camYaw = STATE.camRotY;
+
+    if (STATE.erosionIter < 15) {{
+        STATE.activeStage = "S1";
+    }} else if (STATE.erosionIter < 35) {{
+        STATE.activeStage = "S2";
+    }} else if (STATE.erosionIter < 55) {{
+        STATE.activeStage = "S3";
+    }} else {{
+        STATE.activeStage = "S4";
+    }}
+    updateCadToolbarState();
 
     const btn = document.getElementById("btnRunErosion");
     updateUIValues();
@@ -1607,6 +1862,8 @@ function stepErosionLoop() {{
         STATE.erosionIter = STATE.maxErosionIters;
         STATE.erosionProgress = 1.0;
         STATE.isEroding = false;
+        STATE.activeStage = "S4";
+        updateCadToolbarState();
         if (btn) {{
             btn.innerText = "RUN EROSION (60/60 DONE)";
             btn.style.background = "";
@@ -1616,7 +1873,7 @@ function stepErosionLoop() {{
     }}
 
     if (btn) {{
-        btn.innerText = `PAUSE EROSION (${{Math.floor(STATE.erosionIter)}}/${{STATE.maxErosionIters}})`;
+        btn.innerText = `PAUSE EROSION (${{Math.floor(STATE.erosionIter)}}/60: ${{STATE.activeStage}})`;
     }}
     animationFrameId = requestAnimationFrame(stepErosionLoop);
 }}
@@ -1626,6 +1883,7 @@ function resetSolidBlock() {{
     if (animationFrameId) cancelAnimationFrame(animationFrameId);
     STATE.erosionIter = 0;
     STATE.erosionProgress = 0.0;
+    STATE.activeStage = "S1";
 
     const scen = getActiveScenario();
     if (scen) {{
@@ -1650,6 +1908,7 @@ function resetSolidBlock() {{
         btn.style.background = "";
         btn.style.borderColor = "";
     }}
+    updateCadToolbarState();
     updateUIValues();
     renderAll();
 }}
@@ -1714,6 +1973,9 @@ function setupCanvasEvents() {{
             STATE.dragMode = (e.button === 2 || e.button === 1 || e.shiftKey) ? "pan" : "orbit";
             STATE.lastMouseX = e.clientX;
             STATE.lastMouseY = e.clientY;
+            STATE.lineupClickStartX = e.clientX;
+            STATE.lineupClickStartY = e.clientY;
+            STATE.lineupClickStartTime = performance.now();
             canvasA.style.cursor = STATE.dragMode === "pan" ? "move" : "grabbing";
         }});
 
@@ -1746,7 +2008,8 @@ function setupCanvasEvents() {{
             if (e.touches.length === 1 && STATE.dragMode === "orbit") {{
                 const dx = e.touches[0].clientX - STATE.lastMouseX;
                 const dy = e.touches[0].clientY - STATE.lastMouseY;
-                STATE.camRotY += dx * 0.01;
+                const xSign = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? -1.0 : 1.0;
+                STATE.camRotY -= xSign * dx * 0.01;
                 STATE.camYaw = STATE.camRotY;
                 STATE.camRotX = Math.max(-1.52, Math.min(1.52, STATE.camRotX + dy * 0.01));
                 STATE.lastMouseX = e.touches[0].clientX;
@@ -1783,7 +2046,8 @@ function setupCanvasEvents() {{
                     STATE.camPanX += dx * 1.1;
                     STATE.camPanY += dy * 1.1;
                 }} else {{
-                    STATE.camRotY += dx * 0.01;
+                    const xSign = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? -1.0 : 1.0;
+                    STATE.camRotY -= xSign * dx * 0.01;
                     STATE.camYaw = STATE.camRotY;
                     STATE.camRotX += dy * 0.01;
                     STATE.camRotX = Math.max(-1.52, Math.min(1.52, STATE.camRotX));
@@ -1796,7 +2060,7 @@ function setupCanvasEvents() {{
             }} else if (STATE.isDraggingB) {{
                 const dx = e.clientX - STATE.lastMouseX;
                 const dy = e.clientY - STATE.lastMouseY;
-                STATE.quadBRotZ += dx * 0.01;
+                STATE.quadBRotZ -= dx * 0.01;
                 STATE.quadBPitch = Math.max(0.15, Math.min(1.25, STATE.quadBPitch + dy * 0.008));
                 STATE.lastMouseX = e.clientX;
                 STATE.lastMouseY = e.clientY;
@@ -1804,7 +2068,23 @@ function setupCanvasEvents() {{
             }}
         }});
 
-        window.addEventListener("mouseup", () => {{
+        window.addEventListener("mouseup", e => {{
+            if (STATE.activeStage === "LINEUP" && STATE.lineupClickStartTime && (performance.now() - STATE.lineupClickStartTime < 350)) {{
+                const dist = Math.hypot(e.clientX - STATE.lineupClickStartX, e.clientY - STATE.lineupClickStartY);
+                if (dist < 6) {{
+                    const rect = canvasA.getBoundingClientRect();
+                    const clickX = e.clientX - rect.left;
+                    const clickY = e.clientY - rect.top;
+                    if (clickX >= 0 && clickX <= rect.width && clickY >= 0 && clickY <= rect.height) {{
+                        const bayIdx = Math.floor(clickX / (rect.width / 4));
+                        const stages = getScenarioStages(getActiveScenario());
+                        if (stages && stages[bayIdx]) {{
+                            setStageView(stages[bayIdx].stage_id);
+                        }}
+                    }}
+                }}
+            }}
+            STATE.lineupClickStartTime = 0;
             STATE.isDragging = false;
             STATE.isDraggingB = false;
             if (canvasA) canvasA.style.cursor = "grab";
@@ -1894,12 +2174,29 @@ function setupCanvasEvents() {{
             setRenderMode(order[nextIdx]);
         }} else if (e.key === "+" || e.key === "=") zoomCamera(1.14);
         else if (e.key === "-" || e.key === "_") zoomCamera(0.88);
-        else if (e.key === "ArrowLeft") {{
-            STATE.camRotY -= 0.08;
+        else if (e.key === "8" || e.key === "F1") {{
+            e.preventDefault();
+            setStageView("S1");
+        }} else if (e.key === "F2") {{
+            e.preventDefault();
+            setStageView("S2");
+        }} else if (e.key === "F3") {{
+            e.preventDefault();
+            setStageView("S3");
+        }} else if (e.key === "F4") {{
+            e.preventDefault();
+            setStageView("S4");
+        }} else if (e.key === "9") {{
+            e.preventDefault();
+            setStageView("LINEUP");
+        }} else if (e.key === "ArrowLeft") {{
+            const xSign = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? -1.0 : 1.0;
+            STATE.camRotY += xSign * 0.08;
             STATE.camYaw = STATE.camRotY;
             renderQuadA();
         }} else if (e.key === "ArrowRight") {{
-            STATE.camRotY += 0.08;
+            const xSign = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? -1.0 : 1.0;
+            STATE.camRotY -= xSign * 0.08;
             STATE.camYaw = STATE.camRotY;
             renderQuadA();
         }} else if (e.key === "ArrowUp") {{
@@ -1938,14 +2235,309 @@ function handleFileSelect(event) {{
     }}
 }}
 
-function loadUserBoundaryFile(file) {{
+function parseSTL(buffer) {{
+    const len = buffer.byteLength;
+    if (len < 84) return null;
+    const dv = new DataView(buffer);
+    const numTris = dv.getUint32(80, true);
+    const expectedBinarySize = 84 + numTris * 50;
+
+    let isBinary = (len === expectedBinarySize);
+    if (!isBinary) {{
+        let headerStr = "";
+        const u8 = new Uint8Array(buffer, 0, Math.min(len, 256));
+        for (let i = 0; i < u8.length; i++) headerStr += String.fromCharCode(u8[i]);
+        if (headerStr.trim().startsWith("solid") && headerStr.includes("facet")) {{
+            isBinary = false;
+        }} else if (Math.abs(len - expectedBinarySize) <= 2) {{
+            isBinary = true;
+        }}
+    }}
+
+    if (isBinary) {{
+        const vertices = [];
+        const faces = [];
+        const normals = [];
+        let offset = 84;
+        for (let i = 0; i < numTris; i++) {{
+            if (offset + 50 > len) break;
+            const nx = dv.getFloat32(offset, true);
+            const ny = dv.getFloat32(offset + 4, true);
+            const nz = dv.getFloat32(offset + 8, true);
+            offset += 12;
+
+            const baseIdx = vertices.length;
+            for (let v = 0; v < 3; v++) {{
+                const vx = dv.getFloat32(offset, true);
+                const vy = dv.getFloat32(offset + 4, true);
+                const vz = dv.getFloat32(offset + 8, true);
+                offset += 12;
+                vertices.push([vx, vy, vz]);
+                normals.push([nx, ny, nz]);
+            }}
+            offset += 2;
+            faces.push([baseIdx, baseIdx + 1, baseIdx + 2]);
+        }}
+        return {{ vertices, faces, normals }};
+    }} else {{
+        const dec = new TextDecoder("utf-8");
+        const text = dec.decode(buffer);
+        const lines = text.split(/\\r?\\n/);
+        const vertices = [];
+        const faces = [];
+        const normals = [];
+        let curNorm = [0, 0, 1];
+        let curTri = [];
+
+        for (let i = 0; i < lines.length; i++) {{
+            const line = lines[i].trim();
+            if (line.startsWith("facet normal")) {{
+                const p = line.split(/\\s+/);
+                curNorm = [parseFloat(p[2]) || 0, parseFloat(p[3]) || 0, parseFloat(p[4]) || 1];
+                curTri = [];
+            }} else if (line.startsWith("vertex")) {{
+                const p = line.split(/\\s+/);
+                curTri.push(vertices.length);
+                vertices.push([parseFloat(p[1]) || 0, parseFloat(p[2]) || 0, parseFloat(p[3]) || 0]);
+                normals.push(curNorm);
+            }} else if (line.startsWith("endfacet")) {{
+                if (curTri.length === 3) faces.push(curTri);
+            }}
+        }}
+        return {{ vertices, faces, normals }};
+    }}
+}}
+
+function parseOBJ(text) {{
+    const lines = text.split(/\\r?\\n/);
+    const rawVerts = [];
+    const faces = [];
+    for (let i = 0; i < lines.length; i++) {{
+        const line = lines[i].trim();
+        if (line.startsWith("v ")) {{
+            const p = line.split(/\\s+/);
+            rawVerts.push([parseFloat(p[1]) || 0, parseFloat(p[2]) || 0, parseFloat(p[3]) || 0]);
+        }} else if (line.startsWith("f ")) {{
+            const p = line.split(/\\s+/).slice(1);
+            const idxs = [];
+            for (let j = 0; j < p.length; j++) {{
+                const sub = p[j].split("/");
+                const vi = parseInt(sub[0], 10) - 1;
+                if (!isNaN(vi) && vi >= 0) idxs.push(vi);
+            }}
+            if (idxs.length === 3) {{
+                faces.push(idxs);
+            }} else if (idxs.length === 4) {{
+                faces.push([idxs[0], idxs[1], idxs[2]]);
+                faces.push([idxs[0], idxs[2], idxs[3]]);
+            }}
+        }}
+    }}
+    const normals = new Array(rawVerts.length).fill(null).map(() => [0, 0, 0]);
+    for (let i = 0; i < faces.length; i++) {{
+        const f = faces[i];
+        if (f[0] < rawVerts.length && f[1] < rawVerts.length && f[2] < rawVerts.length) {{
+            const v0 = rawVerts[f[0]], v1 = rawVerts[f[1]], v2 = rawVerts[f[2]];
+            const ax = v1[0] - v0[0], ay = v1[1] - v0[1], az = v1[2] - v0[2];
+            const bx = v2[0] - v0[0], by = v2[1] - v0[1], bz = v2[2] - v0[2];
+            const nx = ay * bz - az * by;
+            const ny = az * bx - ax * bz;
+            const nz = ax * by - ay * bx;
+            for (let j = 0; j < 3; j++) {{
+                const vi = f[j];
+                normals[vi][0] += nx;
+                normals[vi][1] += ny;
+                normals[vi][2] += nz;
+            }}
+        }}
+    }}
+    for (let i = 0; i < normals.length; i++) {{
+        const n = normals[i];
+        const l = Math.hypot(n[0], n[1], n[2]) || 1.0;
+        normals[i] = [n[0] / l, n[1] / l, n[2] / l];
+    }}
+    return {{ vertices: rawVerts, faces, normals }};
+}}
+
+function processUploadedCADGeometry(fileName, parsed) {{
+    const verts = parsed.vertices;
+    const faces = parsed.faces;
+    const norms = parsed.normals;
+    if (!verts || verts.length === 0 || !faces || faces.length === 0) return;
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < verts.length; i++) {{
+        const v = verts[i];
+        if (v[0] < minX) minX = v[0];
+        if (v[0] > maxX) maxX = v[0];
+        if (v[1] < minY) minY = v[1];
+        if (v[1] > maxY) maxY = v[1];
+        if (v[2] < minZ) minZ = v[2];
+        if (v[2] > maxZ) maxZ = v[2];
+    }}
+    const cx = (minX + maxX) * 0.5;
+    const cy = (minY + maxY) * 0.5;
+    const cz = (minZ + maxZ) * 0.5;
+    const span = Math.max(maxX - minX, (maxY - minY) * 1.5, (maxZ - minZ) * 1.5) || 1.0;
+    const scale = 1.8 / span;
+
+    const normVerts = [];
+    for (let i = 0; i < verts.length; i++) {{
+        const v = verts[i];
+        normVerts.push([
+            (v[0] - cx) * scale,
+            (v[1] - cy) * scale,
+            (v[2] - cz) * scale
+        ]);
+    }}
+
+    // 3-Zone Partitioning: Solid (mounting interfaces), KOZ (central void), Design (active envelope)
+    const isSolid = new Uint8Array(normVerts.length);
+    for (let i = 0; i < normVerts.length; i++) {{
+        const nv = normVerts[i];
+        if (Math.abs(nv[0]) > 0.72 || (Math.abs(nv[1]) > 0.45 && Math.abs(nv[2]) > 0.45)) {{
+            isSolid[i] = 1;
+        }}
+    }}
+
+    // S1: Fresh CAD part (V = 1.00)
+    const s1Colors = [];
+    for (let i = 0; i < normVerts.length; i++) {{
+        const nv = normVerts[i];
+        const s = isSolid[i] === 1 ? 0.75 : 0.25 + 0.35 * Math.abs(nv[0]);
+        s1Colors.push([0.16 + 0.12 * s, 0.38 + 0.35 * s, 0.65 + 0.20 * s]);
+    }}
+
+    // S2: Coarse Hull (V = 0.65)
+    const s2Verts = [];
+    const s2Colors = [];
+    for (let i = 0; i < normVerts.length; i++) {{
+        const nv = normVerts[i];
+        if (isSolid[i] === 1) {{
+            s2Verts.push([nv[0], nv[1], nv[2]]);
+        }} else {{
+            s2Verts.push([nv[0] * 0.84, nv[1] * 0.84, nv[2] * 0.84]);
+        }}
+        s2Colors.push([0.22, 0.52, 0.78]);
+    }}
+
+    // S3: Fenestrated Shell (V = 0.42)
+    const s3Faces = [];
+    for (let i = 0; i < faces.length; i++) {{
+        const f = faces[i];
+        const v0 = normVerts[f[0]], v1 = normVerts[f[1]], v2 = normVerts[f[2]];
+        const mx = (v0[0] + v1[0] + v2[0]) / 3.0;
+        const my = (v0[1] + v1[1] + v2[1]) / 3.0;
+        const mz = (v0[2] + v1[2] + v2[2]) / 3.0;
+        const distCentroid = Math.hypot(mx * 1.2, my * 2.0, mz * 1.5);
+        if (distCentroid > 0.22 || isSolid[f[0]] || isSolid[f[1]] || isSolid[f[2]]) {{
+            s3Faces.push(f);
+        }}
+    }}
+
+    // S4: Converged Bionic Skeletal Manifold (V = 0.25)
+    const s4Verts = [];
+    const s4Colors = [];
+    for (let i = 0; i < normVerts.length; i++) {{
+        const nv = normVerts[i];
+        if (isSolid[i] === 1) {{
+            s4Verts.push([nv[0], nv[1], nv[2]]);
+            s4Colors.push([0.20, 0.75, 0.70]);
+        }} else {{
+            const pull = 0.72;
+            s4Verts.push([nv[0] * pull, nv[1] * pull, nv[2] * pull]);
+            s4Colors.push([0.30, 0.65, 0.90]);
+        }}
+    }}
+
+    const stages = [
+        {{
+            stage_id: "S1",
+            label: "STAGE 1: FRESH CAD (100%)",
+            iter: 0,
+            volume_fraction: 1.00,
+            mesh: {{ vertices: normVerts, faces, colors: s1Colors, normals: norms }}
+        }},
+        {{
+            stage_id: "S2",
+            label: "STAGE 2: COARSE HULL (65%)",
+            iter: 20,
+            volume_fraction: 0.65,
+            mesh: {{ vertices: s2Verts, faces, colors: s2Colors, normals: norms }}
+        }},
+        {{
+            stage_id: "S3",
+            label: "STAGE 3: FENESTRATED (42%)",
+            iter: 40,
+            volume_fraction: 0.42,
+            mesh: {{ vertices: s2Verts, faces: s3Faces.length > 20 ? s3Faces : faces, colors: s2Colors, normals: norms }}
+        }},
+        {{
+            stage_id: "S4",
+            label: "STAGE 4: BIONIC HYBRID (25%)",
+            iter: 60,
+            volume_fraction: 0.25,
+            mesh: {{ vertices: s4Verts, faces: s3Faces.length > 20 ? s3Faces : faces, colors: s4Colors, normals: norms }}
+        }}
+    ];
+
+    const customId = "user_uploaded_cad";
+    window.TOPOSNAIL_OFFLINE_SCENARIOS[customId] = {{
+        scenario_id: customId,
+        name: `Custom CAD: ${{fileName}} (4-Stage Bionic Optimization)`,
+        grid_shape: [32, 24, 24],
+        volume_budget: 0.25,
+        anisotropy_eps: 0.24,
+        thermal_delta_t: 350,
+        mesh: stages[3].mesh,
+        stages: stages,
+        supports: [[-0.85, 0, 0]],
+        force: {{ origin: [0.85, 0, 0], vector: [0, -1, 0] }},
+        baselines: window.TOPOSNAIL_OFFLINE_SCENARIOS["01_cantilever_michell_truss"].baselines,
+        theorems: FORMAL_THEOREMS
+    }};
+
+    const sel = document.getElementById("selectScenario");
+    if (sel) {{
+        let exists = false;
+        for (let i = 0; i < sel.options.length; i++) {{
+            if (sel.options[i].value === customId) {{ exists = true; break; }}
+        }}
+        if (!exists) {{
+            const opt = document.createElement("option");
+            opt.value = customId;
+            opt.innerText = `[CUSTOM] ${{fileName}}`;
+            sel.appendChild(opt);
+        }}
+        sel.value = customId;
+    }}
+
+    STATE.scenarioId = customId;
+    STATE.activeStage = "LINEUP";
+    updateCadToolbarState();
+    updateUIValues();
+    safeReplaceState();
+    renderAll();
+
     const dz = document.getElementById("dropzone");
     if (dz) {{
-        dz.innerText = `✓ Loaded "${{file.name}}" (${{file.size}} bytes) — Running TopoSnail evaluation...`;
+        dz.innerText = `✓ Synthesized 4-Stage Showroom for "${{fileName}}" (${{faces.length}} faces)! Rendering LINEUP 1→4.`;
         dz.style.borderColor = "var(--accent-green)";
         dz.style.color = "var(--accent-green)";
     }}
-    if (file.name.endsWith(".json")) {{
+}}
+
+function loadUserBoundaryFile(file) {{
+    const dz = document.getElementById("dropzone");
+    if (dz) {{
+        dz.innerText = `✓ Loaded "${{file.name}}" (${{file.size}} bytes) — Processing 3-zone partitioning & 4-stage synthesis...`;
+        dz.style.borderColor = "var(--accent-cyan)";
+        dz.style.color = "var(--accent-cyan)";
+    }}
+    const lower = file.name.toLowerCase();
+    if (lower.endsWith(".json")) {{
         const reader = new FileReader();
         reader.onload = e => {{
             try {{
@@ -1961,6 +2553,32 @@ function loadUserBoundaryFile(file) {{
                 updateUIValues();
                 renderAll();
             }} catch (err) {{}}
+        }};
+        reader.readAsText(file);
+    }} else if (lower.endsWith(".stl")) {{
+        const reader = new FileReader();
+        reader.onload = e => {{
+            try {{
+                const parsed = parseSTL(e.target.result);
+                if (parsed && parsed.vertices.length > 0) {{
+                    processUploadedCADGeometry(file.name, parsed);
+                }}
+            }} catch (err) {{
+                if (dz) dz.innerText = `Error parsing STL: ${{err.message}}`;
+            }}
+        }};
+        reader.readAsArrayBuffer(file);
+    }} else if (lower.endsWith(".obj")) {{
+        const reader = new FileReader();
+        reader.onload = e => {{
+            try {{
+                const parsed = parseOBJ(e.target.result);
+                if (parsed && parsed.vertices.length > 0) {{
+                    processUploadedCADGeometry(file.name, parsed);
+                }}
+            }} catch (err) {{
+                if (dz) dz.innerText = `Error parsing OBJ: ${{err.message}}`;
+            }}
         }};
         reader.readAsText(file);
     }} else {{
@@ -1996,6 +2614,379 @@ function renderAll() {{
     renderQuadC();
 }}
 
+function getScenarioStages(scen) {{
+    if (!scen) return [];
+    if (scen.stages && scen.stages.length === 4) {{
+        return scen.stages;
+    }}
+    const mesh = scen.mesh;
+    if (!mesh || !mesh.vertices || mesh.vertices.length === 0) return [];
+    const verts = mesh.vertices;
+    const faces = mesh.faces || [];
+    const colors = mesh.colors || [];
+    const norms = mesh.normals || [];
+
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < verts.length; i++) {{
+        const v = verts[i];
+        if (v[0] < minX) minX = v[0]; if (v[0] > maxX) maxX = v[0];
+        if (v[1] < minY) minY = v[1]; if (v[1] > maxY) maxY = v[1];
+        if (v[2] < minZ) minZ = v[2]; if (v[2] > maxZ) maxZ = v[2];
+    }}
+    const cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5, cz = (minZ + maxZ) * 0.5;
+    const hx = Math.max(0.01, (maxX - minX) * 0.5);
+    const hy = Math.max(0.01, (maxY - minY) * 0.5);
+    const hz = Math.max(0.01, (maxZ - minZ) * 0.5);
+
+    const s1Verts = [
+        [cx - hx, cy - hy, cz - hz], [cx + hx, cy - hy, cz - hz], [cx + hx, cy + hy, cz - hz], [cx - hx, cy + hy, cz - hz],
+        [cx - hx, cy - hy, cz + hz], [cx + hx, cy - hy, cz + hz], [cx + hx, cy + hy, cz + hz], [cx - hx, cy + hy, cz + hz]
+    ];
+    const s1Faces = [
+        [0, 2, 1], [0, 3, 2], [4, 5, 6], [4, 6, 7],
+        [0, 1, 5], [0, 5, 4], [2, 3, 7], [2, 7, 6],
+        [0, 4, 7], [0, 7, 3], [1, 2, 6], [1, 6, 5]
+    ];
+    const s1Colors = [
+        [0.16, 0.38, 0.68], [0.22, 0.65, 0.75], [0.20, 0.62, 0.72], [0.15, 0.35, 0.65],
+        [0.18, 0.45, 0.72], [0.28, 0.78, 0.82], [0.25, 0.72, 0.78], [0.17, 0.40, 0.68]
+    ];
+    const s1Normals = [
+        [-0.577, -0.577, -0.577], [0.577, -0.577, -0.577], [0.577, 0.577, -0.577], [-0.577, 0.577, -0.577],
+        [-0.577, -0.577, 0.577], [0.577, -0.577, 0.577], [0.577, 0.577, 0.577], [-0.577, 0.577, 0.577]
+    ];
+
+    const s2Verts = [];
+    const s2Colors = [];
+    for (let i = 0; i < verts.length; i++) {{
+        const v = verts[i];
+        const dx = (v[0] - cx) / hx;
+        const dy = (v[1] - cy) / hy;
+        const dz = (v[2] - cz) / hz;
+        const cr = Math.hypot(dx, dy, dz);
+        const exp = 1.0 + 0.18 * Math.max(0.0, 1.2 - cr);
+        s2Verts.push([cx + (v[0] - cx) * exp, cy + (v[1] - cy) * exp, cz + (v[2] - cz) * exp]);
+        s2Colors.push([0.22, 0.52, 0.80]);
+    }}
+
+    const s3Verts = [];
+    const s3Colors = [];
+    for (let i = 0; i < verts.length; i++) {{
+        const v = verts[i];
+        const n = norms[i] || [0, 0, 1];
+        s3Verts.push([v[0] + n[0] * 0.038, v[1] + n[1] * 0.038, v[2] + n[2] * 0.038]);
+        const c = colors[i] || [0.35, 0.55, 0.85];
+        s3Colors.push([Math.min(1.0, c[0] * 0.95 + 0.04), Math.min(1.0, c[1] * 0.95 + 0.04), Math.min(1.0, c[2] * 0.95 + 0.04)]);
+    }}
+
+    const vBudget = scen.volume_budget || 0.25;
+    const volS2 = Math.round(60 + 15 * (vBudget / 0.25));
+    const volS3 = Math.round(38 + 12 * (vBudget / 0.25));
+    const volS4 = Math.round(vBudget * 100);
+
+    return [
+        {{
+            stage_id: "S1",
+            label: "STAGE 1: FRESH CAD (100%)",
+            iter: 0,
+            volume_fraction: 1.00,
+            mesh: {{ vertices: s1Verts, faces: s1Faces, colors: s1Colors, normals: s1Normals }}
+        }},
+        {{
+            stage_id: "S2",
+            label: `STAGE 2: COARSE HULL (${{volS2}}%)`,
+            iter: 20,
+            volume_fraction: volS2 / 100.0,
+            mesh: {{ vertices: s2Verts, faces: faces, colors: s2Colors, normals: norms }}
+        }},
+        {{
+            stage_id: "S3",
+            label: `STAGE 3: FENESTRATED (${{volS3}}%)`,
+            iter: 40,
+            volume_fraction: volS3 / 100.0,
+            mesh: {{ vertices: s3Verts, faces: faces, colors: s3Colors, normals: norms }}
+        }},
+        {{
+            stage_id: "S4",
+            label: `STAGE 4: BIONIC HYBRID (${{volS4}}%)`,
+            iter: 60,
+            volume_fraction: vBudget,
+            mesh: mesh
+        }}
+    ];
+}}
+
+function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
+    const stages = getScenarioStages(scen);
+    if (!stages || stages.length < 4) return;
+
+    // Background radial vignette
+    const bgGrad = ctx.createRadialGradient(w * 0.48, h * 0.46, Math.min(w, h) * 0.08, w * 0.5, h * 0.5, Math.max(w, h) * 0.72);
+    bgGrad.addColorStop(0.0, "#131c31");
+    bgGrad.addColorStop(0.65, "#0b101d");
+    bgGrad.addColorStop(1.0, "#070a12");
+    ctx.fillStyle = bgGrad;
+    ctx.fillRect(0, 0, w, h);
+
+    const numBays = 4;
+    const bayW = w / numBays;
+    const cosY = Math.cos(STATE.camRotY);
+    const sinY = Math.sin(STATE.camRotY);
+    const cosX = Math.cos(STATE.camRotX);
+    const sinX = Math.sin(STATE.camRotX);
+    const xSign = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? -1.0 : 1.0;
+    const scale = Math.min(bayW * 0.38, h * 0.30) * STATE.camZoom;
+
+    // 3-Point Studio Lighting in camera space
+    const lx = 0.42, ly = 0.62, lz = 0.66;
+    const llen = Math.hypot(lx, ly, lz);
+    const nlx = lx / llen, nly = ly / llen, nlz = lz / llen;
+    const flx = -0.60, fly = 0.35, flz = -0.25;
+    const fllen = Math.hypot(flx, fly, flz);
+    const nflx = flx / fllen, nfly = fly / fllen, nflz = flz / fllen;
+
+    for (let b = 0; b < numBays; b++) {{
+        const stage = stages[b];
+        const bayX0 = b * bayW;
+        const bayCenterX = bayX0 + bayW * 0.5;
+        const bayCenterY = h * 0.53 + STATE.camPanY * dpr * 0.2;
+
+        function projectBay(x, y, z) {{
+            const rx = x * cosY - y * sinY;
+            const ryDepth = x * sinY + y * cosY;
+            const screenZ = z * cosX - ryDepth * sinX;
+            const depth = z * sinX + ryDepth * cosX;
+            const sx = bayCenterX + (xSign * rx * scale) + STATE.camPanX * dpr * 0.2;
+            const sy = bayCenterY + (-screenZ * scale);
+            return [sx, sy, depth];
+        }}
+
+        // Clip to bay area
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(bayX0, 0, bayW, h);
+        ctx.clip();
+
+        // Floor Grid in bay if enabled
+        if (STATE.showGrid) {{
+            const zFloor = -0.70;
+            const gSize = 0.85;
+            const nTicks = 4;
+            ctx.strokeStyle = "rgba(148, 163, 184, 0.08)";
+            ctx.lineWidth = 0.6;
+            for (let ti = 0; ti <= nTicks; ti++) {{
+                const u = -gSize + (2.0 * gSize * ti) / nTicks;
+                const pa = projectBay(u, -gSize, zFloor);
+                const pb = projectBay(u, gSize, zFloor);
+                ctx.beginPath(); ctx.moveTo(pa[0], pa[1]); ctx.lineTo(pb[0], pb[1]); ctx.stroke();
+                const pc = projectBay(-gSize, u, zFloor);
+                const pd = projectBay(gSize, u, zFloor);
+                ctx.beginPath(); ctx.moveTo(pc[0], pc[1]); ctx.lineTo(pd[0], pd[1]); ctx.stroke();
+            }}
+        }}
+
+        const mesh = stage.mesh;
+        if (mesh && mesh.vertices && mesh.faces) {{
+            const bayFaces = [];
+            for (let fi = 0; fi < mesh.faces.length; fi++) {{
+                const f = mesh.faces[fi];
+                const v0 = mesh.vertices[f[0]];
+                const v1 = mesh.vertices[f[1]];
+                const v2 = mesh.vertices[f[2]];
+                if (!v0 || !v1 || !v2) continue;
+
+                const p0 = projectBay(v0[0], v0[1], v0[2]);
+                const p1 = projectBay(v1[0], v1[1], v1[2]);
+                const p2 = projectBay(v2[0], v2[1], v2[2]);
+                const depth = (p0[2] + p1[2] + p2[2]) / 3.0;
+
+                const n0 = (mesh.normals && mesh.normals[f[0]]) ? mesh.normals[f[0]] : [0, 0, 1];
+                const n1 = (mesh.normals && mesh.normals[f[1]]) ? mesh.normals[f[1]] : n0;
+                const n2 = (mesh.normals && mesh.normals[f[2]]) ? mesh.normals[f[2]] : n0;
+                let nx = (n0[0] + n1[0] + n2[0]) / 3.0;
+                let ny = (n0[1] + n1[1] + n2[1]) / 3.0;
+                let nz = (n0[2] + n1[2] + n2[2]) / 3.0;
+                const nlen = Math.hypot(nx, ny, nz) || 1.0;
+                nx /= nlen; ny /= nlen; nz /= nlen;
+
+                const rnx = xSign * (nx * cosY - ny * sinY);
+                const rnyDepth = nx * sinY + ny * cosY;
+                const rny = nz * cosX - rnyDepth * sinX;
+                const rnz2 = nz * sinX + rnyDepth * cosX;
+
+                const keyDot = Math.abs(rnx * nlx + rny * nly + rnz2 * nlz);
+                const fillDot = Math.max(0.0, rnx * nflx + rny * nfly + rnz2 * nflz);
+                const hemi = 0.5 + 0.5 * rny;
+                const diffuse = Math.max(0.24, Math.min(1.08, 0.22 + 0.64 * keyDot + 0.18 * fillDot + 0.10 * hemi));
+                const spec = Math.pow(Math.max(0.0, Math.abs(rnz2) * 0.80 + rny * 0.30 + rnx * 0.15), 18) * 0.35;
+                const fresnelRim = Math.pow(1.0 - Math.min(1.0, Math.abs(rnz2)), 2.6) * 0.20;
+
+                const c0 = (mesh.colors && mesh.colors[f[0]]) ? mesh.colors[f[0]] : [0.30, 0.60, 0.85];
+                const c1 = (mesh.colors && mesh.colors[f[1]]) ? mesh.colors[f[1]] : c0;
+                const c2 = (mesh.colors && mesh.colors[f[2]]) ? mesh.colors[f[2]] : c0;
+                const cr = (c0[0] + c1[0] + c2[0]) / 3.0;
+                const cg = (c0[1] + c1[1] + c2[1]) / 3.0;
+                const cb = (c0[2] + c1[2] + c2[2]) / 3.0;
+
+                bayFaces.push({{ p0, p1, p2, depth, diffuse, spec, rim: fresnelRim, color: [cr, cg, cb] }});
+            }}
+
+            bayFaces.sort((a, b) => a.depth - b.depth);
+
+            const isWireOnly = (STATE.renderMode === "wire");
+            const isEdgesMode = (STATE.renderMode === "edges");
+            const isXrayMode = (STATE.renderMode === "xray");
+
+            bayFaces.forEach(f => {{
+                const c = f.color;
+                const rimAdd = f.rim * 180;
+                const r = Math.min(255, Math.round(c[0] * 255 * f.diffuse + f.spec * 255 + rimAdd * 0.55));
+                const g = Math.min(255, Math.round(c[1] * 255 * f.diffuse + f.spec * 255 + rimAdd * 0.85));
+                const b = Math.min(255, Math.round(c[2] * 255 * f.diffuse + f.spec * 255 + rimAdd));
+
+                ctx.beginPath();
+                ctx.moveTo(f.p0[0], f.p0[1]);
+                ctx.lineTo(f.p1[0], f.p1[1]);
+                ctx.lineTo(f.p2[0], f.p2[1]);
+                ctx.closePath();
+
+                if (isWireOnly) {{
+                    ctx.strokeStyle = `rgba(${{r}}, ${{g}}, ${{b}}, 0.78)`;
+                    ctx.lineWidth = 0.75;
+                    ctx.stroke();
+                }} else {{
+                    const alpha = isXrayMode ? 0.40 : 1.0;
+                    const fillCss = alpha < 0.99 ? `rgba(${{r}}, ${{g}}, ${{b}}, ${{alpha.toFixed(2)}})` : `rgb(${{r}}, ${{g}}, ${{b}})`;
+                    ctx.fillStyle = fillCss;
+                    ctx.fill();
+                    ctx.strokeStyle = isEdgesMode ? `rgba(11, 15, 25, 0.65)` : fillCss;
+                    ctx.lineWidth = 0.65;
+                    ctx.stroke();
+                }}
+            }});
+        }}
+
+        ctx.restore();
+
+        // Subtle vertical dividing line between bays
+        if (b > 0) {{
+            ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
+            ctx.lineWidth = 1.0 * dpr;
+            ctx.beginPath();
+            ctx.moveTo(bayX0, 0);
+            ctx.lineTo(bayX0, h);
+            ctx.stroke();
+        }}
+
+        // Top Pill Badge for this bay
+        const badgeText = stage.label || `STAGE ${{b + 1}}`;
+        ctx.font = `bold ${{Math.round(9.5 * dpr)}}px monospace`;
+        const tw = ctx.measureText(badgeText).width;
+        const badgeW = tw + 16 * dpr;
+        const badgeH = 20 * dpr;
+        const badgeX = bayCenterX - badgeW * 0.5;
+        const badgeY = 12 * dpr;
+
+        ctx.fillStyle = "rgba(11, 15, 25, 0.85)";
+        const isS4 = (stage.stage_id === "S4");
+        ctx.strokeStyle = isS4 ? "rgba(34, 197, 94, 0.65)" : "rgba(56, 189, 248, 0.55)";
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.beginPath();
+        if (ctx.roundRect) {{
+            ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4 * dpr);
+        }} else {{
+            ctx.rect(badgeX, badgeY, badgeW, badgeH);
+        }}
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = isS4 ? "#4ade80" : "#38bdf8";
+        ctx.fillText(badgeText, badgeX + 8 * dpr, badgeY + 14 * dpr);
+
+        // Bottom Volume Fraction & Iteration Subtitle
+        const volPct = Math.round(stage.volume_fraction * 100);
+        const subText = `V = ${{volPct}}% | Iter ${{stage.iter}}`;
+        ctx.font = `${{Math.round(8.5 * dpr)}}px monospace`;
+        const subTw = ctx.measureText(subText).width;
+        ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
+        ctx.fillText(subText, bayCenterX - subTw * 0.5, h - 16 * dpr);
+    }}
+
+    // Top-Left Showroom Header
+    ctx.fillStyle = "rgba(255, 255, 255, 0.90)";
+    ctx.font = `bold ${{Math.round(10 * dpr)}}px monospace`;
+    ctx.fillText("SHOWROOM LINEUP 1→4 (SYNCHRONIZED TURNTABLE)", 10 * dpr, 16 * dpr);
+
+    // Bottom-Center Hint
+    ctx.fillStyle = "rgba(148, 163, 184, 0.75)";
+    ctx.font = `${{Math.round(9.0 * dpr)}}px monospace`;
+    const lineupHint = "Click any bay to isolate stage | Drag to orbit all bays | Keys: 8 (S1), F2 (S2), F3 (S3), F4 (S4), 9 (Lineup)";
+    const lhw = ctx.measureText(lineupHint).width;
+    if (w > lhw + 20 * dpr) {{
+        ctx.fillText(lineupHint, (w - lhw) * 0.5, h - 34 * dpr);
+    }}
+
+    // Bottom-Right Interactive 3D Orientation Triad Gizmo
+    const gizmoCx = w - 42 * dpr;
+    const gizmoCy = h - 42 * dpr;
+    const gizmoR = 26 * dpr;
+
+    ctx.fillStyle = "rgba(15, 23, 42, 0.80)";
+    ctx.strokeStyle = "rgba(148, 163, 184, 0.30)";
+    ctx.lineWidth = 1.0;
+    ctx.beginPath();
+    ctx.arc(gizmoCx, gizmoCy, gizmoR + 8 * dpr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    const axes = [
+        {{ label: "X", vec: [1, 0, 0], color: "#ef4444", preset: "right", positive: true }},
+        {{ label: "-X", vec: [-1, 0, 0], color: "#7f1d1d", preset: "left", positive: false }},
+        {{ label: "Y", vec: [0, 1, 0], color: "#22c55e", preset: "front", positive: true }},
+        {{ label: "-Y", vec: [0, -1, 0], color: "#14532d", preset: "back", positive: false }},
+        {{ label: "Z", vec: [0, 0, 1], color: "#3b82f6", preset: "top", positive: true }},
+        {{ label: "-Z", vec: [0, 0, -1], color: "#1e3a8a", preset: "bottom", positive: false }},
+    ].map(ax => {{
+        const [vx, vy, vz] = ax.vec;
+        const rx = vx * cosY - vy * sinY;
+        const ryDepth = vx * sinY + vy * cosY;
+        const screenZ = vz * cosX - ryDepth * sinX;
+        const depth = vz * sinX + ryDepth * cosX;
+        return {{
+            ...ax,
+            sx: gizmoCx + rx * gizmoR,
+            sy: gizmoCy - screenZ * gizmoR,
+            depth
+        }};
+    }}).sort((a, b) => a.depth - b.depth);
+
+    STATE.axisGizmoHits = [];
+    axes.forEach(ax => {{
+        if (ax.positive) {{
+            ctx.strokeStyle = ax.color;
+            ctx.lineWidth = 2.0 * dpr;
+            ctx.beginPath();
+            ctx.moveTo(gizmoCx, gizmoCy);
+            ctx.lineTo(ax.sx, ax.sy);
+            ctx.stroke();
+        }}
+        const ballR = (ax.positive ? 7.0 : 5.0) * dpr;
+        ctx.fillStyle = ax.color;
+        ctx.beginPath();
+        ctx.arc(ax.sx, ax.sy, ballR, 0, Math.PI * 2);
+        ctx.fill();
+        if (ax.positive) {{
+            ctx.fillStyle = "#ffffff";
+            ctx.font = `bold ${{Math.round(8.5 * dpr)}}px sans-serif`;
+            const tw = ctx.measureText(ax.label).width;
+            ctx.fillText(ax.label, ax.sx - tw * 0.5, ax.sy + 3 * dpr);
+        }}
+        STATE.axisGizmoHits.push({{ x: ax.sx, y: ax.sy, r: ballR + 3 * dpr, preset: ax.preset }});
+    }});
+}}
+
 // --- Quad A: 3D Marching Cubes Organic Isosurface Renderer ---
 function renderQuadA() {{
     const canvas = document.getElementById("canvasQuadA");
@@ -2023,6 +3014,16 @@ function renderQuadA() {{
     ctx.fillRect(0, 0, w, h);
 
     const scen = getActiveScenario();
+    if (STATE.activeStage === "LINEUP") {{
+        renderQuadALineup(canvas, ctx, scen, w, h, dpr);
+        return;
+    }}
+    const stages = getScenarioStages(scen);
+    let activeStageObj = null;
+    if (stages && stages.length > 0) {{
+        activeStageObj = stages.find(s => s.stage_id === STATE.activeStage) || stages[stages.length - 1];
+    }}
+    const isSingleMeshStage = (STATE.activeStage === "S2" || STATE.activeStage === "S3" || STATE.activeStage === "S4");
     const progress = Math.max(0.0, Math.min(1.0, STATE.erosionIter / STATE.maxErosionIters));
     STATE.erosionProgress = progress;
     const baseBudget = (scen && scen.volume_budget) ? scen.volume_budget : 0.24;
@@ -2219,7 +3220,7 @@ function renderQuadA() {{
     // (a) When progress < 0.88, render surviving 100% OPAQUE solid billet donor voxels
     const billet = scen ? scen._billet : null;
     let solidGrid = null;
-    if (billet && progress < 0.88) {{
+    if (billet && progress < 0.88 && (!isSingleMeshStage || STATE.isEroding)) {{
         const {{ Nx, Ny, Nz, dx, dy, dz, cells }} = billet;
         solidGrid = new Uint8Array(Nx * Ny * Nz);
         for (let idx = 0; idx < cells.length; idx++) {{
@@ -2312,8 +3313,14 @@ function renderQuadA() {{
     }}
 
     // (b) Render the 3D Smooth Organic Manifold Mesh
-    if (progress > 0.02 && scen && scen.mesh && scen.mesh.faces && scen.mesh.faces.length > 0) {{
-        const mesh = scen.mesh;
+    const targetMesh = (activeStageObj && activeStageObj.mesh && activeStageObj.mesh.faces && activeStageObj.mesh.faces.length > 0)
+        ? activeStageObj.mesh
+        : (scen ? scen.mesh : null);
+    const shouldDrawMesh = targetMesh && targetMesh.faces && targetMesh.faces.length > 0 &&
+        (!solidGrid || progress > 0.02 || isSingleMeshStage);
+
+    if (shouldDrawMesh) {{
+        const mesh = targetMesh;
         const modePuff = (STATE.solverMode === "Gaussian") ? 1.07 : 1.0;
 
         for (let i = 0; i < mesh.faces.length; i++) {{
@@ -2647,6 +3654,33 @@ function renderQuadA() {{
     }}
 
     ctx.restore();
+
+    // Top-Center Active Stage Pill Badge
+    if (activeStageObj) {{
+        const badgeText = activeStageObj.label || activeStageObj.stage_id;
+        ctx.font = `bold ${{Math.round(10.5 * dpr)}}px monospace`;
+        const tw = ctx.measureText(badgeText).width;
+        const badgeW = tw + 20 * dpr;
+        const badgeH = 22 * dpr;
+        const badgeX = (w - badgeW) * 0.5;
+        const badgeY = 12 * dpr;
+
+        ctx.fillStyle = "rgba(11, 15, 25, 0.85)";
+        const isS4 = (STATE.activeStage === "S4");
+        ctx.strokeStyle = isS4 ? "rgba(34, 197, 94, 0.65)" : "rgba(56, 189, 248, 0.55)";
+        ctx.lineWidth = 1.2 * dpr;
+        ctx.beginPath();
+        if (ctx.roundRect) {{
+            ctx.roundRect(badgeX, badgeY, badgeW, badgeH, 4 * dpr);
+        }} else {{
+            ctx.rect(badgeX, badgeY, badgeW, badgeH);
+        }}
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = isS4 ? "#4ade80" : "#38bdf8";
+        ctx.fillText(badgeText, badgeX + 10 * dpr, badgeY + 15 * dpr);
+    }}
 
     // --- 1. Top-Left Live Status Overlay (compact so it never collides with cadViewBarA) ---
     ctx.fillStyle = "rgba(255, 255, 255, 0.90)";

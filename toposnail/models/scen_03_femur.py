@@ -483,9 +483,107 @@ def _project_trabecular_control_points(
     return px, pz
 
 
+def _add_watertight_box(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    x0: float, x1: float,
+    y0: float, y1: float,
+    z0: float, z1: float,
+    clr: List[float],
+) -> None:
+    """Watertight 2-manifold rectangular box with outward normals and 0 boundary edges."""
+    base_idx = len(verts)
+    corners = np.array([
+        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
+    ], dtype=np.float64)
+    center = np.array([(x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5])
+    v_dirs = corners - center
+    v_norms = v_dirs / (np.linalg.norm(v_dirs, axis=1, keepdims=True) + 1e-12)
+    for i in range(8):
+        verts.append([round(float(corners[i, 0]), 4), round(float(corners[i, 1]), 4), round(float(corners[i, 2]), 4)])
+        normals.append([round(float(v_norms[i, 0]), 4), round(float(v_norms[i, 1]), 4), round(float(v_norms[i, 2]), 4)])
+        colors.append(clr)
+    box_faces = [
+        [0, 3, 2], [0, 2, 1],
+        [4, 5, 6], [4, 6, 7],
+        [0, 4, 7], [0, 7, 3],
+        [1, 2, 6], [1, 6, 5],
+        [0, 1, 5], [0, 5, 4],
+        [3, 7, 6], [3, 6, 2],
+    ]
+    for bf in box_faces:
+        faces.append([base_idx + bf[0], base_idx + bf[1], base_idx + bf[2]])
+
+
+def _add_joint_sphere(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    center: Tuple[float, float, float],
+    radius: float,
+    stress_val: float,
+    n_lat: int = 10,
+    n_lon: int = 16,
+) -> None:
+    """Watertight 2-manifold joint sphere with outward normals."""
+    clr = _turbo_colormap(float(np.clip(stress_val, 0.02, 0.98)))
+    idx_north = len(verts)
+    verts.append([round(float(center[0]), 4), round(float(center[1]), 4), round(float(center[2] + radius), 4)])
+    normals.append([0.0, 0.0, 1.0])
+    colors.append(clr)
+
+    rings: List[List[int]] = []
+    for i in range(1, n_lat):
+        theta = math.pi * i / float(n_lat)
+        st, ct = math.sin(theta), math.cos(theta)
+        ring: List[int] = []
+        for j in range(n_lon):
+            phi = 2.0 * math.pi * j / float(n_lon)
+            ux = st * math.cos(phi)
+            uy = st * math.sin(phi)
+            uz = ct
+            vx = center[0] + radius * ux
+            vy = center[1] + radius * uy
+            vz = center[2] + radius * uz
+            idx_v = len(verts)
+            verts.append([round(float(vx), 4), round(float(vy), 4), round(float(vz), 4)])
+            normals.append([round(float(ux), 4), round(float(uy), 4), round(float(uz), 4)])
+            colors.append(clr)
+            ring.append(idx_v)
+        rings.append(ring)
+
+    idx_south = len(verts)
+    verts.append([round(float(center[0]), 4), round(float(center[1]), 4), round(float(center[2] - radius), 4)])
+    normals.append([0.0, 0.0, -1.0])
+    colors.append(clr)
+
+    first_ring = rings[0]
+    for j in range(n_lon):
+        jn = (j + 1) % n_lon
+        faces.append([idx_north, first_ring[j], first_ring[jn]])
+
+    for i in range(len(rings) - 1):
+        r0 = rings[i]
+        r1 = rings[i + 1]
+        for j in range(n_lon):
+            jn = (j + 1) % n_lon
+            faces.append([r0[j], r1[j], r1[jn]])
+            faces.append([r0[j], r1[jn], r0[jn]])
+
+    last_ring = rings[-1]
+    for j in range(n_lon):
+        jn = (j + 1) % n_lon
+        faces.append([idx_south, last_ring[jn], last_ring[j]])
+
+
 def build_scen_03_mesh(
     rho: Optional[np.ndarray] = None,
     vm: Optional[np.ndarray] = None,
+    trabecular_scale: float = 1.0,
 ) -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
     Construct the 100% watertight 2-manifold (`boundary_edges == 0`, `non_manifold_edges == 0`)
@@ -1001,7 +1099,8 @@ def build_scen_03_mesh(
             faces.append([c_end, r_last + j, r_last + jn])
 
     comp_fan, tens_bundle, sec_arches, head_cross = _get_wolff_trabecular_groups()
-    for y_off, r_sc in [(0.013, 1.0), (0.032, 0.86)]:
+    for y_off, r_sc_base in [(0.013, 1.0), (0.032, 0.86)]:
+        r_sc = r_sc_base * trabecular_scale
         for idx_c, traj in enumerate(comp_fan):
             r_list = [0.0108 * r_sc * (1.06 - 0.02 * k) for k in range(len(traj))]
             s_list = [float(np.clip(0.80 + 0.032 * k - 0.012 * idx_c, 0.74, 0.96)) for k in range(len(traj))]
@@ -1074,6 +1173,257 @@ def build_scen_03_mesh(
         normals.append([round(float(row[0]) / nl, 4), round(float(row[1]) / nl, 4), round(float(row[2]) / nl, 4)])
 
     return verts, faces, colors, normals
+
+
+def build_scen_03_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 1: Fresh CAD Stock Envelope (Solid Proximal Femur Anatomical Billet).
+    Solid uncarved blank covering femoral head, neck, trochanters, and distal shaft.
+    """
+    from toposnail.models.scen_01_cantilever import _add_spline_tube
+
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def sc(s: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
+
+    # Flat base collar pad at z in [-0.820, -0.760]
+    _add_watertight_box(verts, faces, colors, normals, -0.02, 0.30, -0.14, 0.14, -0.820, -0.760, sc(0.18))
+
+    # Distal shaft stock
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.14, 0.0, -0.76), (0.15, 0.0, -0.48), (0.16, 0.0, -0.18), (0.17, 0.0, 0.10)],
+        [0.140, 0.138, 0.142, 0.155],
+        [0.22, 0.25, 0.28, 0.32],
+        subdiv=5, n_sides=18, ry_scale=0.92, rz_scale=1.0, cap_ends=True
+    )
+
+    # Metaphyseal intertrochanteric bulk
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.17, 0.0, 0.08), (0.18, 0.0, 0.28), (0.12, 0.0, 0.42)],
+        [0.150, 0.158, 0.150],
+        [0.32, 0.38, 0.44],
+        subdiv=4, n_sides=18, cap_ends=True
+    )
+
+    # Greater trochanter stock
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.18, 0.0, 0.26), (0.28, 0.0, 0.42), (0.34, 0.0, 0.52)],
+        [0.140, 0.138, 0.125],
+        [0.36, 0.42, 0.48],
+        subdiv=4, n_sides=16, ry_scale=0.90, rz_scale=1.05, cap_ends=True
+    )
+    _add_joint_sphere(verts, faces, colors, normals, (0.32, 0.0, 0.50), 0.135, 0.46, n_lat=10, n_lon=16)
+
+    # Femoral neck stock
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.12, 0.0, 0.38), (-0.08, 0.0, 0.48), (-0.28, 0.0, 0.58), (-0.44, 0.0, 0.65)],
+        [0.142, 0.138, 0.135, 0.140],
+        [0.45, 0.55, 0.65, 0.72],
+        subdiv=5, n_sides=18, ry_scale=0.92, rz_scale=1.05, cap_ends=True
+    )
+
+    # Femoral head stock sphere
+    _add_joint_sphere(verts, faces, colors, normals, (-0.46, 0.0, 0.66), 0.175, 0.78, n_lat=12, n_lon=20)
+
+    # Lesser trochanter bulge
+    _add_joint_sphere(verts, faces, colors, normals, (0.05, -0.09, -0.16), 0.088, 0.30, n_lat=8, n_lon=14)
+
+    return verts, faces, colors, normals
+
+
+def build_scen_03_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 2: Coarse Carved Diaphysis / Waisted Medullary Canal.
+    Features anatomical waisting of diaphysis and neck, contoured trochanters, and head sphere.
+    """
+    from toposnail.models.scen_01_cantilever import _add_spline_tube
+
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def sc(s: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
+
+    # Flat base collar pad at z in [-0.820, -0.770]
+    _add_watertight_box(verts, faces, colors, normals, 0.01, 0.27, -0.11, 0.11, -0.820, -0.770, sc(0.20))
+
+    # Waisted distal shaft
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.14, 0.0, -0.77), (0.15, 0.0, -0.48), (0.16, 0.0, -0.18), (0.17, 0.0, 0.10)],
+        [0.118, 0.105, 0.108, 0.125],
+        [0.24, 0.28, 0.32, 0.36],
+        subdiv=5, n_sides=18, ry_scale=0.92, rz_scale=1.0, cap_ends=True
+    )
+
+    # Metaphyseal intertrochanteric bulk
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.17, 0.0, 0.08), (0.18, 0.0, 0.28), (0.12, 0.0, 0.40)],
+        [0.120, 0.128, 0.120],
+        [0.34, 0.40, 0.46],
+        subdiv=4, n_sides=18, cap_ends=True
+    )
+
+    # Greater trochanter
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.18, 0.0, 0.26), (0.28, 0.0, 0.42), (0.34, 0.0, 0.50)],
+        [0.115, 0.110, 0.100],
+        [0.38, 0.44, 0.50],
+        subdiv=4, n_sides=16, ry_scale=0.90, rz_scale=1.05, cap_ends=True
+    )
+    _add_joint_sphere(verts, faces, colors, normals, (0.32, 0.0, 0.49), 0.110, 0.48, n_lat=10, n_lon=16)
+
+    # Femoral neck
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.12, 0.0, 0.38), (-0.08, 0.0, 0.48), (-0.28, 0.0, 0.58), (-0.44, 0.0, 0.65)],
+        [0.118, 0.112, 0.108, 0.114],
+        [0.48, 0.58, 0.68, 0.76],
+        subdiv=5, n_sides=18, ry_scale=0.92, rz_scale=1.05, cap_ends=True
+    )
+
+    # Femoral head
+    _add_joint_sphere(verts, faces, colors, normals, (-0.46, 0.0, 0.66), 0.150, 0.82, n_lat=12, n_lon=20)
+
+    # Lesser trochanter
+    _add_joint_sphere(verts, faces, colors, normals, (0.05, -0.09, -0.16), 0.070, 0.32, n_lat=8, n_lon=14)
+
+    return verts, faces, colors, normals
+
+
+def build_scen_03_stage_3_mesh(
+    rho: Optional[np.ndarray] = None,
+    vm: Optional[np.ndarray] = None,
+) -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 3: Fenestrated Shell (Coronal Cutaway & Ward's Window Opened).
+    Features polished coronal cutaway rim, recessed endosteal cavity, closed distal collar,
+    and thick primary Wolff's law trabecular arches.
+    """
+    return build_scen_03_mesh(rho=rho, vm=vm, trabecular_scale=1.65)
+
+
+build_scen_03_stage_4_mesh = build_scen_03_mesh
+
+
+def build_scen_03_stages(
+    raw_fields: Optional[Dict[str, np.ndarray]] = None,
+    grid_shape: Tuple[int, int, int] = (32, 24, 24),
+    v_budget: float = 0.28,
+) -> List[Dict[str, Any]]:
+    """
+    Construct the 4-stage progressive sequence (S1 -> S2 -> S3 -> S4) for Scenario 03:
+    - S1 (V=1.00): Fresh CAD Stock Envelope (Solid Proximal Femur Anatomical Billet)
+    - S2 (V=0.68): Coarse Carved Diaphysis / Waisted Medullary Canal
+    - S3 (V=0.45): Fenestrated Shell (Coronal Cutaway & Ward's Window Opened)
+    - S4 (V=0.28): Converged Bionic Hybrid (Wolff's Law Cortical-Cancellous Dual-Layer Arches)
+    """
+    if raw_fields is None:
+        raw_fields = build_scen_03_fields(grid_shape=grid_shape, v_budget=v_budget)
+
+    Z, Y, X = grid_shape
+    z_coords = np.linspace(-0.82, 0.80, Z)
+    x_coords = np.linspace(-0.65, 0.48, X)
+
+    # Stage 1 2D slice: solid billet
+    rho_s1_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            if zv < -0.20:
+                row.append(1.0 if (0.00 <= xv <= 0.28) else 0.0)
+            elif zv <= 0.50:
+                row.append(1.0 if (-0.20 <= xv <= 0.44) else 0.0)
+            else:
+                row.append(1.0 if (-0.60 <= xv <= 0.35) else 0.0)
+        rho_s1_2d.append(row)
+
+    # Stage 2 2D slice: waisted diaphysis profile
+    rho_s2_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            if zv < -0.20:
+                in_shaft = (0.03 <= xv <= 0.25)
+                in_canal = (0.10 <= xv <= 0.18) and (zv < 0.0)
+                row.append(0.08 if in_canal else (1.0 if in_shaft else 0.0))
+            elif zv <= 0.50:
+                row.append(1.0 if (-0.15 <= xv <= 0.40) else 0.0)
+            else:
+                row.append(1.0 if (-0.56 <= xv <= 0.28) else 0.0)
+        rho_s2_2d.append(row)
+
+    # Stage 3 2D slice: coronal cutaway profile with thick trabeculae
+    rho_s3_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            val_s4 = float(np.max(raw_fields["rho"][zi, :, xi]))
+            row.append(round(min(1.0, val_s4 * 1.45), 4))
+        rho_s3_2d.append(row)
+
+    # Stage 4 2D slice: converged cortical-cancellous field
+    rho_s4_2d = [[round(float(val), 4) for val in row] for row in np.max(raw_fields["rho"], axis=1)]
+
+    v1, f1, c1, n1 = build_scen_03_stage_1_mesh()
+    v2, f2, c2, n2 = build_scen_03_stage_2_mesh()
+    v3, f3, c3, n3 = build_scen_03_stage_3_mesh(raw_fields["rho"], raw_fields["vm"])
+    v4, f4, c4, n4 = build_scen_03_mesh(raw_fields["rho"], raw_fields["vm"])
+
+    def pack_mesh(v, f, c, n):
+        return {
+            "vertices": [[round(float(coord), 4) for coord in pt] for pt in v],
+            "faces": f,
+            "colors": [[round(float(coord), 4) for coord in clr] for clr in c],
+            "normals": [[round(float(coord), 4) for coord in nrm] for nrm in n],
+        }
+
+    return [
+        {
+            "stage_id": "stage_1_fresh_cad",
+            "label": "STAGE 1: Fresh Anatomical Billet (V=1.00)",
+            "iter": 0,
+            "volume_fraction": 1.00,
+            "mesh": pack_mesh(v1, f1, c1, n1),
+            "rho_2d_slice": rho_s1_2d,
+        },
+        {
+            "stage_id": "stage_2_coarse_envelope",
+            "label": "STAGE 2: Waisted Diaphysis & Canal (V=0.68)",
+            "iter": 20,
+            "volume_fraction": 0.68,
+            "mesh": pack_mesh(v2, f2, c2, n2),
+            "rho_2d_slice": rho_s2_2d,
+        },
+        {
+            "stage_id": "stage_3_fenestrated_shell",
+            "label": "STAGE 3: Fenestrated Cutaway & Trabeculae (V=0.45)",
+            "iter": 40,
+            "volume_fraction": 0.45,
+            "mesh": pack_mesh(v3, f3, c3, n3),
+            "rho_2d_slice": rho_s3_2d,
+        },
+        {
+            "stage_id": "stage_4_bionic_hybrid",
+            "label": "STAGE 4: Converged Bionic Hybrid (V=0.28)",
+            "iter": 60,
+            "volume_fraction": float(v_budget),
+            "mesh": pack_mesh(v4, f4, c4, n4),
+            "rho_2d_slice": rho_s4_2d,
+        },
+    ]
 
 
 def get_scen_03_baselines() -> List[Dict[str, Any]]:
@@ -1168,7 +1518,12 @@ def build_scen_03_data(
     curl_sal = raw_fields["curl_sal"]
     fiber_angle = raw_fields["fiber_angle"]
 
-    verts, faces, colors, normals = build_scen_03_mesh(rho, vm)
+    stages = build_scen_03_stages(
+        raw_fields=raw_fields,
+        grid_shape=grid_shape,
+        v_budget=v_budget,
+    )
+    s4_mesh = stages[3]["mesh"]
 
     # 2 Clamped Distal Diaphysis Cortical Supports at z = -0.82 (centered under medial & lateral shaft cortex)
     supports: List[List[float]] = [
@@ -1203,12 +1558,8 @@ def build_scen_03_data(
         "anisotropy_eps": float(anisotropy_eps),
         "thermal_delta_t": float(np.max(thermal_delta_t)) if isinstance(thermal_delta_t, np.ndarray) else float(thermal_delta_t),
         "fields_b64": fields_b64,
-        "mesh": {
-            "vertices": verts,
-            "faces": faces,
-            "colors": colors,
-            "normals": normals,
-        },
+        "stages": stages,
+        "mesh": s4_mesh,
         "supports": supports,
         "force": force_info,
         "baselines": get_scen_03_baselines(),

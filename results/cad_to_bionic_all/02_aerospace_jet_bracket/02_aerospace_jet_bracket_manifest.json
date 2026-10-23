@@ -1,0 +1,90 @@
+[
+  {
+    "stage_num": 1,
+    "stage_id": "stage_1_fresh_cad",
+    "label": "STAGE 1: Fresh CNC Billet (V=1.00)",
+    "iter": 0,
+    "volume_fraction": 1.0,
+    "stl": "02_aerospace_jet_bracket_s1_stage_1_fresh_cad.stl",
+    "obj": "02_aerospace_jet_bracket_s1_stage_1_fresh_cad.obj",
+    "audit": {
+      "V": 2568,
+      "E": 7584,
+      "F": 5056,
+      "chi": 40,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 0.00045961992196290417,
+      "min_dot": 0.40741172573572615,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 2,
+    "stage_id": "stage_2_coarse_envelope",
+    "label": "STAGE 2: Coarse Swept Shroud (V=0.65)",
+    "iter": 20,
+    "volume_fraction": 0.65,
+    "stl": "02_aerospace_jet_bracket_s2_stage_2_coarse_envelope.stl",
+    "obj": "02_aerospace_jet_bracket_s2_stage_2_coarse_envelope.obj",
+    "audit": {
+      "V": 8144,
+      "E": 24270,
+      "F": 16180,
+      "chi": 54,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 7.685191872165257e-05,
+      "min_dot": 0.4441173204013851,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 3,
+    "stage_id": "stage_3_fenestrated_shell",
+    "label": "STAGE 3: Fenestrated Shell (V=0.42)",
+    "iter": 40,
+    "volume_fraction": 0.42,
+    "stl": "02_aerospace_jet_bracket_s3_stage_3_fenestrated_shell.stl",
+    "obj": "02_aerospace_jet_bracket_s3_stage_3_fenestrated_shell.obj",
+    "audit": {
+      "V": 8236,
+      "E": 24552,
+      "F": 16368,
+      "chi": 52,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 0.0001148433218262064,
+      "min_dot": 0.4416112421409127,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 4,
+    "stage_id": "stage_4_bionic_hybrid",
+    "label": "STAGE 4: Converged Bionic Hybrid (V=0.25)",
+    "iter": 60,
+    "volume_fraction": 0.25,
+    "stl": "02_aerospace_jet_bracket_s4_stage_4_bionic_hybrid.stl",
+    "obj": "02_aerospace_jet_bracket_s4_stage_4_bionic_hybrid.obj",
+    "audit": {
+      "V": 8236,
+      "E": 24552,
+      "F": 16368,
+      "chi": 52,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 9.523662709687277e-05,
+      "min_dot": 0.439073639511366,
+      "is_manifold_2d": true
+    }
+  }
+]

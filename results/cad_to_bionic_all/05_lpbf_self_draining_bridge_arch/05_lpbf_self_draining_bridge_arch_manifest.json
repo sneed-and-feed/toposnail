@@ -1,0 +1,90 @@
+[
+  {
+    "stage_num": 1,
+    "stage_id": "stage_1_fresh_cad",
+    "label": "STAGE 1: FRESH CAD (100%)",
+    "iter": 0,
+    "volume_fraction": 1.0,
+    "stl": "05_lpbf_self_draining_bridge_arch_s1_stage_1_fresh_cad.stl",
+    "obj": "05_lpbf_self_draining_bridge_arch_s1_stage_1_fresh_cad.obj",
+    "audit": {
+      "V": 6146,
+      "E": 18432,
+      "F": 12288,
+      "chi": 2,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 0.0005906240969899557,
+      "min_dot": 0.73883411861719,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 2,
+    "stage_id": "stage_2_coarse_envelope",
+    "label": "STAGE 2: COARSE HULL",
+    "iter": 20,
+    "volume_fraction": 0.6579999999999999,
+    "stl": "05_lpbf_self_draining_bridge_arch_s2_stage_2_coarse_envelope.stl",
+    "obj": "05_lpbf_self_draining_bridge_arch_s2_stage_2_coarse_envelope.obj",
+    "audit": {
+      "V": 6146,
+      "E": 18432,
+      "F": 12288,
+      "chi": 2,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 0.00035933575378344074,
+      "min_dot": 0.5748150733900266,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 3,
+    "stage_id": "stage_3_fenestrated_shell",
+    "label": "STAGE 3: FENESTRATED",
+    "iter": 40,
+    "volume_fraction": 0.42999999999999994,
+    "stl": "05_lpbf_self_draining_bridge_arch_s3_stage_3_fenestrated_shell.stl",
+    "obj": "05_lpbf_self_draining_bridge_arch_s3_stage_3_fenestrated_shell.obj",
+    "audit": {
+      "V": 6146,
+      "E": 18432,
+      "F": 12288,
+      "chi": 2,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 0.00027310470860131275,
+      "min_dot": 0.4793695354752675,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 4,
+    "stage_id": "stage_4_bionic_hybrid",
+    "label": "STAGE 4: BIONIC HYBRID",
+    "iter": 60,
+    "volume_fraction": 0.24,
+    "stl": "05_lpbf_self_draining_bridge_arch_s4_stage_4_bionic_hybrid.stl",
+    "obj": "05_lpbf_self_draining_bridge_arch_s4_stage_4_bionic_hybrid.obj",
+    "audit": {
+      "V": 12976,
+      "E": 37836,
+      "F": 25224,
+      "chi": 364,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 6.15948341560757e-05,
+      "min_dot": 0.4513137094175147,
+      "is_manifold_2d": true
+    }
+  }
+]

@@ -511,15 +511,286 @@ def build_scen_02_fields(
     }
 
 
+def _add_watertight_box(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    x0: float, x1: float,
+    y0: float, y1: float,
+    z0: float, z1: float,
+    clr: List[float],
+) -> None:
+    """Watertight 2-manifold rectangular box with outward normals and 0 boundary edges."""
+    base_idx = len(verts)
+    corners = np.array([
+        [x0, y0, z0], [x1, y0, z0], [x1, y1, z0], [x0, y1, z0],
+        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1],
+    ], dtype=np.float64)
+    center = np.array([(x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5])
+    v_dirs = corners - center
+    v_norms = v_dirs / (np.linalg.norm(v_dirs, axis=1, keepdims=True) + 1e-12)
+    for i in range(8):
+        verts.append([round(float(corners[i, 0]), 3), round(float(corners[i, 1]), 3), round(float(corners[i, 2]), 3)])
+        normals.append([round(float(v_norms[i, 0]), 3), round(float(v_norms[i, 1]), 3), round(float(v_norms[i, 2]), 3)])
+        colors.append(clr)
+    box_faces = [
+        # -Z (normal (0,0,-1))
+        [0, 3, 2], [0, 2, 1],
+        # +Z (normal (0,0,+1))
+        [4, 5, 6], [4, 6, 7],
+        # -X (normal (-1,0,0))
+        [0, 4, 7], [0, 7, 3],
+        # +X (normal (+1,0,0))
+        [1, 2, 6], [1, 6, 5],
+        # -Y (normal (0,-1,0))
+        [0, 1, 5], [0, 5, 4],
+        # +Y (normal (0,+1,0))
+        [3, 7, 6], [3, 6, 2],
+    ]
+    for bf in box_faces:
+        faces.append([base_idx + bf[0], base_idx + bf[1], base_idx + bf[2]])
+
+
+def _add_tube_along_curve(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    pts: List[Tuple[float, float, float]],
+    radii: List[float],
+    stress_vals: List[float],
+    n_sides: int = 14,
+    ry_scale: float = 1.0,
+    rz_scale: float = 1.0,
+    cap_start: bool = False,
+    cap_end: bool = False,
+) -> None:
+    def stress_color(ratio: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
+
+    n_pts = len(pts)
+    if n_pts < 2:
+        return
+    pts_arr = np.array(pts, dtype=np.float64)
+    tangents = np.zeros_like(pts_arr)
+    tangents[0] = pts_arr[1] - pts_arr[0]
+    tangents[-1] = pts_arr[-1] - pts_arr[-2]
+    for i in range(1, n_pts - 1):
+        tangents[i] = pts_arr[i + 1] - pts_arr[i - 1]
+    t_lens = np.linalg.norm(tangents, axis=1, keepdims=True) + 1e-12
+    tangents = tangents / t_lens
+
+    base_idx = len(verts)
+    angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
+
+    t0 = tangents[0]
+    up = np.array([0.0, 0.0, 1.0]) if abs(t0[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
+    b1 = np.cross(t0, up)
+    b1 = b1 / (np.linalg.norm(b1) + 1e-12)
+    b2 = np.cross(t0, b1)
+
+    for i in range(n_pts):
+        ti = tangents[i]
+        b1 = b1 - np.dot(b1, ti) * ti
+        b1_norm = np.linalg.norm(b1)
+        if b1_norm < 1e-6:
+            up_alt = np.array([0.0, 1.0, 0.0]) if abs(ti[1]) < 0.85 else np.array([1.0, 0.0, 0.0])
+            b1 = np.cross(ti, up_alt)
+            b1_norm = np.linalg.norm(b1) + 1e-12
+        b1 = b1 / b1_norm
+        b2 = np.cross(ti, b1)
+
+        r = radii[i]
+        clr = stress_color(stress_vals[i])
+        p = pts_arr[i]
+        for a in angles:
+            ca, sa = math.cos(a), math.sin(a)
+            n_vec = ca * b1 * ry_scale + sa * b2 * rz_scale
+            n_raw = (ca / max(0.1, ry_scale)) * b1 + (sa / max(0.1, rz_scale)) * b2
+            n_unit = n_raw / (np.linalg.norm(n_raw) + 1e-12)
+            v_pos = p + r * n_vec
+            verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
+            normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
+            colors.append(clr)
+
+    for i in range(n_pts - 1):
+        row0 = base_idx + i * n_sides
+        row1 = base_idx + (i + 1) * n_sides
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            faces.append([row0 + j, row0 + jn, row1 + jn])
+            faces.append([row0 + j, row1 + jn, row1 + j])
+
+    if cap_start:
+        c_start_idx = len(verts)
+        verts.append([float(pts_arr[0][0]), float(pts_arr[0][1]), float(pts_arr[0][2])])
+        normals.append([float(-tangents[0][0]), float(-tangents[0][1]), float(-tangents[0][2])])
+        colors.append(stress_color(stress_vals[0]))
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            faces.append([c_start_idx, base_idx + jn, base_idx + j])
+
+    if cap_end:
+        c_end_idx = len(verts)
+        last_row = base_idx + (n_pts - 1) * n_sides
+        verts.append([float(pts_arr[-1][0]), float(pts_arr[-1][1]), float(pts_arr[-1][2])])
+        normals.append([float(tangents[-1][0]), float(tangents[-1][1]), float(tangents[-1][2])])
+        colors.append(stress_color(stress_vals[-1]))
+        for j in range(n_sides):
+            jn = (j + 1) % n_sides
+            faces.append([c_end_idx, last_row + j, last_row + jn])
+
+
+def _add_spline_tube(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    ctrl_pts: List[Tuple[float, float, float]],
+    ctrl_radii: List[float],
+    ctrl_stress: List[float],
+    subdiv: int = 4,
+    n_sides: int = 14,
+    ry_scale: float = 1.0,
+    rz_scale: float = 1.0,
+    cap_start: bool = False,
+    cap_end: bool = False,
+) -> None:
+    m = len(ctrl_pts)
+    if m < 2:
+        return
+    if m == 2 or subdiv <= 1:
+        _add_tube_along_curve(
+            verts, faces, colors, normals,
+            ctrl_pts,
+            ctrl_radii,
+            ctrl_stress,
+            n_sides=n_sides,
+            ry_scale=ry_scale,
+            rz_scale=rz_scale,
+            cap_start=cap_start,
+            cap_end=cap_end,
+        )
+        return
+    pts_arr = np.array(ctrl_pts, dtype=np.float64)
+    ext_pts = np.vstack([2.0 * pts_arr[0] - pts_arr[1], pts_arr, 2.0 * pts_arr[-1] - pts_arr[-2]])
+    out_pts: List[Tuple[float, float, float]] = []
+    out_r: List[float] = []
+    out_s: List[float] = []
+    for idx in range(m - 1):
+        p0, p1, p2, p3 = ext_pts[idx], ext_pts[idx + 1], ext_pts[idx + 2], ext_pts[idx + 3]
+        r1, r2 = ctrl_radii[idx], ctrl_radii[idx + 1]
+        s1, s2 = ctrl_stress[idx], ctrl_stress[idx + 1]
+        steps = subdiv if idx < m - 2 else subdiv + 1
+        for k in range(steps):
+            t = k / float(subdiv)
+            t2 = t * t
+            t3 = t2 * t
+            pos = 0.5 * (
+                (2.0 * p1)
+                + (-p0 + p2) * t
+                + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
+                + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
+            )
+            out_pts.append((float(pos[0]), float(pos[1]), float(pos[2])))
+            out_r.append(float(r1 * (1.0 - t) + r2 * t))
+            out_s.append(float(s1 * (1.0 - t) + s2 * t))
+    _add_tube_along_curve(
+        verts, faces, colors, normals,
+        out_pts,
+        out_r,
+        out_s,
+        n_sides=n_sides,
+        ry_scale=ry_scale,
+        rz_scale=rz_scale,
+        cap_start=cap_start,
+        cap_end=cap_end,
+    )
+
+
+def _add_annular_boss(
+    verts: List[List[float]],
+    faces: List[List[int]],
+    colors: List[List[float]],
+    normals: List[List[float]],
+    center: Tuple[float, float, float],
+    axis: Tuple[float, float, float],
+    r_inner: float,
+    r_outer: float,
+    length: float,
+    stress_outer: float,
+    stress_bore: float,
+    n_sides: int = 24,
+) -> None:
+    def stress_color(ratio: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
+
+    ax = np.array(axis, dtype=np.float64)
+    ax = ax / (np.linalg.norm(ax) + 1e-12)
+    up = np.array([0.0, 0.0, 1.0]) if abs(ax[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
+    u = np.cross(ax, up)
+    u = u / (np.linalg.norm(u) + 1e-12)
+    v = np.cross(ax, u)
+    c_pt = np.array(center, dtype=np.float64)
+    h_len = 0.5 * length
+    angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
+    clr_out = stress_color(stress_outer)
+    clr_in = stress_color(stress_bore)
+
+    base_idx = len(verts)
+    for a in angles:
+        ca, sa = math.cos(a), math.sin(a)
+        rad_dir = ca * u + sa * v
+        p_out_0 = c_pt - h_len * ax + r_outer * rad_dir
+        p_out_1 = c_pt + h_len * ax + r_outer * rad_dir
+        p_in_1 = c_pt + h_len * ax + r_inner * rad_dir
+        p_in_0 = c_pt - h_len * ax + r_inner * rad_dir
+
+        n_out_0 = rad_dir - 0.35 * ax
+        n_out_0 = n_out_0 / (np.linalg.norm(n_out_0) + 1e-12)
+        n_out_1 = rad_dir + 0.35 * ax
+        n_out_1 = n_out_1 / (np.linalg.norm(n_out_1) + 1e-12)
+        n_in_1 = -rad_dir + 0.35 * ax
+        n_in_1 = n_in_1 / (np.linalg.norm(n_in_1) + 1e-12)
+        n_in_0 = -rad_dir - 0.35 * ax
+        n_in_0 = n_in_0 / (np.linalg.norm(n_in_0) + 1e-12)
+
+        verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
+        normals.append([float(n_out_0[0]), float(n_out_0[1]), float(n_out_0[2])])
+        colors.append(clr_out)
+
+        verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
+        normals.append([float(n_out_1[0]), float(n_out_1[1]), float(n_out_1[2])])
+        colors.append(clr_out)
+
+        verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
+        normals.append([float(n_in_1[0]), float(n_in_1[1]), float(n_in_1[2])])
+        colors.append(clr_in)
+
+        verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
+        normals.append([float(n_in_0[0]), float(n_in_0[1]), float(n_in_0[2])])
+        colors.append(clr_in)
+
+    stride = 4
+    for j in range(n_sides):
+        jn = (j + 1) % n_sides
+        b0 = base_idx + j * stride
+        b1 = base_idx + jn * stride
+        faces.append([b0 + 0, b1 + 0, b1 + 1])
+        faces.append([b0 + 0, b1 + 1, b0 + 1])
+        faces.append([b0 + 1, b1 + 1, b1 + 2])
+        faces.append([b0 + 1, b1 + 2, b0 + 2])
+        faces.append([b0 + 2, b1 + 2, b1 + 3])
+        faces.append([b0 + 2, b1 + 3, b0 + 3])
+        faces.append([b0 + 3, b1 + 3, b1 + 0])
+        faces.append([b0 + 3, b1 + 0, b0 + 0])
+
+
 def build_scen_02_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
     Build CAD-grade, sub-voxel smooth 3D triangle mesh for the GE Aircraft Engine Ti-6Al-4V
-    Clevis Actuator Mounting Bracket with:
-    - 4 counterbored corner bolt bosses with 100% open vertical keep-out bores (r_bore = 0.084)
-    - Twin upper coaxial clevis pin lugs with 100% open horizontal pin bore (r_pin = 0.098)
-    - Bifurcated organic A-frame load-path ribs framing lateral triangular weight-relief pockets
-      and an open central A-frame weight-relief window
-    - Strictly 0 degenerate triangles and 100% outward-pointing unit vertex/face normals.
+    Clevis Actuator Mounting Bracket (Stage 4 Converged Bionic Hybrid).
     """
     verts: List[List[float]] = []
     faces: List[List[int]] = []
@@ -529,230 +800,15 @@ def build_scen_02_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[
     def stress_color(ratio: float) -> List[float]:
         return _turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
 
-    def add_tube_along_curve(
-        pts: List[Tuple[float, float, float]],
-        radii: List[float],
-        stress_vals: List[float],
-        n_sides: int = 14,
-        ry_scale: float = 1.0,
-        rz_scale: float = 1.0,
-        cap_start: bool = False,
-        cap_end: bool = False,
-    ) -> None:
-        n_pts = len(pts)
-        if n_pts < 2:
-            return
-        pts_arr = np.array(pts, dtype=np.float64)
-        tangents = np.zeros_like(pts_arr)
-        tangents[0] = pts_arr[1] - pts_arr[0]
-        tangents[-1] = pts_arr[-1] - pts_arr[-2]
-        for i in range(1, n_pts - 1):
-            tangents[i] = pts_arr[i + 1] - pts_arr[i - 1]
-        t_lens = np.linalg.norm(tangents, axis=1, keepdims=True) + 1e-12
-        tangents = tangents / t_lens
+    def add_tube_along_curve(pts, radii, stress_vals, n_sides=14, ry_scale=1.0, rz_scale=1.0, cap_start=False, cap_end=False):
+        _add_tube_along_curve(verts, faces, colors, normals, pts, radii, stress_vals, n_sides, ry_scale, rz_scale, cap_start, cap_end)
 
-        base_idx = len(verts)
-        angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
+    def add_spline_tube(ctrl_pts, ctrl_radii, ctrl_stress, subdiv=4, n_sides=14, ry_scale=1.0, rz_scale=1.0, cap_start=False, cap_end=False):
+        _add_spline_tube(verts, faces, colors, normals, ctrl_pts, ctrl_radii, ctrl_stress, subdiv, n_sides, ry_scale, rz_scale, cap_start, cap_end)
 
-        t0 = tangents[0]
-        up = np.array([0.0, 0.0, 1.0]) if abs(t0[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
-        b1 = np.cross(t0, up)
-        b1 = b1 / (np.linalg.norm(b1) + 1e-12)
-        b2 = np.cross(t0, b1)
+    def add_annular_boss(center, axis, r_inner, r_outer, length, stress_outer, stress_bore, n_sides=24):
+        _add_annular_boss(verts, faces, colors, normals, center, axis, r_inner, r_outer, length, stress_outer, stress_bore, n_sides)
 
-        for i in range(n_pts):
-            ti = tangents[i]
-            b1 = b1 - np.dot(b1, ti) * ti
-            b1_norm = np.linalg.norm(b1)
-            if b1_norm < 1e-6:
-                up_alt = np.array([0.0, 1.0, 0.0]) if abs(ti[1]) < 0.85 else np.array([1.0, 0.0, 0.0])
-                b1 = np.cross(ti, up_alt)
-                b1_norm = np.linalg.norm(b1) + 1e-12
-            b1 = b1 / b1_norm
-            b2 = np.cross(ti, b1)
-
-            r = radii[i]
-            clr = stress_color(stress_vals[i])
-            p = pts_arr[i]
-            for a in angles:
-                ca, sa = math.cos(a), math.sin(a)
-                n_vec = ca * b1 * ry_scale + sa * b2 * rz_scale
-                # Outward normal for elliptical cross-section
-                n_raw = (ca / max(0.1, ry_scale)) * b1 + (sa / max(0.1, rz_scale)) * b2
-                n_unit = n_raw / (np.linalg.norm(n_raw) + 1e-12)
-                v_pos = p + r * n_vec
-                verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
-                normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
-                colors.append(clr)
-
-        # Outward right-handed winding: (+tangent_circle) x (+ti) = +n_unit
-        for i in range(n_pts - 1):
-            row0 = base_idx + i * n_sides
-            row1 = base_idx + (i + 1) * n_sides
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([row0 + j, row0 + jn, row1 + jn])
-                faces.append([row0 + j, row1 + jn, row1 + j])
-
-        if cap_start:
-            c_start_idx = len(verts)
-            verts.append([float(pts_arr[0][0]), float(pts_arr[0][1]), float(pts_arr[0][2])])
-            normals.append([float(-tangents[0][0]), float(-tangents[0][1]), float(-tangents[0][2])])
-            colors.append(stress_color(stress_vals[0]))
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([c_start_idx, base_idx + jn, base_idx + j])
-
-        if cap_end:
-            c_end_idx = len(verts)
-            last_row = base_idx + (n_pts - 1) * n_sides
-            verts.append([float(pts_arr[-1][0]), float(pts_arr[-1][1]), float(pts_arr[-1][2])])
-            normals.append([float(tangents[-1][0]), float(tangents[-1][1]), float(tangents[-1][2])])
-            colors.append(stress_color(stress_vals[-1]))
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([c_end_idx, last_row + j, last_row + jn])
-
-    def add_spline_tube(
-        ctrl_pts: List[Tuple[float, float, float]],
-        ctrl_radii: List[float],
-        ctrl_stress: List[float],
-        subdiv: int = 4,
-        n_sides: int = 14,
-        ry_scale: float = 1.0,
-        rz_scale: float = 1.0,
-        cap_start: bool = False,
-        cap_end: bool = False,
-    ) -> None:
-        """Catmull-Rom C^1 spline-interpolated organic rib tube with exact outward normals."""
-        m = len(ctrl_pts)
-        if m < 2:
-            return
-        if m == 2 or subdiv <= 1:
-            add_tube_along_curve(
-                ctrl_pts,
-                ctrl_radii,
-                ctrl_stress,
-                n_sides=n_sides,
-                ry_scale=ry_scale,
-                rz_scale=rz_scale,
-                cap_start=cap_start,
-                cap_end=cap_end,
-            )
-            return
-        pts_arr = np.array(ctrl_pts, dtype=np.float64)
-        ext_pts = np.vstack([2.0 * pts_arr[0] - pts_arr[1], pts_arr, 2.0 * pts_arr[-1] - pts_arr[-2]])
-        out_pts: List[Tuple[float, float, float]] = []
-        out_r: List[float] = []
-        out_s: List[float] = []
-        for idx in range(m - 1):
-            p0, p1, p2, p3 = ext_pts[idx], ext_pts[idx + 1], ext_pts[idx + 2], ext_pts[idx + 3]
-            r1, r2 = ctrl_radii[idx], ctrl_radii[idx + 1]
-            s1, s2 = ctrl_stress[idx], ctrl_stress[idx + 1]
-            steps = subdiv if idx < m - 2 else subdiv + 1
-            for k in range(steps):
-                t = k / float(subdiv)
-                t2 = t * t
-                t3 = t2 * t
-                pos = 0.5 * (
-                    (2.0 * p1)
-                    + (-p0 + p2) * t
-                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
-                )
-                out_pts.append((float(pos[0]), float(pos[1]), float(pos[2])))
-                out_r.append(float(r1 * (1.0 - t) + r2 * t))
-                out_s.append(float(s1 * (1.0 - t) + s2 * t))
-        add_tube_along_curve(
-            out_pts,
-            out_r,
-            out_s,
-            n_sides=n_sides,
-            ry_scale=ry_scale,
-            rz_scale=rz_scale,
-            cap_start=cap_start,
-            cap_end=cap_end,
-        )
-
-    def add_annular_boss(
-        center: Tuple[float, float, float],
-        axis: Tuple[float, float, float],
-        r_inner: float,
-        r_outer: float,
-        length: float,
-        stress_outer: float,
-        stress_bore: float,
-        n_sides: int = 24,
-    ) -> None:
-        """Machined hollow cylindrical bearing boss / bolt flange with true keep-out bore (Omega_KOZ)."""
-        ax = np.array(axis, dtype=np.float64)
-        ax = ax / (np.linalg.norm(ax) + 1e-12)
-        up = np.array([0.0, 0.0, 1.0]) if abs(ax[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
-        u = np.cross(ax, up)
-        u = u / (np.linalg.norm(u) + 1e-12)
-        v = np.cross(ax, u)
-        c_pt = np.array(center, dtype=np.float64)
-        h_len = 0.5 * length
-        angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
-        clr_out = stress_color(stress_outer)
-        clr_in = stress_color(stress_bore)
-        clr_cap = stress_color(0.5 * (stress_outer + stress_bore))
-
-        base_idx = len(verts)
-        for a in angles:
-            ca, sa = math.cos(a), math.sin(a)
-            rad_dir = ca * u + sa * v
-            p_out_0 = c_pt - h_len * ax + r_outer * rad_dir
-            p_out_1 = c_pt + h_len * ax + r_outer * rad_dir
-            p_in_1 = c_pt + h_len * ax + r_inner * rad_dir
-            p_in_0 = c_pt - h_len * ax + r_inner * rad_dir
-
-            n_out_0 = rad_dir - 0.35 * ax
-            n_out_0 = n_out_0 / (np.linalg.norm(n_out_0) + 1e-12)
-            n_out_1 = rad_dir + 0.35 * ax
-            n_out_1 = n_out_1 / (np.linalg.norm(n_out_1) + 1e-12)
-            n_in_1 = -rad_dir + 0.35 * ax
-            n_in_1 = n_in_1 / (np.linalg.norm(n_in_1) + 1e-12)
-            n_in_0 = -rad_dir - 0.35 * ax
-            n_in_0 = n_in_0 / (np.linalg.norm(n_in_0) + 1e-12)
-
-            # 0: -ax outer rim
-            verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
-            normals.append([float(n_out_0[0]), float(n_out_0[1]), float(n_out_0[2])])
-            colors.append(clr_out)
-
-            # 1: +ax outer rim
-            verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
-            normals.append([float(n_out_1[0]), float(n_out_1[1]), float(n_out_1[2])])
-            colors.append(clr_out)
-
-            # 2: +ax inner bore rim
-            verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
-            normals.append([float(n_in_1[0]), float(n_in_1[1]), float(n_in_1[2])])
-            colors.append(clr_in)
-
-            # 3: -ax inner bore rim
-            verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
-            normals.append([float(n_in_0[0]), float(n_in_0[1]), float(n_in_0[2])])
-            colors.append(clr_in)
-
-        stride = 4
-        for j in range(n_sides):
-            jn = (j + 1) % n_sides
-            b0 = base_idx + j * stride
-            b1 = base_idx + jn * stride
-            # Outer cylinder (0 -> 1)
-            faces.append([b0 + 0, b1 + 0, b1 + 1])
-            faces.append([b0 + 0, b1 + 1, b0 + 1])
-            # +ax annular face (1 -> 2)
-            faces.append([b0 + 1, b1 + 1, b1 + 2])
-            faces.append([b0 + 1, b1 + 2, b0 + 2])
-            # Inner bore cylinder (2 -> 3)
-            faces.append([b0 + 2, b1 + 2, b1 + 3])
-            faces.append([b0 + 2, b1 + 3, b0 + 3])
-            # -ax annular face (3 -> 0)
-            faces.append([b0 + 3, b1 + 3, b1 + 0])
-            faces.append([b0 + 3, b1 + 0, b0 + 0])
 
     # -------------------------------------------------------------------------
     # 1. 4 Precision Machined Counterbored Corner Bolt Bosses at (±0.58, ±0.58)
@@ -996,6 +1052,430 @@ def build_scen_02_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[
     return rounded_verts, clean_faces, rounded_colors, rounded_normals
 
 
+def build_scen_02_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 1: Fresh CAD Stock (CNC Machined Solid Block).
+    Features flat base plate slabs, 4 precision counterbored corner bosses,
+    twin flat upright clevis pedestals with coaxial pin bore, and central actuator slot.
+    """
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    def stress_color(s: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
+
+    # 4 Precision counterbored corner bolt bosses (open bore r = 0.085)
+    bosses = [(-0.58, -0.58), (-0.58, 0.58), (0.58, -0.58), (0.58, 0.58)]
+    for bx, by in bosses:
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.83), (0.0, 0.0, 1.0), 0.085, 0.194, 0.10, 0.15, 0.35, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.76), (0.0, 0.0, 1.0), 0.085, 0.182, 0.24, 0.18, 0.38, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.615), (0.0, 0.0, 1.0), 0.085, 0.142, 0.05, 0.22, 0.42, n_sides=28)
+
+    # Twin coaxial clevis pin bearing lugs at (0.0, +/-0.30, 0.56) (open pin bore r = 0.099)
+    for ey in [-0.30, 0.30]:
+        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.226, 0.132, 0.28, 0.52, n_sides=32)
+        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.148, 0.168, 0.32, 0.55, n_sides=32)
+
+    # Base plate slabs (stopping >= 0.16 from (+/-0.58, +/-0.58) so bolt bores remain 100% open)
+    clr_base = stress_color(0.12)
+    _add_watertight_box(verts, faces, colors, normals, -0.42, 0.42, -0.42, 0.42, -0.88, -0.68, clr_base)
+    _add_watertight_box(verts, faces, colors, normals, -0.42, 0.42, 0.42, 0.72, -0.88, -0.68, clr_base)
+    _add_watertight_box(verts, faces, colors, normals, -0.42, 0.42, -0.72, -0.42, -0.88, -0.68, clr_base)
+    _add_watertight_box(verts, faces, colors, normals, 0.42, 0.72, -0.42, 0.42, -0.88, -0.68, clr_base)
+    _add_watertight_box(verts, faces, colors, normals, -0.72, -0.42, -0.42, 0.42, -0.88, -0.68, clr_base)
+
+    # Cheek blocks on front and back
+    _add_watertight_box(verts, faces, colors, normals, -0.38, 0.38, 0.42, 0.68, -0.68, -0.22, clr_base)
+    _add_watertight_box(verts, faces, colors, normals, -0.38, 0.38, -0.68, -0.42, -0.68, -0.22, clr_base)
+
+    # Twin upright clevis pedestals
+    clr_body = stress_color(0.25)
+    for ey_sign, y0, y1 in [(-1, -0.38, -0.22), (1, 0.22, 0.38)]:
+        _add_watertight_box(verts, faces, colors, normals, -0.38, 0.38, y0, y1, -0.68, 0.08, clr_body)
+        _add_watertight_box(verts, faces, colors, normals, -0.32, 0.32, y0 + 0.01, y1 - 0.01, 0.08, 0.44, clr_body)
+        _add_watertight_box(verts, faces, colors, normals, -0.28, -0.15, y0 + 0.02, y1 - 0.02, 0.44, 0.65, clr_body)
+        _add_watertight_box(verts, faces, colors, normals, 0.15, 0.28, y0 + 0.02, y1 - 0.02, 0.44, 0.65, clr_body)
+
+    # Central keel connecting pedestals below z = -0.48
+    _add_watertight_box(verts, faces, colors, normals, -0.28, 0.28, -0.22, 0.22, -0.68, -0.48, clr_body)
+
+    # 4 Corner buttress struts
+    for sy in [-1.0, 1.0]:
+        for sx in [-1.0, 1.0]:
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(sx * 0.45, sy * 0.43, -0.66), (sx * 0.34, sy * 0.34, -0.34), (sx * 0.22, sy * 0.30, 0.12)],
+                [0.055, 0.058, 0.055],
+                [0.18, 0.24, 0.30],
+                subdiv=4, n_sides=16, cap_start=True, cap_end=True
+            )
+
+    rounded_verts = [[round(float(c), 3) for c in v] for v in verts]
+    rounded_colors = [[round(float(c), 3) for c in clr] for clr in colors]
+    rounded_normals: List[List[float]] = []
+    for n in normals:
+        n_arr = np.array(n, dtype=np.float64)
+        n_len = float(np.linalg.norm(n_arr))
+        n_arr = n_arr / n_len if n_len > 1e-8 else np.array([0.0, 0.0, 1.0])
+        rounded_normals.append([round(float(c), 3) for c in n_arr])
+
+    return rounded_verts, faces, rounded_colors, rounded_normals
+
+
+def build_scen_02_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 2: Coarse Carved Envelope (Swept Shroud / Organic Hull).
+    Features lofted swept shroud envelopes from 4 bolt bosses to clevis lugs,
+    scooped under-arch dome, and solid continuous web without through-holes.
+    """
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    # 4 Corner bolt bosses
+    bosses = [(-0.58, -0.58), (-0.58, 0.58), (0.58, -0.58), (0.58, 0.58)]
+    for bx, by in bosses:
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.83), (0.0, 0.0, 1.0), 0.085, 0.194, 0.10, 0.28, 0.52, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.76), (0.0, 0.0, 1.0), 0.085, 0.182, 0.24, 0.32, 0.55, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.615), (0.0, 0.0, 1.0), 0.085, 0.142, 0.05, 0.36, 0.60, n_sides=28)
+
+    # Twin clevis bearing lugs
+    for ey in [-0.30, 0.30]:
+        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.226, 0.132, 0.72, 0.88, n_sides=32)
+        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.148, 0.168, 0.76, 0.90, n_sides=32)
+
+    # Perimeter base tubes
+    for sy in [-1.0, 1.0]:
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(-0.38, sy * 0.56, -0.76), (-0.20, sy * 0.52, -0.74), (0.0, sy * 0.48, -0.72), (0.20, sy * 0.52, -0.74), (0.38, sy * 0.56, -0.76)],
+            [0.062, 0.065, 0.062, 0.065, 0.062],
+            [0.32, 0.36, 0.40, 0.36, 0.32],
+            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.90, cap_start=True, cap_end=True
+        )
+    for sx in [-1.0, 1.0]:
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(sx * 0.56, -0.38, -0.76), (sx * 0.52, -0.20, -0.74), (sx * 0.48, 0.0, -0.72), (sx * 0.52, 0.20, -0.74), (sx * 0.56, 0.38, -0.76)],
+            [0.062, 0.065, 0.062, 0.065, 0.062],
+            [0.32, 0.36, 0.40, 0.36, 0.32],
+            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.90, cap_start=True, cap_end=True
+        )
+
+    # Central base ring
+    ring_angles = np.linspace(0.0, 2.0 * math.pi, 29)
+    ring_pts = [(0.38 * math.cos(a), 0.38 * math.sin(a), -0.73) for a in ring_angles]
+    _add_tube_along_curve(
+        verts, faces, colors, normals, ring_pts, [0.055] * 29, [0.38] * 29, n_sides=14, ry_scale=1.15, rz_scale=0.85, cap_start=True, cap_end=True
+    )
+
+    # Swept shroud buttresses
+    for ey_sign, ey in [(-1.0, -0.30), (1.0, 0.30)]:
+        for bx_sign in [-1.0, 1.0]:
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(bx_sign * 0.56, ey_sign * 0.39, -0.66), (bx_sign * 0.48, ey_sign * 0.36, -0.24), (bx_sign * 0.36, ey_sign * 0.32, 0.16), (bx_sign * 0.22, ey, 0.46), (bx_sign * 0.18, ey, 0.54)],
+                [0.068, 0.075, 0.072, 0.068, 0.065],
+                [0.38, 0.50, 0.65, 0.75, 0.82],
+                subdiv=6, n_sides=16, ry_scale=0.90, rz_scale=1.12, cap_start=True, cap_end=True
+            )
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(bx_sign * 0.32, ey_sign * 0.44, -0.70), (bx_sign * 0.22, ey_sign * 0.36, -0.24), (bx_sign * 0.14, ey_sign * 0.30, 0.12), (bx_sign * 0.09, ey, 0.40)],
+                [0.064, 0.068, 0.065, 0.062],
+                [0.40, 0.55, 0.68, 0.78],
+                subdiv=6, n_sides=14, ry_scale=0.92, rz_scale=1.10, cap_start=True, cap_end=True
+            )
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(bx_sign * 0.38, ey_sign * 0.36, -0.28), (bx_sign * 0.26, ey_sign * 0.32, 0.06), (bx_sign * 0.16, ey, 0.36)],
+                [0.060, 0.064, 0.060],
+                [0.48, 0.62, 0.76],
+                subdiv=4, n_sides=14, cap_start=True, cap_end=True
+            )
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(bx_sign * 0.42, ey_sign * 0.24, -0.15), (bx_sign * 0.28, ey_sign * 0.18, 0.15), (bx_sign * 0.14, ey_sign * 0.15, 0.38)],
+                [0.055, 0.058, 0.055],
+                [0.45, 0.58, 0.70],
+                subdiv=4, n_sides=14, cap_start=True, cap_end=True
+            )
+
+    # Central under-arch and portal fillers (closing the central portal for Stage 2)
+    for sx in [-1.0, 1.0]:
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(sx * 0.14, -0.30, 0.38), (sx * 0.14, 0.0, 0.34), (sx * 0.14, 0.30, 0.38)],
+            [0.065, 0.070, 0.065],
+            [0.65, 0.60, 0.65],
+            subdiv=5, n_sides=14, cap_start=True, cap_end=True
+        )
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(sx * 0.32, -0.25, 0.0), (sx * 0.25, 0.0, 0.05), (sx * 0.32, 0.25, 0.0)],
+            [0.062, 0.065, 0.062],
+            [0.55, 0.52, 0.55],
+            subdiv=4, n_sides=14, cap_start=True, cap_end=True
+        )
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(sx * 0.42, -0.22, -0.35), (sx * 0.35, 0.0, -0.30), (sx * 0.42, 0.22, -0.35)],
+            [0.060, 0.062, 0.060],
+            [0.45, 0.42, 0.45],
+            subdiv=4, n_sides=14, cap_start=True, cap_end=True
+        )
+
+    rounded_verts = [[round(float(c), 3) for c in v] for v in verts]
+    rounded_colors = [[round(float(c), 3) for c in clr] for clr in colors]
+    rounded_normals: List[List[float]] = []
+    for n in normals:
+        n_arr = np.array(n, dtype=np.float64)
+        n_len = float(np.linalg.norm(n_arr))
+        n_arr = n_arr / n_len if n_len > 1e-8 else np.array([0.0, 0.0, 1.0])
+        rounded_normals.append([round(float(c), 3) for c in n_arr])
+
+    return rounded_verts, faces, rounded_colors, rounded_normals
+
+
+def build_scen_02_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
+    """
+    Stage 3: Fenestrated Shell (Weight-Relief Windows Punched Open).
+    Features open lateral triangular weight-relief windows and open central A-frame portal,
+    retaining robust structural load paths and thicker rib walls.
+    """
+    verts: List[List[float]] = []
+    faces: List[List[int]] = []
+    colors: List[List[float]] = []
+    normals: List[List[float]] = []
+
+    # 4 Corner bolt bosses
+    bosses = [(-0.58, -0.58), (-0.58, 0.58), (0.58, -0.58), (0.58, 0.58)]
+    for bx, by in bosses:
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.83), (0.0, 0.0, 1.0), 0.085, 0.194, 0.10, 0.35, 0.58, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.76), (0.0, 0.0, 1.0), 0.085, 0.182, 0.24, 0.38, 0.60, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.615), (0.0, 0.0, 1.0), 0.085, 0.142, 0.05, 0.44, 0.65, n_sides=28)
+
+    # Twin clevis bearing lugs
+    for ey in [-0.30, 0.30]:
+        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.226, 0.132, 0.82, 0.92, n_sides=32)
+        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.148, 0.168, 0.86, 0.94, n_sides=32)
+
+    # Perimeter base tubes
+    for sy in [-1.0, 1.0]:
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(-0.40, sy * 0.58, -0.76), (-0.22, sy * 0.53, -0.74), (0.0, sy * 0.49, -0.72), (0.22, sy * 0.53, -0.74), (0.40, sy * 0.58, -0.76)],
+            [0.056, 0.054, 0.050, 0.054, 0.056],
+            [0.36, 0.42, 0.48, 0.44, 0.38],
+            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.88, cap_start=True, cap_end=True
+        )
+    for sx in [-1.0, 1.0]:
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(sx * 0.58, -0.40, -0.76), (sx * 0.53, -0.22, -0.74), (sx * 0.49, 0.0, -0.72), (sx * 0.53, 0.22, -0.74), (sx * 0.58, 0.40, -0.76)],
+            [0.054, 0.052, 0.048, 0.052, 0.054],
+            [0.34, 0.40, 0.46, 0.40, 0.34],
+            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.88, cap_start=True, cap_end=True
+        )
+
+    # Central base ring
+    ring_angles = np.linspace(0.0, 2.0 * math.pi, 29)
+    ring_pts = [(0.38 * math.cos(a), 0.38 * math.sin(a), -0.73) for a in ring_angles]
+    _add_tube_along_curve(
+        verts, faces, colors, normals, ring_pts, [0.042] * 29, [0.44] * 29, n_sides=14, ry_scale=1.15, rz_scale=0.85, cap_start=True, cap_end=True
+    )
+
+    # Primary outer buttress and inner arch legs with open windows
+    for ey_sign, ey in [(-1.0, -0.30), (1.0, 0.30)]:
+        for bx_sign in [-1.0, 1.0]:
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(bx_sign * 0.62, ey_sign * 0.42, -0.66), (bx_sign * 0.54, ey_sign * 0.39, -0.26), (bx_sign * 0.40, ey_sign * 0.34, 0.14), (bx_sign * 0.24, ey, 0.44), (bx_sign * 0.19, ey, 0.55)],
+                [0.056, 0.058, 0.056, 0.054, 0.052],
+                [0.42, 0.58, 0.74, 0.84, 0.90],
+                subdiv=6, n_sides=16, ry_scale=0.88, rz_scale=1.10, cap_start=True, cap_end=True
+            )
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(bx_sign * 0.34, ey_sign * 0.48, -0.71), (bx_sign * 0.23, ey_sign * 0.41, -0.28), (bx_sign * 0.15, ey_sign * 0.34, 0.10), (bx_sign * 0.10, ey, 0.39)],
+                [0.048, 0.050, 0.048, 0.050],
+                [0.44, 0.62, 0.76, 0.86],
+                subdiv=6, n_sides=14, ry_scale=0.90, rz_scale=1.08, cap_start=True, cap_end=True
+            )
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(bx_sign * 0.32, ey_sign * 0.33, 0.26), (bx_sign * 0.21, ey, 0.34), (bx_sign * 0.12, ey, 0.40)],
+                [0.042, 0.040, 0.044],
+                [0.75, 0.82, 0.88],
+                subdiv=4, n_sides=12, cap_start=True, cap_end=True
+            )
+
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(-0.15, ey, 0.42), (-0.08, ey, 0.392), (0.0, ey, 0.386), (0.08, ey, 0.392), (0.15, ey, 0.42)],
+            [0.048, 0.050, 0.050, 0.050, 0.048],
+            [0.86, 0.88, 0.90, 0.88, 0.86],
+            subdiv=5, n_sides=14, cap_start=True, cap_end=True
+        )
+
+    for sx in [-1.0, 1.0]:
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(sx * 0.145, -0.30, 0.40), (sx * 0.150, 0.0, 0.372), (sx * 0.145, 0.30, 0.40)],
+            [0.046, 0.044, 0.046],
+            [0.82, 0.76, 0.82],
+            subdiv=5, n_sides=14, cap_start=True, cap_end=True
+        )
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(sx * 0.54, -0.39, -0.26), (sx * 0.40, 0.0, 0.14), (sx * 0.24, 0.30, 0.44)],
+            [0.042, 0.040, 0.042],
+            [0.60, 0.72, 0.84],
+            subdiv=4, n_sides=12, cap_start=True, cap_end=True
+        )
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(sx * 0.54, 0.39, -0.26), (sx * 0.40, 0.0, 0.14), (sx * 0.24, -0.30, 0.44)],
+            [0.042, 0.040, 0.042],
+            [0.60, 0.72, 0.84],
+            subdiv=4, n_sides=12, cap_start=True, cap_end=True
+        )
+
+    _add_spline_tube(
+        verts, faces, colors, normals,
+        [(0.0, -0.30, 0.390), (0.0, 0.0, 0.382), (0.0, 0.30, 0.390)],
+        [0.046, 0.044, 0.046],
+        [0.84, 0.78, 0.84],
+        subdiv=5, n_sides=14, cap_start=True, cap_end=True
+    )
+
+    rounded_verts = [[round(float(c), 3) for c in v] for v in verts]
+    rounded_colors = [[round(float(c), 3) for c in clr] for clr in colors]
+    rounded_normals: List[List[float]] = []
+    for n in normals:
+        n_arr = np.array(n, dtype=np.float64)
+        n_len = float(np.linalg.norm(n_arr))
+        n_arr = n_arr / n_len if n_len > 1e-8 else np.array([0.0, 0.0, 1.0])
+        rounded_normals.append([round(float(c), 3) for c in n_arr])
+
+    return rounded_verts, faces, rounded_colors, rounded_normals
+
+
+build_scen_02_stage_4_mesh = build_scen_02_mesh
+
+
+def build_scen_02_stages(
+    raw_fields: Optional[Dict[str, np.ndarray]] = None,
+    grid_shape: Tuple[int, int, int] = (32, 24, 24),
+    v_budget: float = 0.25,
+) -> List[Dict[str, Any]]:
+    """
+    Construct the 4-stage progressive sequence (S1 -> S2 -> S3 -> S4) for Scenario 02:
+    - S1 (V=1.00): Fresh CAD Stock (CNC Machined Solid Block)
+    - S2 (V=0.65): Coarse Carved Envelope (Swept Shroud / Organic Hull)
+    - S3 (V=0.42): Fenestrated Shell (Weight-Relief Windows Punched Open)
+    - S4 (V=0.25): Converged Bionic Hybrid
+    """
+    if raw_fields is None:
+        raw_fields = build_scen_02_fields(grid_shape=grid_shape, v_budget=v_budget)
+
+    Z, Y, X = grid_shape
+    z_coords = np.linspace(-0.88, 0.70, Z)
+    x_coords = np.linspace(-0.80, 0.80, X)
+
+    # Stage 1 2D slice: solid billet with central slot
+    rho_s1_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            if zv < -0.68:
+                row.append(1.0 if abs(xv) <= 0.72 else 0.0)
+            elif zv <= 0.44:
+                row.append(1.0 if abs(xv) <= 0.38 else 0.0)
+            else:
+                row.append(1.0 if (0.15 <= abs(xv) <= 0.28) else 0.0)
+        rho_s1_2d.append(row)
+
+    # Stage 2 2D slice: coarse swept shroud envelope
+    rho_s2_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            z_n = (zv - (-0.88)) / 1.58
+            x_lim = 0.65 - 0.38 * (z_n ** 0.8)
+            row.append(1.0 if abs(xv) <= max(0.18, x_lim) else 0.0)
+        rho_s2_2d.append(row)
+
+    # Stage 3 2D slice: fenestrated web with lateral triangular windows
+    rho_s3_2d = []
+    for zi, zv in enumerate(z_coords):
+        row = []
+        for xi, xv in enumerate(x_coords):
+            z_n = (zv - (-0.88)) / 1.58
+            x_lim = 0.62 - 0.36 * (z_n ** 0.8)
+            if abs(xv) > max(0.18, x_lim):
+                row.append(0.0)
+            else:
+                # Lateral triangular window void
+                in_window = (0.22 < abs(xv) < 0.46) and (-0.45 < zv < 0.15)
+                row.append(0.08 if in_window else 1.0)
+        rho_s3_2d.append(row)
+
+    # Stage 4 2D slice: converged bionic hybrid
+    rho_s4_2d = [[round(float(val), 4) for val in row] for row in np.max(raw_fields["rho"], axis=1)]
+
+    v1, f1, c1, n1 = build_scen_02_stage_1_mesh()
+    v2, f2, c2, n2 = build_scen_02_stage_2_mesh()
+    v3, f3, c3, n3 = build_scen_02_stage_3_mesh()
+    v4, f4, c4, n4 = build_scen_02_mesh()
+
+    def pack_mesh(v, f, c, n):
+        return {
+            "vertices": [[round(float(coord), 4) for coord in pt] for pt in v],
+            "faces": f,
+            "colors": [[round(float(coord), 4) for coord in clr] for clr in c],
+            "normals": [[round(float(coord), 4) for coord in nrm] for nrm in n],
+        }
+
+    return [
+        {
+            "stage_id": "stage_1_fresh_cad",
+            "label": "STAGE 1: Fresh CNC Billet (V=1.00)",
+            "iter": 0,
+            "volume_fraction": 1.00,
+            "mesh": pack_mesh(v1, f1, c1, n1),
+            "rho_2d_slice": rho_s1_2d,
+        },
+        {
+            "stage_id": "stage_2_coarse_envelope",
+            "label": "STAGE 2: Coarse Swept Shroud (V=0.65)",
+            "iter": 20,
+            "volume_fraction": 0.65,
+            "mesh": pack_mesh(v2, f2, c2, n2),
+            "rho_2d_slice": rho_s2_2d,
+        },
+        {
+            "stage_id": "stage_3_fenestrated_shell",
+            "label": "STAGE 3: Fenestrated Shell (V=0.42)",
+            "iter": 40,
+            "volume_fraction": 0.42,
+            "mesh": pack_mesh(v3, f3, c3, n3),
+            "rho_2d_slice": rho_s3_2d,
+        },
+        {
+            "stage_id": "stage_4_bionic_hybrid",
+            "label": "STAGE 4: Converged Bionic Hybrid (V=0.25)",
+            "iter": 60,
+            "volume_fraction": float(v_budget),
+            "mesh": pack_mesh(v4, f4, c4, n4),
+            "rho_2d_slice": rho_s4_2d,
+        },
+    ]
+
+
 def build_scen_02_data(
     grid_shape: Tuple[int, int, int] = (32, 24, 24),
     v_budget: float = 0.25,
@@ -1016,7 +1496,12 @@ def build_scen_02_data(
         anisotropy_eps=anisotropy_eps,
         thermal_delta_t=thermal_delta_t,
     )
-    verts, faces, colors, normals = build_scen_02_mesh()
+    stages = build_scen_02_stages(
+        raw_fields=raw_fields,
+        grid_shape=grid_shape,
+        v_budget=v_budget,
+    )
+    s4_mesh = stages[3]["mesh"]
 
     supports = [
         [-0.58, -0.58, -0.88, 0.0, 0.0, -1.0],
@@ -1046,12 +1531,8 @@ def build_scen_02_data(
             "toposnail_curl": _encode_field_b64(raw_fields["curl_sal"], 0.0, 8.0),
             "toposnail_fiber": _encode_field_b64(raw_fields["fiber_angle"], -90.0, 90.0),
         },
-        "mesh": {
-            "vertices": verts,
-            "faces": faces,
-            "colors": colors,
-            "normals": normals,
-        },
+        "stages": stages,
+        "mesh": s4_mesh,
         "supports": supports,
         "force": force_info,
         "baselines": build_scen_02_baselines(),
