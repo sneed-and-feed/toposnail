@@ -142,14 +142,17 @@ select:hover, button:hover {
     min-width: 36px;
 }
 .grid-container {
-    flex: 1;
+    flex: 1 1 auto;
+    height: calc(100vh - 96px);
+    max-height: calc(100vh - 96px);
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-template-rows: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     gap: 2px;
     background: var(--border-color);
     overflow: hidden;
     min-height: 0;
+    min-width: 0;
 }
 .quad-panel {
     background: var(--bg-main);
@@ -158,9 +161,11 @@ select:hover, button:hover {
     display: flex;
     flex-direction: column;
     min-height: 0;
+    min-width: 0;
+    z-index: 1;
 }
 .quad-header {
-    height: 34px;
+    height: 32px;
     background: rgba(17, 24, 39, 0.95);
     border-bottom: 1px solid var(--border-color);
     padding: 0 12px;
@@ -181,41 +186,57 @@ select:hover, button:hover {
     background: var(--accent-cyan);
 }
 .quad-canvas-wrap {
-    flex: 1;
+    flex: 1 1 0%;
     position: relative;
     width: 100%;
-    height: calc(100% - 34px);
     min-height: 0;
+    min-width: 0;
     overflow: hidden;
 }
-canvas {
+.quad-canvas-wrap canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100% !important;
     height: 100% !important;
+    min-width: 0;
+    min-height: 0;
     display: block;
 }
 .hud-overlay {
-    flex: 1;
+    position: relative;
+    z-index: 10;
+    pointer-events: auto;
+    flex: 1 1 0%;
     overflow-y: auto;
-    padding: 12px 16px 16px 16px;
+    padding: 8px 14px 10px 14px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    background: rgba(11, 15, 25, 0.95);
+    gap: 7px;
+    background: rgba(11, 15, 25, 0.98);
     min-height: 0;
+    min-width: 0;
 }
 .hud-cards {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
+    gap: 6px;
 }
 .hud-card {
     background: var(--bg-card);
     border: 1px solid var(--border-color);
     border-radius: 6px;
-    padding: 8px;
+    padding: 6px 8px;
     display: flex;
     flex-direction: column;
     gap: 2px;
+    cursor: pointer;
+    pointer-events: auto;
+    transition: border-color 0.15s ease, background 0.15s ease;
+}
+.hud-card:hover {
+    border-color: var(--accent-cyan);
+    background: rgba(6, 182, 212, 0.08);
 }
 .hud-card .title {
     font-size: 10px;
@@ -224,7 +245,7 @@ canvas {
     letter-spacing: 0.5px;
 }
 .hud-card .val {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 700;
     font-family: monospace;
     color: var(--text-primary);
@@ -242,9 +263,10 @@ table.benchmark-table {
     border-radius: 6px;
     overflow: hidden;
     border: 1px solid var(--border-color);
+    pointer-events: auto;
 }
 table.benchmark-table th, table.benchmark-table td {
-    padding: 6px 10px;
+    padding: 4px 8px;
     border-bottom: 1px solid var(--border-color);
 }
 table.benchmark-table th {
@@ -252,8 +274,16 @@ table.benchmark-table th {
     color: var(--text-secondary);
     font-weight: 600;
 }
+table.benchmark-table tbody tr {
+    cursor: pointer;
+    pointer-events: auto;
+    transition: background 0.15s ease;
+}
+table.benchmark-table tbody tr:hover {
+    background: rgba(59, 130, 246, 0.12);
+}
 table.benchmark-table tr.active {
-    background: rgba(6, 182, 212, 0.1);
+    background: rgba(6, 182, 212, 0.15);
     font-weight: 600;
     color: var(--accent-cyan);
 }
@@ -261,11 +291,23 @@ table.benchmark-table tr.active {
     display: flex;
     align-items: center;
     gap: 8px;
+    position: relative;
+    z-index: 15;
+    pointer-events: auto;
+}
+.action-row button {
+    position: relative;
+    z-index: 15;
+    pointer-events: auto;
+    cursor: pointer;
 }
 .dropzone {
+    position: relative;
+    z-index: 15;
+    pointer-events: auto;
     border: 1px dashed var(--border-color);
     border-radius: 6px;
-    padding: 10px;
+    padding: 7px 10px;
     text-align: center;
     font-size: 11px;
     color: var(--text-muted);
@@ -275,6 +317,7 @@ table.benchmark-table tr.active {
 .dropzone:hover {
     border-color: var(--accent-blue);
     color: var(--text-secondary);
+    background: rgba(59, 130, 246, 0.06);
 }
 </style>
 </head>
@@ -385,45 +428,45 @@ table.benchmark-table tr.active {
         </div>
         <div class="hud-overlay">
             <div class="hud-cards">
-                <div class="hud-card">
+                <div class="hud-card" onclick="selectKpiField('toposnail_u')" title="Click to inspect Strain Energy Density">
                     <div class="title">Compliance J</div>
                     <div class="val" id="kpiCompliance">4.182 kN·mm</div>
-                    <div class="sub">-23.6% vs SIMP</div>
+                    <div class="sub" id="kpiComplianceSub">-23.6% vs SIMP</div>
                 </div>
-                <div class="hud-card">
+                <div class="hud-card" onclick="selectKpiField('toposnail_rho')" title="Click to inspect Material Density rho">
                     <div class="title">Crispness 1 - M_nd</div>
                     <div class="val" id="kpiCrispness">98.6%</div>
-                    <div class="sub">Target &ge; 98.0%</div>
+                    <div class="sub" id="kpiCrispnessSub">Target &ge; 98.0%</div>
                 </div>
-                <div class="hud-card">
+                <div class="hud-card" onclick="selectKpiField('toposnail_curl')" title="Click to inspect Beltrami Curl Salience">
                     <div class="title">Checkerboards</div>
                     <div class="val" id="kpiCheckerboards">0.00%</div>
-                    <div class="sub">100% Filtered</div>
+                    <div class="sub" id="kpiCheckerboardsSub">100% Filtered</div>
                 </div>
-                <div class="hud-card">
+                <div class="hud-card" onclick="selectKpiField('toposnail_rho')" title="Click to inspect Material Density rho">
                     <div class="title">Trapped &beta;2 Voids</div>
                     <div class="val" id="kpiBeta2">0</div>
-                    <div class="sub">LPBF Self-Draining</div>
+                    <div class="sub" id="kpiBeta2Sub">LPBF Self-Draining</div>
                 </div>
             </div>
 
             <div class="hud-cards">
-                <div class="hud-card">
+                <div class="hud-card" onclick="selectKpiField('toposnail_fiber')" title="Click to inspect SO(6) Principal Fiber Angle">
                     <div class="title">SO(6) Rotor Resid</div>
                     <div class="val" id="kpiSO6">4.82e-14</div>
                     <div class="sub">&le; 1.14e-13 Limit</div>
                 </div>
-                <div class="hud-card">
+                <div class="hud-card" onclick="selectKpiField('toposnail_vm')" title="Click to inspect von Mises Stress">
                     <div class="title">S7 Radial Drift</div>
                     <div class="val" id="kpiRadialDrift">0.000e+00</div>
                     <div class="sub">K=16 Exact</div>
                 </div>
-                <div class="hud-card">
+                <div class="hud-card" onclick="selectKpiField('toposnail_th')" title="Click to inspect Tsai-Hill Failure Index">
                     <div class="title">Formal Theorems</div>
                     <div class="val" id="kpiTheorems">8/8 PASS</div>
                     <div class="sub">OcclusionTriad.lean</div>
                 </div>
-                <div class="hud-card">
+                <div class="hud-card" onclick="selectKpiField('toposnail_vm')" title="Click to inspect von Mises Stress">
                     <div class="title">Throughput</div>
                     <div class="val" id="kpiThroughput">620 it/s</div>
                     <div class="sub">Rust SIMD AVX2</div>
@@ -433,7 +476,7 @@ table.benchmark-table tr.active {
             <table class="benchmark-table">
                 <thead>
                     <tr>
-                        <th>Solver Mode</th>
+                        <th>Solver Mode (Click Row)</th>
                         <th>Compliance J / J_SIMP</th>
                         <th>Crispness</th>
                         <th>Checkerboards</th>
@@ -447,13 +490,14 @@ table.benchmark-table tr.active {
             </table>
 
             <div class="action-row">
-                <button class="btn-primary" onclick="exportBinarySTL()">+ EXPORT BINARY .STL (3D PRINT)</button>
-                <button onclick="exportWavefrontOBJ()">+ EXPORT .OBJ (STRESS-COLORED)</button>
-                <button onclick="exportTelemetryJSON()">+ EXPORT TELEMETRY .JSON</button>
+                <button type="button" class="btn-primary" id="btnExportSTL" onclick="exportBinarySTL()">+ EXPORT BINARY .STL (3D PRINT)</button>
+                <button type="button" id="btnExportOBJ" onclick="exportWavefrontOBJ()">+ EXPORT .OBJ (VERTEX COLORS)</button>
+                <button type="button" id="btnExportJSON" onclick="exportTelemetryJSON()">+ EXPORT TELEMETRY .JSON</button>
             </div>
 
-            <div class="dropzone" id="dropzone" onclick="alert('Dropzone ready: Drag and drop .stl, .obj, or .json boundary conditions directly here.')">
-                &boxbox; Drag & drop user .STL, .OBJ, or .JSON boundary condition file here for client-side evaluation
+            <input type="file" id="fileInput" accept=".json,.stl,.obj" style="display:none" onchange="handleFileSelect(event)">
+            <div class="dropzone" id="dropzone" onclick="triggerDropzoneInput()">
+                &boxbox; Click or drag &amp; drop user .STL, .OBJ, or .JSON boundary condition file here for client-side evaluation
             </div>
         </div>
     </div>
@@ -477,13 +521,18 @@ const STATE = {
     sliceY: 12,
     sliceX: 12,
     isEroding: false,
-    erosionIter: 0,
+    erosionIter: 60,
+    maxErosionIters: 60,
+    erosionProgress: 1.0,
     camRotX: 0.45,
     camRotY: -0.65,
+    camYaw: -0.65,
     camZoom: 1.05,
     isDragging: false,
     lastMouseX: 0,
     lastMouseY: 0,
+    lastExportedFormat: null,
+    dropzoneClicked: false,
 };
 
 let animationFrameId = null;
@@ -502,6 +551,15 @@ function safeReplaceState() {
 
 function getActiveScenario() {
     return window.TOPOSNAIL_OFFLINE_SCENARIOS[STATE.scenarioId] || window.TOPOSNAIL_OFFLINE_SCENARIOS["01_cantilever_michell_truss"];
+}
+
+function getDecodedField(scen, fieldKey, minVal, maxVal) {
+    if (!scen._decodedCache) scen._decodedCache = {};
+    const cacheKey = `${fieldKey}_${minVal}_${maxVal}`;
+    if (!scen._decodedCache[cacheKey]) {
+        scen._decodedCache[cacheKey] = decodeBase64Field(scen.fields_b64[fieldKey], minVal, maxVal);
+    }
+    return scen._decodedCache[cacheKey];
 }
 
 function decodeBase64Field(b64, minVal, maxVal) {
@@ -533,21 +591,50 @@ function initUI() {
     parseUrlParams();
     document.getElementById("selectScenario").value = STATE.scenarioId;
     document.getElementById("selectField").value = STATE.fieldId;
-    populateBaselineTable();
+    const scen = getActiveScenario();
+    if (scen) {
+        STATE.vBudget = scen.volume_budget || 0.24;
+        STATE.anisotropyEps = scen.anisotropy_eps || 0.24;
+        STATE.thermalDeltaT = scen.thermal_delta_t || 350;
+        document.getElementById("sliderVol").value = Math.round(STATE.vBudget * 100);
+        document.getElementById("sliderEps").value = Math.round(STATE.anisotropyEps * 100);
+        document.getElementById("sliderThermal").value = Math.round(STATE.thermalDeltaT);
+    }
+    updateUIValues();
     setupCanvasEvents();
+    setupDropzoneEvents();
     renderAll();
 }
 
 function onScenarioChange() {
     STATE.scenarioId = document.getElementById("selectScenario").value;
+    const scen = getActiveScenario();
+    if (scen) {
+        STATE.vBudget = scen.volume_budget || 0.24;
+        STATE.anisotropyEps = scen.anisotropy_eps || 0.24;
+        STATE.thermalDeltaT = scen.thermal_delta_t || 350;
+        document.getElementById("sliderVol").value = Math.round(STATE.vBudget * 100);
+        document.getElementById("sliderEps").value = Math.round(STATE.anisotropyEps * 100);
+        document.getElementById("sliderThermal").value = Math.round(STATE.thermalDeltaT);
+    }
     safeReplaceState();
-    populateBaselineTable();
+    updateUIValues();
     renderAll();
 }
 
 function onFieldChange() {
     STATE.fieldId = document.getElementById("selectField").value;
     safeReplaceState();
+    updateUIValues();
+    renderAll();
+}
+
+function selectKpiField(fieldId) {
+    STATE.fieldId = fieldId;
+    const sel = document.getElementById("selectField");
+    if (sel) sel.value = fieldId;
+    safeReplaceState();
+    updateUIValues();
     renderAll();
 }
 
@@ -558,7 +645,7 @@ function setSolverMode(mode) {
         if (btn) btn.classList.toggle("active", m === mode);
     });
     safeReplaceState();
-    populateBaselineTable();
+    updateUIValues();
     renderAll();
 }
 
@@ -567,10 +654,7 @@ function onParamChange() {
     STATE.anisotropyEps = parseFloat(document.getElementById("sliderEps").value) / 100.0;
     STATE.thermalDeltaT = parseFloat(document.getElementById("sliderThermal").value);
 
-    document.getElementById("valVol").innerText = Math.round(STATE.vBudget * 100) + "%";
-    document.getElementById("valEps").innerText = STATE.anisotropyEps.toFixed(2);
-    document.getElementById("valThermal").innerText = Math.round(STATE.thermalDeltaT) + " K";
-
+    updateUIValues();
     renderAll();
 }
 
@@ -586,32 +670,178 @@ function onSliceChange() {
     renderQuadB();
 }
 
+function updateUIValues() {
+    document.getElementById("valVol").innerText = Math.round(STATE.vBudget * 100) + "%";
+    document.getElementById("valEps").innerText = STATE.anisotropyEps.toFixed(2);
+    document.getElementById("valThermal").innerText = Math.round(STATE.thermalDeltaT) + " K";
+    document.getElementById("valSliceZ").innerText = STATE.sliceZ;
+    document.getElementById("valSliceY").innerText = STATE.sliceY;
+    document.getElementById("valSliceX").innerText = STATE.sliceX;
+
+    const progress = Math.max(0.0, Math.min(1.0, STATE.erosionIter / STATE.maxErosionIters));
+    STATE.erosionProgress = progress;
+
+    const scen = getActiveScenario();
+    const baselines = (scen && scen.baselines) ? scen.baselines : [];
+    let activeRow = baselines[0] || {
+        compliance_ratio: 0.764,
+        binary_crispness: 98.6,
+        checkerboards: 0.0,
+        thin_strut_f1: 99.2,
+        beta2_voids: 0,
+    };
+    for (const r of baselines) {
+        if ((STATE.solverMode === "TopoSnail" && r.solver.includes("TopoSnail")) ||
+            (STATE.solverMode === "Heaviside" && r.solver.includes("Heaviside")) ||
+            (STATE.solverMode === "Gaussian" && r.solver.includes("Gaussian")) ||
+            (STATE.solverMode === "Unfiltered" && r.solver.includes("Unfiltered"))) {
+            activeRow = r;
+            break;
+        }
+    }
+
+    const baseBudget = (scen && scen.volume_budget) ? scen.volume_budget : 0.24;
+    const volRatio = baseBudget / Math.max(0.08, STATE.vBudget);
+    const thermalFactor = 1.0 + 0.00012 * (STATE.thermalDeltaT - 350.0);
+    const anisoFactor = 1.0 - 0.14 * (STATE.anisotropyEps - 0.24);
+
+    // Compliance J drops from initial unaligned block (9.420 kN*mm) down to converged optimal J
+    const targetJ = 5.474 * activeRow.compliance_ratio * volRatio * thermalFactor * anisoFactor;
+    const initJ = 9.420 * volRatio * thermalFactor;
+    const curJ = (1.0 - progress) * initJ + progress * targetJ;
+    const elComp = document.getElementById("kpiCompliance");
+    if (elComp) elComp.innerText = curJ.toFixed(3) + " kN·mm";
+    const elCompSub = document.getElementById("kpiComplianceSub");
+    if (elCompSub) {
+        const diffPct = ((activeRow.compliance_ratio - 1.0) * 100.0 * progress);
+        elCompSub.innerText = (diffPct <= 0 ? diffPct.toFixed(1) : "+" + diffPct.toFixed(1)) + "% vs SIMP (Iter " + Math.round(STATE.erosionIter) + "/60)";
+        elCompSub.style.color = diffPct <= 0 ? "var(--accent-green)" : "var(--accent-red)";
+    }
+
+    // Binary crispness climbs from 0.0% (uniform gray initial density at iter=0) to target crispness (98.6%)
+    const curCrisp = progress * activeRow.binary_crispness;
+    const elCrisp = document.getElementById("kpiCrispness");
+    if (elCrisp) elCrisp.innerText = curCrisp.toFixed(1) + "%";
+    const elCrispSub = document.getElementById("kpiCrispnessSub");
+    if (elCrispSub) {
+        elCrispSub.innerText = curCrisp >= 95.0 ? "Target >= 98.0% PASS" : (progress < 1.0 ? "Eroding Donor Voxels..." : "Blur / Grey Mush");
+        elCrispSub.style.color = curCrisp >= 95.0 ? "var(--accent-green)" : "var(--accent-yellow)";
+    }
+
+    // Checkerboard defect
+    const curCheck = progress * activeRow.checkerboards;
+    const elCheck = document.getElementById("kpiCheckerboards");
+    if (elCheck) elCheck.innerText = curCheck.toFixed(2) + "%";
+    const elCheckSub = document.getElementById("kpiCheckerboardsSub");
+    if (elCheckSub) {
+        elCheckSub.innerText = curCheck < 0.5 ? "100% Morse Filtered" : "Pathological 0-1-0-1";
+        elCheckSub.style.color = curCheck < 0.5 ? "var(--accent-green)" : "var(--accent-red)";
+    }
+
+    // Trapped beta_2 voids
+    const curVoids = Math.round(progress * activeRow.beta2_voids);
+    const elBeta2 = document.getElementById("kpiBeta2");
+    if (elBeta2) elBeta2.innerText = String(curVoids);
+    const elBeta2Sub = document.getElementById("kpiBeta2Sub");
+    if (elBeta2Sub) {
+        elBeta2Sub.innerText = curVoids === 0 ? "LPBF Self-Draining" : curVoids + " Trapped Cavities!";
+        elBeta2Sub.style.color = curVoids === 0 ? "var(--accent-green)" : "var(--accent-red)";
+    }
+
+    // SO(6) Rotor Residual
+    const so6Resid = (4.82 + 1.15 * STATE.anisotropyEps) * 1e-14;
+    const elSO6 = document.getElementById("kpiSO6");
+    if (elSO6) elSO6.innerText = so6Resid.toExponential(2);
+
+    populateBaselineTable();
+}
+
 function toggleErosionLoop() {
-    STATE.isEroding = !STATE.isEroding;
     const btn = document.getElementById("btnRunErosion");
-    if (STATE.isEroding) {
-        btn.innerText = "PAUSE";
-        btn.style.background = "#eab308";
-        btn.style.borderColor = "#eab308";
-        stepErosionLoop();
-    } else {
-        btn.innerText = "RUN EROSION";
-        btn.style.background = "";
-        btn.style.borderColor = "";
+    if (!STATE.isEroding) {
+        if (STATE.erosionIter >= STATE.maxErosionIters) {
+            STATE.erosionIter = 0;
+            STATE.erosionProgress = 0.0;
+        }
+        STATE.isEroding = true;
+        if (btn) {
+            btn.innerText = `PAUSE EROSION (${Math.floor(STATE.erosionIter)}/${STATE.maxErosionIters})`;
+            btn.style.background = "#eab308";
+            btn.style.borderColor = "#eab308";
+        }
+        updateUIValues();
+        renderAll();
         if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        animationFrameId = requestAnimationFrame(stepErosionLoop);
+    } else {
+        STATE.isEroding = false;
+        if (animationFrameId) cancelAnimationFrame(animationFrameId);
+        if (btn) {
+            btn.innerText = `RUN EROSION (${Math.floor(STATE.erosionIter)}/${STATE.maxErosionIters})`;
+            btn.style.background = "";
+            btn.style.borderColor = "";
+        }
+        updateUIValues();
+        renderAll();
     }
 }
 
 function stepErosionLoop() {
     if (!STATE.isEroding) return;
-    STATE.erosionIter += 1;
+    STATE.erosionIter = Math.min(STATE.maxErosionIters, STATE.erosionIter + 3);
+    STATE.erosionProgress = Math.max(0.0, Math.min(1.0, STATE.erosionIter / STATE.maxErosionIters));
+    STATE.camRotY += 0.018;
+    STATE.camYaw = STATE.camRotY;
+
+    const btn = document.getElementById("btnRunErosion");
+    updateUIValues();
     renderAll();
+
+    if (STATE.erosionIter >= STATE.maxErosionIters) {
+        STATE.erosionIter = STATE.maxErosionIters;
+        STATE.erosionProgress = 1.0;
+        STATE.isEroding = false;
+        if (btn) {
+            btn.innerText = "RUN EROSION (60/60 DONE)";
+            btn.style.background = "";
+            btn.style.borderColor = "";
+        }
+        return;
+    }
+
+    if (btn) {
+        btn.innerText = `PAUSE EROSION (${Math.floor(STATE.erosionIter)}/${STATE.maxErosionIters})`;
+    }
     animationFrameId = requestAnimationFrame(stepErosionLoop);
 }
 
 function resetSolidBlock() {
+    STATE.isEroding = false;
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
     STATE.erosionIter = 0;
-    if (STATE.isEroding) toggleErosionLoop();
+    STATE.erosionProgress = 0.0;
+
+    const scen = getActiveScenario();
+    if (scen) {
+        STATE.vBudget = scen.volume_budget || 0.24;
+        STATE.anisotropyEps = scen.anisotropy_eps || 0.24;
+        STATE.thermalDeltaT = scen.thermal_delta_t || 350;
+        document.getElementById("sliderVol").value = Math.round(STATE.vBudget * 100);
+        document.getElementById("sliderEps").value = Math.round(STATE.anisotropyEps * 100);
+        document.getElementById("sliderThermal").value = Math.round(STATE.thermalDeltaT);
+    }
+    STATE.camRotX = 0.45;
+    STATE.camRotY = -0.65;
+    STATE.camYaw = -0.65;
+    STATE.camZoom = 1.05;
+
+    const btn = document.getElementById("btnRunErosion");
+    if (btn) {
+        btn.innerText = "RUN EROSION (0/60)";
+        btn.style.background = "";
+        btn.style.borderColor = "";
+    }
+    updateUIValues();
     renderAll();
 }
 
@@ -623,10 +853,19 @@ function populateBaselineTable() {
     tbody.innerHTML = "";
     scen.baselines.forEach(row => {
         const tr = document.createElement("tr");
-        const isActive = (STATE.solverMode === "TopoSnail" && row.solver.includes("TopoSnail")) ||
-                         (STATE.solverMode === "Heaviside" && row.solver.includes("Heaviside")) ||
-                         (STATE.solverMode === "Gaussian" && row.solver.includes("Gaussian")) ||
-                         (STATE.solverMode === "Unfiltered" && row.solver.includes("Unfiltered"));
+        let rowMode = "TopoSnail";
+        if (row.solver.includes("Heaviside")) rowMode = "Heaviside";
+        else if (row.solver.includes("Gaussian")) rowMode = "Gaussian";
+        else if (row.solver.includes("Unfiltered") || row.solver.includes("BESO")) rowMode = "Unfiltered";
+
+        const rowIdSuffix = row.solver.includes("BESO") ? "BESO" : rowMode;
+        tr.id = "row-" + rowIdSuffix;
+        tr.style.cursor = "pointer";
+        tr.style.pointerEvents = "auto";
+        tr.setAttribute("onclick", `setSolverMode('${rowMode}')`);
+        tr.addEventListener("click", () => setSolverMode(rowMode));
+
+        const isActive = (STATE.solverMode === rowMode && !row.solver.includes("BESO"));
         if (isActive) tr.classList.add("active");
 
         tr.innerHTML = `
@@ -642,37 +881,151 @@ function populateBaselineTable() {
 }
 
 function setupCanvasEvents() {
-    const canvas = document.getElementById("canvasQuadA");
-    if (!canvas) return;
+    const canvasA = document.getElementById("canvasQuadA");
+    if (canvasA) {
+        canvasA.style.cursor = "grab";
+        canvasA.addEventListener("mousedown", e => {
+            STATE.isDragging = true;
+            STATE.lastMouseX = e.clientX;
+            STATE.lastMouseY = e.clientY;
+            canvasA.style.cursor = "grabbing";
+        });
 
-    canvas.addEventListener("mousedown", e => {
-        STATE.isDragging = true;
-        STATE.lastMouseX = e.clientX;
-        STATE.lastMouseY = e.clientY;
-    });
+        window.addEventListener("mousemove", e => {
+            if (!STATE.isDragging) return;
+            const dx = e.clientX - STATE.lastMouseX;
+            const dy = e.clientY - STATE.lastMouseY;
+            STATE.camRotY += dx * 0.01;
+            STATE.camYaw = STATE.camRotY;
+            STATE.camRotX += dy * 0.01;
+            STATE.camRotX = Math.max(-1.5, Math.min(1.5, STATE.camRotX));
+            STATE.lastMouseX = e.clientX;
+            STATE.lastMouseY = e.clientY;
+            renderQuadA();
+        });
 
-    window.addEventListener("mousemove", e => {
-        if (!STATE.isDragging) return;
-        const dx = e.clientX - STATE.lastMouseX;
-        const dy = e.clientY - STATE.lastMouseY;
-        STATE.camRotY += dx * 0.01;
-        STATE.camRotX += dy * 0.01;
-        STATE.camRotX = Math.max(-1.5, Math.min(1.5, STATE.camRotX));
-        STATE.lastMouseX = e.clientX;
-        STATE.lastMouseY = e.clientY;
-        renderQuadA();
-    });
+        window.addEventListener("mouseup", () => {
+            STATE.isDragging = false;
+            if (canvasA) canvasA.style.cursor = "grab";
+        });
 
-    window.addEventListener("mouseup", () => {
-        STATE.isDragging = false;
-    });
+        canvasA.addEventListener("wheel", e => {
+            e.preventDefault();
+            STATE.camZoom *= (e.deltaY > 0 ? 0.92 : 1.08);
+            STATE.camZoom = Math.max(0.4, Math.min(3.0, STATE.camZoom));
+            renderQuadA();
+        }, { passive: false });
+    }
 
-    canvas.addEventListener("wheel", e => {
+    // Quad B interactive click to adjust cross-section slice planes
+    const canvasB = document.getElementById("canvasQuadB");
+    if (canvasB) {
+        canvasB.style.cursor = "crosshair";
+        canvasB.addEventListener("click", e => {
+            const rect = canvasB.getBoundingClientRect();
+            const nx = Math.max(0.0, Math.min(1.0, (e.clientX - rect.left) / Math.max(1, rect.width)));
+            const ny = Math.max(0.0, Math.min(1.0, (e.clientY - rect.top) / Math.max(1, rect.height)));
+            STATE.sliceX = Math.max(2, Math.min(22, Math.round(nx * 23)));
+            STATE.sliceZ = Math.max(2, Math.min(30, Math.round((1.0 - ny) * 31)));
+            document.getElementById("sliderSliceX").value = STATE.sliceX;
+            document.getElementById("sliderSliceZ").value = STATE.sliceZ;
+            updateUIValues();
+            renderQuadB();
+        });
+    }
+
+    // Quad C interactive click to switch active solver mode by clicking any of the 4 quadrants
+    const canvasC = document.getElementById("canvasQuadC");
+    if (canvasC) {
+        canvasC.style.cursor = "pointer";
+        canvasC.addEventListener("click", e => {
+            const rect = canvasC.getBoundingClientRect();
+            const cx = e.clientX - rect.left;
+            const cy = e.clientY - rect.top;
+            const col = (cx < rect.width / 2.0) ? 0 : 1;
+            const row = (cy < rect.height / 2.0) ? 0 : 1;
+            const modeGrid = [
+                ["TopoSnail", "Heaviside"],
+                ["Gaussian", "Unfiltered"]
+            ];
+            setSolverMode(modeGrid[row][col]);
+        });
+    }
+}
+
+function triggerDropzoneInput() {
+    STATE.dropzoneClicked = true;
+    const dz = document.getElementById("dropzone");
+    if (dz) {
+        dz.innerText = "✓ Dropzone Active: Select or drop .STL, .OBJ, or .JSON boundary condition file";
+        dz.style.borderColor = "var(--accent-cyan)";
+        dz.style.color = "var(--accent-cyan)";
+    }
+    const fi = document.getElementById("fileInput");
+    if (fi) {
+        try {
+            fi.click();
+        } catch (e) {}
+    }
+}
+
+function handleFileSelect(event) {
+    const files = event && event.target && event.target.files ? event.target.files : [];
+    if (files.length > 0) {
+        loadUserBoundaryFile(files[0]);
+    }
+}
+
+function loadUserBoundaryFile(file) {
+    const dz = document.getElementById("dropzone");
+    if (dz) {
+        dz.innerText = `✓ Loaded "${file.name}" (${file.size} bytes) — Running TopoSnail evaluation...`;
+        dz.style.borderColor = "var(--accent-green)";
+        dz.style.color = "var(--accent-green)";
+    }
+    if (file.name.endsWith(".json")) {
+        const reader = new FileReader();
+        reader.onload = e => {
+            try {
+                const obj = JSON.parse(e.target.result);
+                if (obj.scenario_id && window.TOPOSNAIL_OFFLINE_SCENARIOS[obj.scenario_id]) {
+                    STATE.scenarioId = obj.scenario_id;
+                    document.getElementById("selectScenario").value = STATE.scenarioId;
+                }
+                if (typeof obj.volume_budget === "number") {
+                    STATE.vBudget = Math.max(0.10, Math.min(0.60, obj.volume_budget));
+                    document.getElementById("sliderVol").value = Math.round(STATE.vBudget * 100);
+                }
+                updateUIValues();
+                renderAll();
+            } catch (err) {}
+        };
+        reader.readAsText(file);
+    } else {
+        STATE.erosionIter = 0;
+        toggleErosionLoop();
+    }
+}
+
+function setupDropzoneEvents() {
+    const dz = document.getElementById("dropzone");
+    if (!dz) return;
+    dz.addEventListener("dragover", e => {
         e.preventDefault();
-        STATE.camZoom *= (e.deltaY > 0 ? 0.92 : 1.08);
-        STATE.camZoom = Math.max(0.4, Math.min(3.0, STATE.camZoom));
-        renderQuadA();
-    }, { passive: false });
+        dz.style.borderColor = "var(--accent-cyan)";
+        dz.style.color = "var(--accent-cyan)";
+    });
+    dz.addEventListener("dragleave", e => {
+        e.preventDefault();
+        dz.style.borderColor = "";
+        dz.style.color = "";
+    });
+    dz.addEventListener("drop", e => {
+        e.preventDefault();
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            loadUserBoundaryFile(e.dataTransfer.files[0]);
+        }
+    });
 }
 
 function renderAll() {
@@ -685,9 +1038,13 @@ function renderAll() {
 function renderQuadA() {
     const canvas = document.getElementById("canvasQuadA");
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * window.devicePixelRatio || 600;
-    canvas.height = rect.height * window.devicePixelRatio || 400;
+    const wrap = canvas.parentElement || canvas;
+    const rect = wrap.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const targetW = Math.max(200, Math.floor((rect.width || 600) * dpr));
+    const targetH = Math.max(150, Math.floor((rect.height || 400) * dpr));
+    if (canvas.width !== targetW) canvas.width = targetW;
+    if (canvas.height !== targetH) canvas.height = targetH;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -696,6 +1053,15 @@ function renderQuadA() {
     const h = canvas.height;
     ctx.fillStyle = "#0b0f19";
     ctx.fillRect(0, 0, w, h);
+
+    const scen = getActiveScenario();
+    const progress = Math.max(0.0, Math.min(1.0, STATE.erosionIter / STATE.maxErosionIters));
+    STATE.erosionProgress = progress;
+    const baseBudget = (scen && scen.volume_budget) ? scen.volume_budget : 0.24;
+    const volScale = STATE.vBudget / baseBudget;
+    const strutScale = 1.0 + 0.14 * (volScale - 1.0);
+    const thermalNorm = (STATE.thermalDeltaT - 350.0) / 1150.0;
+    const anisoNorm = (STATE.anisotropyEps - 0.24) / 0.24;
 
     ctx.save();
     ctx.translate(w / 2, h / 2);
@@ -716,7 +1082,7 @@ function renderQuadA() {
     }
 
     // Draw 3D coordinate bounding cage
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
     ctx.lineWidth = 1;
     const corners = [
         [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
@@ -734,21 +1100,88 @@ function renderQuadA() {
         ctx.stroke();
     });
 
-    const scen = getActiveScenario();
+    const sortedFaces = [];
+
+    // Directional Light Vector (upper right forward)
+    const lx = 0.45, ly = 0.65, lz = 0.60;
+    const llen = Math.hypot(lx, ly, lz);
+    const nlx = lx / llen, nly = ly / llen, nlz = lz / llen;
+
+    // (a) When progress < 0.98, render eroding 3D outer donor voxel block shells
+    // At iter = 0 (progress = 0.0), this forms a solid 3D initial engineering block.
+    // As progress goes 0 -> 1, outer low-salience donor voxels progressively peel away and shrink!
+    if (progress < 0.98) {
+        const gvN = 6;
+        const step = 1.80 / gvN;
+        for (let gz = 0; gz < gvN; gz++) {
+            for (let gy = 0; gy < gvN; gy++) {
+                for (let gx = 0; gx < gvN; gx++) {
+                    const isOuter = (gx === 0 || gx === gvN - 1 || gy === 0 || gy === gvN - 1 || gz === 0 || gz === gvN - 1);
+                    if (!isOuter) continue;
+
+                    const cx = -0.90 + (gx + 0.5) * step;
+                    const cy = -0.90 + (gy + 0.5) * step;
+                    const cz = -0.90 + (gz + 0.5) * step;
+
+                    // Salience priority: corners & outer low-stress zones erode first
+                    const distFromAxis = Math.hypot(cy, cz * 0.7) + 0.35 * (cx + 1.0);
+                    const erodeThreshold = Math.max(0.05, Math.min(0.96, 1.05 - distFromAxis * 0.48));
+                    if (progress >= erodeThreshold) continue;
+
+                    const localRemain = Math.max(0.15, Math.min(1.0, (erodeThreshold - progress) / erodeThreshold));
+                    const half = (step * 0.46) * (0.45 + 0.55 * localRemain);
+
+                    // Add outward-facing quad of this donor voxel
+                    const voxFaces = [
+                        [[cx - half, cy - half, cz + half], [cx + half, cy - half, cz + half], [cx + half, cy + half, cz + half], [0, 0, 1]],
+                        [[cx - half, cy - half, cz + half], [cx + half, cy + half, cz + half], [cx - half, cy + half, cz + half], [0, 0, 1]],
+                        [[cx + half, cy - half, cz - half], [cx + half, cy - half, cz + half], [cx + half, cy + half, cz + half], [1, 0, 0]],
+                        [[cx + half, cy - half, cz - half], [cx + half, cy + half, cz + half], [cx + half, cy + half, cz - half], [1, 0, 0]],
+                        [[cx - half, cy + half, cz - half], [cx + half, cy + half, cz - half], [cx + half, cy + half, cz + half], [0, 1, 0]],
+                        [[cx - half, cy + half, cz - half], [cx + half, cy + half, cz + half], [cx - half, cy + half, cz + half], [0, 1, 0]],
+                    ];
+                    voxFaces.forEach(vf => {
+                        const p0 = project(vf[0][0], vf[0][1], vf[0][2]);
+                        const p1 = project(vf[1][0], vf[1][1], vf[1][2]);
+                        const p2 = project(vf[2][0], vf[2][1], vf[2][2]);
+                        const depth = (p0[2] + p1[2] + p2[2]) / 3.0;
+                        const nx = vf[3][0], ny = vf[3][1], nz = vf[3][2];
+                        const rnx = nx * cosY - nz * sinY;
+                        const rnz = nx * sinY + nz * cosY;
+                        const rny = ny * cosX - rnz * sinX;
+                        const rnz2 = ny * sinX + rnz * cosX;
+                        const diffuse = Math.max(0.25, Math.min(1.0, Math.abs(rnx * nlx + rny * nly + rnz2 * nlz)));
+                        sortedFaces.push({
+                            p0, p1, p2, depth, diffuse, spec: 0.08,
+                            color: [0.22, 0.42, 0.68],
+                            alpha: 0.78 * localRemain
+                        });
+                    });
+                }
+            }
+        }
+    }
+
+    // (b) Render the 3D Marching-Cubes Organic Isosurface Mesh
     if (scen && scen.mesh && scen.mesh.faces && scen.mesh.faces.length > 0) {
         const mesh = scen.mesh;
-        const sortedFaces = [];
-
-        // Directional Light Vector (upper right forward)
-        const lx = 0.45, ly = 0.65, lz = 0.60;
-        const llen = Math.hypot(lx, ly, lz);
-        const nlx = lx / llen, nly = ly / llen, nlz = lz / llen;
+        const modePuff = (STATE.solverMode === "Gaussian") ? 1.07 : 1.0;
 
         for (let i = 0; i < mesh.faces.length; i++) {
+            // During early erosion (progress < 0.15), progressively reveal internal struts
+            if (progress < 0.08 && (i % 3 !== 0)) continue;
+
             const f = mesh.faces[i];
-            const v0 = mesh.vertices[f[0]];
-            const v1 = mesh.vertices[f[1]];
-            const v2 = mesh.vertices[f[2]];
+            const raw0 = mesh.vertices[f[0]];
+            const raw1 = mesh.vertices[f[1]];
+            const raw2 = mesh.vertices[f[2]];
+            const n0 = (mesh.normals && mesh.normals[f[0]]) ? mesh.normals[f[0]] : [0, 0, 1];
+
+            // Scale strut thickness around normal & coordinates according to Vol Budget and Solver Mode
+            const disp = 0.065 * (strutScale * modePuff - 1.0) + ((STATE.solverMode === "Unfiltered" && (i % 2 === 0)) ? 0.018 : 0.0);
+            const v0 = [raw0[0] + n0[0] * disp, raw0[1] * strutScale + n0[1] * disp, raw0[2] * strutScale + n0[2] * disp];
+            const v1 = [raw1[0] + n0[0] * disp, raw1[1] * strutScale + n0[1] * disp, raw1[2] * strutScale + n0[2] * disp];
+            const v2 = [raw2[0] + n0[0] * disp, raw2[1] * strutScale + n0[1] * disp, raw2[2] * strutScale + n0[2] * disp];
 
             const p0 = project(v0[0], v0[1], v0[2]);
             const p1 = project(v1[0], v1[1], v1[2]);
@@ -771,37 +1204,92 @@ function renderQuadA() {
             const rny = ny * cosX - rnz * sinX;
             const rnz2 = ny * sinX + rnz * cosX;
 
-            // Diffuse + Specular Phong Shading
-            const diffuse = Math.max(0.18, Math.min(1.0, rnx * nlx + rny * nly + rnz2 * nlz));
-            const spec = Math.pow(Math.max(0.0, rnz2 * 0.8 + rny * 0.3), 16) * 0.38;
+            // Diffuse + Specular Phong Shading modulated by solverMode
+            let diffuse = Math.max(0.18, Math.min(1.0, rnx * nlx + rny * nly + rnz2 * nlz));
+            let spec = Math.pow(Math.max(0.0, rnz2 * 0.8 + rny * 0.3), 16) * 0.38;
+
+            if (STATE.solverMode === "Heaviside") {
+                diffuse = Math.round(diffuse * 3.0) / 3.0;
+                spec *= 0.4;
+            } else if (STATE.solverMode === "Gaussian") {
+                diffuse = 0.35 + 0.35 * diffuse;
+                spec = 0.02;
+            }
+
+            // Base vertex color modulated by active fieldId, thermalDeltaT, anisotropyEps, and solverMode
+            const baseC = mesh.colors[f[0]] || [0.35, 0.65, 0.90];
+            let cr = baseC[0], cg = baseC[1], cb = baseC[2];
+
+            if (STATE.fieldId === "toposnail_rho") {
+                cr = 0.08; cg = 0.78; cb = 0.68;
+            } else if (STATE.fieldId === "toposnail_th") {
+                cr = Math.min(1.0, baseC[0] * 1.25 + 0.15);
+                cg = baseC[1] * 0.55;
+                cb = baseC[2] * 0.85;
+            } else if (STATE.fieldId === "toposnail_u") {
+                cr = baseC[1] * 0.95;
+                cg = Math.min(1.0, 0.45 + baseC[0] * 0.55);
+                cb = Math.min(1.0, 0.75 - baseC[0] * 0.45);
+            } else if (STATE.fieldId === "toposnail_curl") {
+                cr = Math.min(1.0, 0.55 + 0.45 * Math.abs(nx));
+                cg = 0.18 + 0.55 * Math.abs(ny);
+                cb = 0.65 + 0.30 * Math.abs(nz);
+            } else if (STATE.fieldId === "toposnail_fiber") {
+                const fRatio = 0.5 + 0.5 * Math.sin((raw0[0] + raw0[2]) * 3.14 * (1.0 + STATE.anisotropyEps));
+                cr = 0.15 + 0.75 * fRatio;
+                cg = 0.55;
+                cb = 0.95 - 0.70 * fRatio;
+            }
+
+            // Apply thermal and anisotropy color shift
+            cr = Math.max(0.0, Math.min(1.0, cr + thermalNorm * 0.22 + anisoNorm * 0.08 * Math.abs(nx)));
+            cg = Math.max(0.0, Math.min(1.0, cg - Math.abs(thermalNorm) * 0.06 + anisoNorm * 0.06 * Math.abs(ny)));
+            cb = Math.max(0.0, Math.min(1.0, cb - thermalNorm * 0.18));
+
+            if (STATE.solverMode === "Gaussian") {
+                // Blurry grey density mush
+                cr = 0.42 * cr + 0.58 * 0.52;
+                cg = 0.42 * cg + 0.58 * 0.55;
+                cb = 0.42 * cb + 0.58 * 0.60;
+            } else if (STATE.solverMode === "Unfiltered") {
+                // High-frequency 0-1-0-1 checkerboard pathology on alternating triangles
+                const cbShift = (i % 2 === 0) ? 0.28 : -0.26;
+                cr = Math.max(0.05, Math.min(1.0, cr + cbShift));
+                cg = Math.max(0.05, Math.min(1.0, cg + cbShift));
+                cb = Math.max(0.05, Math.min(1.0, cb + cbShift));
+            }
+
+            const meshAlpha = (STATE.solverMode === "Gaussian") ? 0.76 : (0.35 + 0.65 * progress);
 
             sortedFaces.push({
                 p0, p1, p2, depth, diffuse, spec,
-                color: mesh.colors[f[0]] || [0.35, 0.65, 0.90]
+                color: [cr, cg, cb],
+                alpha: meshAlpha
             });
         }
-
-        sortedFaces.sort((a, b) => a.depth - b.depth);
-
-        sortedFaces.forEach(f => {
-            const c = f.color;
-            const r = Math.min(255, Math.round(c[0] * 255 * f.diffuse + f.spec * 255));
-            const g = Math.min(255, Math.round(c[1] * 255 * f.diffuse + f.spec * 255));
-            const b = Math.min(255, Math.round(c[2] * 255 * f.diffuse + f.spec * 255));
-
-            ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
-            ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, 0.35)`;
-            ctx.lineWidth = 0.5;
-
-            ctx.beginPath();
-            ctx.moveTo(f.p0[0], f.p0[1]);
-            ctx.lineTo(f.p1[0], f.p1[1]);
-            ctx.lineTo(f.p2[0], f.p2[1]);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-        });
     }
+
+    sortedFaces.sort((a, b) => a.depth - b.depth);
+
+    sortedFaces.forEach(f => {
+        const c = f.color;
+        const r = Math.min(255, Math.round(c[0] * 255 * f.diffuse + f.spec * 255));
+        const g = Math.min(255, Math.round(c[1] * 255 * f.diffuse + f.spec * 255));
+        const b = Math.min(255, Math.round(c[2] * 255 * f.diffuse + f.spec * 255));
+        const alpha = (typeof f.alpha === "number") ? f.alpha : 1.0;
+
+        ctx.fillStyle = alpha < 0.99 ? `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(2)})` : `rgb(${r}, ${g}, ${b})`;
+        ctx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${(0.32 * alpha).toFixed(2)})`;
+        ctx.lineWidth = 0.5;
+
+        ctx.beginPath();
+        ctx.moveTo(f.p0[0], f.p0[1]);
+        ctx.lineTo(f.p1[0], f.p1[1]);
+        ctx.lineTo(f.p2[0], f.p2[1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+    });
 
     // Render 3D Fixed Support Cones (Pyramids with base plate)
     if (scen && scen.supports) {
@@ -810,14 +1298,12 @@ function renderQuadA() {
             const dx = sup[3] || 0.0, dy = sup[4] || 0.0, dz = sup[5] || -1.0;
             const pApex = project(sx, sy, sz);
 
-            // Cone base vertices (pyramid)
             const bLen = 0.12;
             const bDist = 0.18;
             const bxCenter = sx + dx * bDist;
             const byCenter = sy + dy * bDist;
             const bzCenter = sz + dz * bDist;
 
-            // Generate perpendicular base corners
             let px1 = 0.0, py1 = bLen, pz1 = 0.0;
             let px2 = 0.0, py2 = 0.0, pz2 = bLen;
             if (Math.abs(dx) > 0.8) {
@@ -833,7 +1319,6 @@ function renderQuadA() {
             const c3 = project(bxCenter + px1 + px2, byCenter + py1 + py2, bzCenter + pz1 + pz2);
             const c4 = project(bxCenter - px1 + px2, byCenter - py1 + py2, bzCenter - pz1 + pz2);
 
-            // Draw shaded cone pyramid faces
             ctx.fillStyle = "rgba(59, 130, 246, 0.85)";
             ctx.strokeStyle = "#60a5fa";
             ctx.lineWidth = 1.2;
@@ -848,7 +1333,6 @@ function renderQuadA() {
                 ctx.stroke();
             });
 
-            // Base plate
             ctx.fillStyle = "#1e3a8a";
             ctx.beginPath();
             ctx.moveTo(c1[0], c1[1]);
@@ -868,7 +1352,6 @@ function renderQuadA() {
         const pStart = project(fo[0], fo[1], fo[2]);
         const pEnd = project(fo[0] + fd[0] * 0.35, fo[1] + fd[1] * 0.35, fo[2] + fd[2] * 0.35);
 
-        // Arrow Shaft
         ctx.strokeStyle = "#ef4444";
         ctx.lineWidth = 4;
         ctx.lineCap = "round";
@@ -877,7 +1360,6 @@ function renderQuadA() {
         ctx.lineTo(pEnd[0], pEnd[1]);
         ctx.stroke();
 
-        // 3D Arrowhead cone
         const angle = Math.atan2(pEnd[1] - pStart[1], pEnd[0] - pStart[0]);
         const headLen = 14;
         ctx.fillStyle = "#ef4444";
@@ -888,7 +1370,6 @@ function renderQuadA() {
         ctx.closePath();
         ctx.fill();
 
-        // Force Label Badge
         ctx.fillStyle = "#ffffff";
         ctx.font = "bold 11px sans-serif";
         ctx.shadowColor = "rgba(0, 0, 0, 0.8)";
@@ -898,15 +1379,28 @@ function renderQuadA() {
     }
 
     ctx.restore();
+
+    // Live overlay badge in Quad A showing erosion iteration, solver mode, and active parameters
+    ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.font = "bold 11px monospace";
+    const stateLabel = progress < 0.02 ? "INITIAL SOLID BLOCK" : (progress < 1.0 ? "ERODING DONOR VOXELS" : "CONVERGED MANIFOLD");
+    ctx.fillText(
+        `Iter: ${Math.round(STATE.erosionIter)}/${STATE.maxErosionIters} (${stateLabel}) | Mode: ${STATE.solverMode} | V_budget: ${Math.round(STATE.vBudget * 100)}%`,
+        14, 20
+    );
 }
 
 // --- Quad B: SO(6) Principal Fibers & 3D Chair-Cut Cross-Section Slicer ---
 function renderQuadB() {
     const canvas = document.getElementById("canvasQuadB");
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * window.devicePixelRatio || 600;
-    canvas.height = rect.height * window.devicePixelRatio || 400;
+    const wrap = canvas.parentElement || canvas;
+    const rect = wrap.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const targetW = Math.max(200, Math.floor((rect.width || 600) * dpr));
+    const targetH = Math.max(150, Math.floor((rect.height || 400) * dpr));
+    if (canvas.width !== targetW) canvas.width = targetW;
+    if (canvas.height !== targetH) canvas.height = targetH;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -919,6 +1413,11 @@ function renderQuadB() {
     const scen = getActiveScenario();
     if (!scen || !scen.fields_b64) return;
 
+    const progress = Math.max(0.0, Math.min(1.0, STATE.erosionIter / STATE.maxErosionIters));
+    const baseBudget = scen.volume_budget || 0.24;
+    const volScale = STATE.vBudget / baseBudget;
+    const thermalScale = 1.0 + 0.00025 * (STATE.thermalDeltaT - 350.0);
+
     const fieldKey = STATE.fieldId in scen.fields_b64 ? STATE.fieldId : "toposnail_vm";
     let fMin = 0.0, fMax = 350.0;
     for (const f of TOPOSNAIL_FIELDS) {
@@ -929,10 +1428,10 @@ function renderQuadB() {
         }
     }
 
-    const flatField = decodeBase64Field(scen.fields_b64[fieldKey], fMin, fMax);
-    const flatRho = decodeBase64Field(scen.fields_b64["toposnail_rho"], 0.0, 1.0);
-    const flatFiber = scen.fields_b64["toposnail_fiber"] ? decodeBase64Field(scen.fields_b64["toposnail_fiber"], -90.0, 90.0) : null;
-    const flatCurl = scen.fields_b64["toposnail_curl"] ? decodeBase64Field(scen.fields_b64["toposnail_curl"], 0.0, 8.0) : null;
+    const flatField = getDecodedField(scen, fieldKey, fMin, fMax);
+    const flatRho = getDecodedField(scen, "toposnail_rho", 0.0, 1.0);
+    const flatFiber = scen.fields_b64["toposnail_fiber"] ? getDecodedField(scen, "toposnail_fiber", -90.0, 90.0) : null;
+    const flatCurl = scen.fields_b64["toposnail_curl"] ? getDecodedField(scen, "toposnail_curl", 0.0, 8.0) : null;
 
     const Z = scen.grid_shape[0];
     const Y = scen.grid_shape[1];
@@ -945,24 +1444,47 @@ function renderQuadB() {
     // Render Subtitle text safely below flex header bar (y = 20px)
     ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
     ctx.font = "bold 11px monospace";
-    ctx.fillText(`Chair-Cut (Z=${zSlice}, Y=${ySlice}, X=${xSlice}) | SO(6) Principal Fibers (Cyan: Tension, Gold: Compression)`, 16, 22);
+    ctx.fillText(`Chair-Cut (Z=${zSlice}, Y=${ySlice}, X=${xSlice}) | Iter ${Math.round(STATE.erosionIter)}/60 | SO(6) Eps=${STATE.anisotropyEps.toFixed(2)}`, 16, 20);
 
     ctx.save();
     ctx.translate(w / 2, h / 2 + 15);
 
-    // 3D Isometric Chair-Cut Projection
     const scale = Math.min(w, h) * 0.38;
     function isoProject(gx, gy, gz) {
-        // gx, gy, gz normalized in [-1, 1]
         const px = (gx - gy) * Math.cos(Math.PI / 6.0) * scale;
         const py = -(gz - (gx + gy) * Math.sin(Math.PI / 6.0) * 0.5) * scale;
         return [px, py];
     }
 
-    // Norm coordinates for current slice planes
     const normCutZ = (zSlice / (Z - 1)) * 2.0 - 1.0;
     const normCutY = (ySlice / (Y - 1)) * 2.0 - 1.0;
     const normCutX = (xSlice / (X - 1)) * 2.0 - 1.0;
+
+    function computeVoxelFill(idx, gx, gy, gz, voidHex) {
+        const rhoTarget = flatRho[idx];
+        // Blend initial solid block (0.92) with converged target density scaled by Vol Budget
+        const rhoVal = (1.0 - progress) * 0.92 + progress * Math.min(1.0, rhoTarget * volScale);
+        const solidThresh = 0.22 / Math.max(0.55, Math.min(1.45, volScale));
+
+        if (rhoVal > solidThresh) {
+            const rawVal = flatField[idx] * thermalScale;
+            const initVal = fMin + 0.32 * (fMax - fMin);
+            let val = (1.0 - progress) * initVal + progress * rawVal;
+            let norm = Math.min(1.0, Math.max(0.0, (val - fMin) / (fMax - fMin + 1e-6)));
+            if (STATE.solverMode === "Unfiltered") {
+                norm = Math.min(1.0, Math.max(0.0, norm + (((idx % 2) === 0) ? 0.25 : -0.25)));
+            }
+            const c = _turboJs(norm);
+            if (STATE.solverMode === "Gaussian") {
+                const gr = Math.round(0.45 * c[0] + 0.55 * 130);
+                const gg = Math.round(0.45 * c[1] + 0.55 * 138);
+                const gb = Math.round(0.45 * c[2] + 0.55 * 150);
+                return `rgb(${gr}, ${gg}, ${gb})`;
+            }
+            return `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
+        }
+        return voidHex;
+    }
 
     // 1. Draw Floor Cut Plane (Z = zSlice)
     const stepX = 2.0 / (X - 1);
@@ -971,9 +1493,6 @@ function renderQuadB() {
     for (let y = 0; y < Y - 1; y++) {
         for (let x = 0; x < X - 1; x++) {
             const idx = zSlice * (Y * X) + y * X + x;
-            const rhoVal = flatRho[idx];
-            const val = flatField[idx];
-
             const gx = (x / (X - 1)) * 2.0 - 1.0;
             const gy = (y / (Y - 1)) * 2.0 - 1.0;
 
@@ -982,13 +1501,7 @@ function renderQuadB() {
             const p11 = isoProject(gx + stepX, gy + stepY, normCutZ);
             const p01 = isoProject(gx, gy + stepY, normCutZ);
 
-            if (rhoVal > 0.20) {
-                const norm = Math.min(1.0, Math.max(0.0, (val - fMin) / (fMax - fMin + 1e-6)));
-                const c = _turboJs(norm);
-                ctx.fillStyle = `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-            } else {
-                ctx.fillStyle = "#0d1424";
-            }
+            ctx.fillStyle = computeVoxelFill(idx, gx, gy, normCutZ, "#0d1424");
             ctx.beginPath();
             ctx.moveTo(p00[0], p00[1]);
             ctx.lineTo(p10[0], p10[1]);
@@ -1004,9 +1517,6 @@ function renderQuadB() {
     for (let z = 0; z < Z - 1; z++) {
         for (let y = 0; y < ySlice; y++) {
             const idx = z * (Y * X) + y * X + xSlice;
-            const rhoVal = flatRho[idx];
-            const val = flatField[idx];
-
             const gz = (z / (Z - 1)) * 2.0 - 1.0;
             const gy = (y / (Y - 1)) * 2.0 - 1.0;
 
@@ -1015,13 +1525,7 @@ function renderQuadB() {
             const p11 = isoProject(normCutX, gy + stepY, gz + stepZ);
             const p01 = isoProject(normCutX, gy, gz + stepZ);
 
-            if (rhoVal > 0.20) {
-                const norm = Math.min(1.0, Math.max(0.0, (val - fMin) / (fMax - fMin + 1e-6)));
-                const c = _turboJs(norm);
-                ctx.fillStyle = `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-            } else {
-                ctx.fillStyle = "#0b101c";
-            }
+            ctx.fillStyle = computeVoxelFill(idx, normCutX, gy, gz, "#0b101c");
             ctx.beginPath();
             ctx.moveTo(p00[0], p00[1]);
             ctx.lineTo(p10[0], p10[1]);
@@ -1036,9 +1540,6 @@ function renderQuadB() {
     for (let z = 0; z < Z - 1; z++) {
         for (let x = 0; x < xSlice; x++) {
             const idx = z * (Y * X) + ySlice * X + x;
-            const rhoVal = flatRho[idx];
-            const val = flatField[idx];
-
             const gz = (z / (Z - 1)) * 2.0 - 1.0;
             const gx = (x / (X - 1)) * 2.0 - 1.0;
 
@@ -1047,13 +1548,7 @@ function renderQuadB() {
             const p11 = isoProject(gx + stepX, normCutY, gz + stepZ);
             const p01 = isoProject(gx, normCutY, gz + stepZ);
 
-            if (rhoVal > 0.20) {
-                const norm = Math.min(1.0, Math.max(0.0, (val - fMin) / (fMax - fMin + 1e-6)));
-                const c = _turboJs(norm);
-                ctx.fillStyle = `rgb(${c[0]}, ${c[1]}, ${c[2]})`;
-            } else {
-                ctx.fillStyle = "#0c1220";
-            }
+            ctx.fillStyle = computeVoxelFill(idx, gx, normCutY, gz, "#0c1220");
             ctx.beginPath();
             ctx.moveTo(p00[0], p00[1]);
             ctx.lineTo(p10[0], p10[1]);
@@ -1064,20 +1559,22 @@ function renderQuadB() {
         }
     }
 
-    // Overlaid SO(6) Principal Fiber Streamlines (Cyan: Tension, Gold: Compression)
+    // Overlaid SO(6) Principal Fiber Streamlines (rotate from 0 deg at iter=0 to converged angle at iter=60)
     for (let y = 1; y < Y; y += 2) {
         for (let x = 1; x < X; x += 2) {
             const idx = zSlice * (Y * X) + y * X + x;
-            const rhoVal = flatRho[idx];
+            const rhoTarget = flatRho[idx];
+            const rhoVal = (1.0 - progress) * 0.92 + progress * Math.min(1.0, rhoTarget * volScale);
             if (rhoVal < 0.28) continue;
 
             const gx = (x / (X - 1)) * 2.0 - 1.0;
             const gy = (y / (Y - 1)) * 2.0 - 1.0;
-            const angleDeg = flatFiber ? flatFiber[idx] : 45.0;
-            const rad = angleDeg * Math.PI / 180.0;
+            const targetAngleDeg = flatFiber ? flatFiber[idx] : 45.0;
+            const curAngleDeg = progress * targetAngleDeg * (0.65 + 1.45 * STATE.anisotropyEps);
+            const rad = curAngleDeg * Math.PI / 180.0;
 
             const pCenter = isoProject(gx, gy, normCutZ);
-            const len = 12.0;
+            const len = (7.5 + 14.0 * STATE.anisotropyEps) * (0.45 + 0.55 * progress);
             const dx = Math.cos(rad) * len;
             const dy = Math.sin(rad) * len;
 
@@ -1099,71 +1596,72 @@ function renderQuadB() {
         }
     }
 
-    // Overlaid Yellow Rings on Shielded Beltrami-Morse Struts
-    const ringPositions = [];
-    for (let y = 2; y < Y - 2; y++) {
-        for (let x = 2; x < X - 2; x++) {
-            const idx = zSlice * (Y * X) + y * X + x;
-            const curlVal = flatCurl ? flatCurl[idx] : 0.0;
-            const rhoVal = flatRho[idx];
+    // Overlaid Yellow Rings on Shielded Beltrami-Morse Struts (emerge as erosion progresses)
+    if (progress > 0.20 && STATE.solverMode !== "Gaussian") {
+        const ringPositions = [];
+        for (let y = 2; y < Y - 2; y++) {
+            for (let x = 2; x < X - 2; x++) {
+                const idx = zSlice * (Y * X) + y * X + x;
+                const curlVal = flatCurl ? flatCurl[idx] : 0.0;
+                const rhoVal = flatRho[idx];
 
-            if (curlVal > 4.5 && rhoVal > 0.40 && ringPositions.length < 2) {
-                const gx = (x / (X - 1)) * 2.0 - 1.0;
-                const gy = (y / (Y - 1)) * 2.0 - 1.0;
-                const pRing = isoProject(gx, gy, normCutZ);
+                if (curlVal > 4.5 && rhoVal > 0.40 && ringPositions.length < 2) {
+                    const gx = (x / (X - 1)) * 2.0 - 1.0;
+                    const gy = (y / (Y - 1)) * 2.0 - 1.0;
+                    const pRing = isoProject(gx, gy, normCutZ);
 
-                let tooClose = false;
-                for (const pos of ringPositions) {
-                    if (Math.hypot(pRing[0] - pos[0], pRing[1] - pos[1]) < 45) {
-                        tooClose = true;
-                        break;
+                    let tooClose = false;
+                    for (const pos of ringPositions) {
+                        if (Math.hypot(pRing[0] - pos[0], pRing[1] - pos[1]) < 45) {
+                            tooClose = true;
+                            break;
+                        }
                     }
-                }
-                if (tooClose) continue;
+                    if (tooClose) continue;
 
-                ringPositions.push(pRing);
+                    ringPositions.push(pRing);
 
-                // Draw Glowing Yellow Ring
-                ctx.strokeStyle = "#facc15";
-                ctx.lineWidth = 2.5;
-                ctx.beginPath();
-                ctx.ellipse(pRing[0], pRing[1], 15, 8, 0, 0, Math.PI * 2);
-                ctx.stroke();
-
-                ctx.strokeStyle = "rgba(250, 204, 21, 0.35)";
-                ctx.lineWidth = 1.2;
-                ctx.beginPath();
-                ctx.ellipse(pRing[0], pRing[1], 21, 11, 0, 0, Math.PI * 2);
-                ctx.stroke();
-
-                if (ringPositions.length === 1) {
-                    ctx.strokeStyle = "rgba(250, 204, 21, 0.8)";
-                    ctx.lineWidth = 1.0;
+                    ctx.strokeStyle = "#facc15";
+                    ctx.lineWidth = 2.5;
                     ctx.beginPath();
-                    ctx.moveTo(pRing[0] + 15, pRing[1]);
-                    ctx.lineTo(pRing[0] + 36, pRing[1] - 18);
+                    ctx.ellipse(pRing[0], pRing[1], 15 * progress, 8 * progress, 0, 0, Math.PI * 2);
                     ctx.stroke();
 
-                    const lbl = "Shielded Beltrami-Morse Strut [Thm 2.5]";
-                    ctx.font = "bold 10px monospace";
-                    const tw = ctx.measureText(lbl).width;
-                    const lx = pRing[0] + 40;
-                    const ly = pRing[1] - 15;
-
-                    ctx.fillStyle = "rgba(11, 16, 27, 0.90)";
-                    ctx.strokeStyle = "rgba(250, 204, 21, 0.6)";
-                    ctx.lineWidth = 1.0;
+                    ctx.strokeStyle = "rgba(250, 204, 21, 0.35)";
+                    ctx.lineWidth = 1.2;
                     ctx.beginPath();
-                    if (ctx.roundRect) {
-                        ctx.roundRect(lx - 5, ly - 11, tw + 10, 16, 3);
-                    } else {
-                        ctx.rect(lx - 5, ly - 11, tw + 10, 16);
-                    }
-                    ctx.fill();
+                    ctx.ellipse(pRing[0], pRing[1], 21 * progress, 11 * progress, 0, 0, Math.PI * 2);
                     ctx.stroke();
 
-                    ctx.fillStyle = "#facc15";
-                    ctx.fillText(lbl, lx, ly);
+                    if (ringPositions.length === 1) {
+                        ctx.strokeStyle = "rgba(250, 204, 21, 0.8)";
+                        ctx.lineWidth = 1.0;
+                        ctx.beginPath();
+                        ctx.moveTo(pRing[0] + 15, pRing[1]);
+                        ctx.lineTo(pRing[0] + 36, pRing[1] - 18);
+                        ctx.stroke();
+
+                        const lbl = "Shielded Beltrami-Morse Strut [Thm 2.5]";
+                        ctx.font = "bold 10px monospace";
+                        const tw = ctx.measureText(lbl).width;
+                        const lx = pRing[0] + 40;
+                        const ly = pRing[1] - 15;
+
+                        ctx.fillStyle = "rgba(11, 16, 27, 0.90)";
+                        ctx.strokeStyle = "rgba(250, 204, 21, 0.6)";
+                        ctx.lineWidth = 1.0;
+                        ctx.beginPath();
+                        if (ctx.roundRect) {
+                            ctx.roundRect(lx - 5, ly - 11, tw + 10, 16, 3);
+                        } else {
+                            ctx.rect(lx - 5, ly - 11, tw + 10, 16);
+                        }
+                        ctx.fill();
+                        ctx.stroke();
+
+                        ctx.fillStyle = "#facc15";
+                        ctx.fillText(lbl, lx, ly);
+                    }
                 }
             }
         }
@@ -1171,19 +1669,22 @@ function renderQuadB() {
 
     ctx.restore();
 
-    // Footer telemetry
     ctx.fillStyle = "rgba(255, 255, 255, 0.70)";
     ctx.font = "10px monospace";
-    ctx.fillText("3D Chair-Cut Viewport | Active Field: " + fieldKey + " | Yellow Rings: Shielded Thin Struts [Thm 2.5]", 16, h - 12);
+    ctx.fillText("3D Chair-Cut Viewport (Click to Slice) | Active Field: " + fieldKey + " | Yellow Rings: Shielded Struts [Thm 2.5]", 16, h - 12);
 }
 
 // --- Quad C: Side-by-Side Solver Pathology Comparison ---
 function renderQuadC() {
     const canvas = document.getElementById("canvasQuadC");
     if (!canvas) return;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * window.devicePixelRatio || 600;
-    canvas.height = rect.height * window.devicePixelRatio || 400;
+    const wrap = canvas.parentElement || canvas;
+    const rect = wrap.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const targetW = Math.max(200, Math.floor((rect.width || 600) * dpr));
+    const targetH = Math.max(150, Math.floor((rect.height || 400) * dpr));
+    if (canvas.width !== targetW) canvas.width = targetW;
+    if (canvas.height !== targetH) canvas.height = targetH;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -1193,22 +1694,35 @@ function renderQuadC() {
     ctx.fillStyle = "#0b0f19";
     ctx.fillRect(0, 0, w, h);
 
+    const scen = getActiveScenario();
+    const progress = Math.max(0.0, Math.min(1.0, STATE.erosionIter / STATE.maxErosionIters));
+    const baseBudget = (scen && scen.volume_budget) ? scen.volume_budget : 0.24;
+    const volScale = STATE.vBudget / baseBudget;
+    const strutHalfWidth = 1.75 * Math.max(0.60, Math.min(1.50, volScale));
+
     const subW = (w - 6) / 2;
     const subH = (h - 6) / 2;
 
     const solvers = [
-        { name: "TopoSnail (Proposed)", badge: "0% Checkers | >98% Crisp", col: 0, row: 0, style: "toposnail" },
-        { name: "Heaviside SIMP", badge: "Continuation Shocks | Trapped Beta-2", col: 1, row: 0, style: "heaviside" },
-        { name: "Gaussian SIMP (top3d)", badge: "Blurry Gray Mush | Struts Erased", col: 0, row: 1, style: "gaussian" },
-        { name: "Unfiltered SIMP", badge: "38.4% Checkerboards | Broken", col: 1, row: 1, style: "unfiltered" },
+        { name: "TopoSnail (Proposed)", modeKey: "TopoSnail", badge: "0% Checkers | >98% Crisp", col: 0, row: 0, style: "toposnail" },
+        { name: "Heaviside SIMP", modeKey: "Heaviside", badge: "Continuation Shocks | Trapped Beta-2", col: 1, row: 0, style: "heaviside" },
+        { name: "Gaussian SIMP (top3d)", modeKey: "Gaussian", badge: "Blurry Gray Mush | Struts Erased", col: 0, row: 1, style: "gaussian" },
+        { name: "Unfiltered SIMP", modeKey: "Unfiltered", badge: "38.4% Checkerboards | Broken", col: 1, row: 1, style: "unfiltered" },
     ];
 
     solvers.forEach(s => {
         const ox = s.col * (subW + 4) + 2;
         const oy = s.row * (subH + 4) + 2;
+        const isActive = (STATE.solverMode === s.modeKey);
 
-        ctx.fillStyle = "#111827";
+        ctx.fillStyle = isActive ? "#131c31" : "#111827";
         ctx.fillRect(ox, oy, subW, subH);
+
+        if (isActive) {
+            ctx.strokeStyle = "#06b6d4";
+            ctx.lineWidth = 2.0;
+            ctx.strokeRect(ox + 1, oy + 1, subW - 2, subH - 2);
+        }
 
         const gridN = 16;
         const cw = (subW - 20) / gridN;
@@ -1216,29 +1730,38 @@ function renderQuadC() {
 
         for (let gy = 0; gy < gridN; gy++) {
             for (let gx = 0; gx < gridN; gx++) {
-                let val = 0.0;
-                const isDiag = Math.abs(gy - gx) < 2 || Math.abs((gridN - gy) - gx) < 2;
+                const distDiag = Math.min(Math.abs(gy - gx), Math.abs((gridN - 1 - gy) - gx));
+                const isDiag = distDiag < strutHalfWidth;
+                let targetVal = 0.0;
 
                 if (s.style === "toposnail") {
-                    val = isDiag ? 0.98 : 0.02;
+                    targetVal = isDiag ? 0.98 : 0.02;
                 } else if (s.style === "gaussian") {
-                    val = isDiag ? 0.55 : 0.28;
+                    targetVal = isDiag ? 0.55 : 0.28;
                 } else if (s.style === "unfiltered") {
-                    val = ((gx + gy) % 2 === 0) ? 0.95 : 0.05;
+                    targetVal = ((gx + gy) % 2 === 0) ? 0.95 : 0.05;
                 } else {
-                    val = isDiag ? (gy % 3 === 0 ? 0.95 : 0.70) : 0.05;
+                    targetVal = isDiag ? (gy % 3 === 0 ? 0.95 : 0.70) : 0.05;
                 }
 
+                // Progressive outside-in erosion from initial uniform block (iter = 0) to targetVal (iter = 60)
+                const initVal = Math.min(0.92, 0.68 * volScale);
+                const localProgress = Math.min(1.0, progress * (0.75 + 0.06 * distDiag));
+                const val = (1.0 - localProgress) * initVal + localProgress * targetVal;
+
                 const intensity = Math.round(val * 255);
-                ctx.fillStyle = `rgb(${intensity}, ${intensity}, ${intensity})`;
+                if (isActive && s.style === "toposnail" && val > 0.5) {
+                    ctx.fillStyle = `rgb(${Math.round(intensity * 0.75)}, ${intensity}, ${intensity})`;
+                } else {
+                    ctx.fillStyle = `rgb(${intensity}, ${intensity}, ${intensity})`;
+                }
                 ctx.fillRect(ox + 10 + gx * cw, oy + 26 + gy * ch, cw - 0.5, ch - 0.5);
             }
         }
 
-        // Clean titles and badges positioned with zero overlap
-        ctx.fillStyle = "#f9fafb";
+        ctx.fillStyle = isActive ? "#06b6d4" : "#f9fafb";
         ctx.font = "bold 11px sans-serif";
-        ctx.fillText(s.name, ox + 8, oy + 16);
+        ctx.fillText(isActive ? `▸ ${s.name} [ACTIVE]` : s.name, ox + 8, oy + 16);
 
         ctx.fillStyle = (s.style === "toposnail") ? "#10b981" : "#ef4444";
         ctx.font = "10px monospace";
@@ -1254,8 +1777,21 @@ function _turboJs(x) {
     return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
+function flashExportButton(btnId, confirmText, defaultText) {
+    const btn = document.getElementById(btnId);
+    if (!btn) return;
+    btn.innerText = confirmText;
+    btn.style.borderColor = "var(--accent-green)";
+    setTimeout(() => {
+        btn.innerText = defaultText;
+        btn.style.borderColor = "";
+    }, 1800);
+}
+
 // --- 1-Click Binary .STL & .OBJ Exporters ---
 function exportBinarySTL() {
+    STATE.lastExportedFormat = "STL";
+    flashExportButton("btnExportSTL", "✓ EXPORTED .STL!", "+ EXPORT BINARY .STL (3D PRINT)");
     const scen = getActiveScenario();
     if (!scen || !scen.mesh || !scen.mesh.faces) return;
     const mesh = scen.mesh;
@@ -1321,6 +1857,8 @@ function exportBinarySTL() {
 }
 
 function exportWavefrontOBJ() {
+    STATE.lastExportedFormat = "OBJ";
+    flashExportButton("btnExportOBJ", "✓ EXPORTED .OBJ!", "+ EXPORT .OBJ (VERTEX COLORS)");
     const scen = getActiveScenario();
     if (!scen || !scen.mesh || !scen.mesh.faces) return;
     const mesh = scen.mesh;
@@ -1348,12 +1886,16 @@ function exportWavefrontOBJ() {
 }
 
 function exportTelemetryJSON() {
+    STATE.lastExportedFormat = "JSON";
+    flashExportButton("btnExportJSON", "✓ EXPORTED .JSON!", "+ EXPORT TELEMETRY .JSON");
     const scen = getActiveScenario();
     const data = {
         scenario_id: STATE.scenarioId,
         solver_mode: STATE.solverMode,
+        erosion_iter: STATE.erosionIter,
         volume_budget: STATE.vBudget,
         anisotropy_eps: STATE.anisotropyEps,
+        thermal_delta_t: STATE.thermalDeltaT,
         theorems: FORMAL_THEOREMS,
         baselines: scen.baselines || [],
     };

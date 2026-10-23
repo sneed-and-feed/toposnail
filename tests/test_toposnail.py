@@ -551,3 +551,53 @@ class TestAdversarialChallengerStressSuite:
             assert res["rust_throughput_passed"] is True
             assert res["rust_throughput_it_per_s"] >= 500.0
 
+
+# =============================================================================
+# 8. Portable HTML Studio Interactive Erosion & Firefox Lower-Panel Regression
+# =============================================================================
+
+class TestStudioInteractiveAndFirefoxFix:
+    """
+    Regression tests for studio/toposnail_portable_studio.html verifying:
+    1. Firefox CSS Grid minmax(0, 1fr) + absolute canvas sizing + parentElement.getBoundingClientRect().
+    2. Live 60-iteration erosion state machine (STATE.erosionIter consumed dynamically in
+       renderQuadA, renderQuadB, renderQuadC, and updateUIValues).
+    3. Clickable lower panels (Quad C quadrant click handler and Quad D benchmark rows,
+       KPI cards, export buttons, and file dropzone).
+    """
+
+    def test_portable_studio_firefox_grid_and_interactive_erosion(self):
+        from toposnail.studio import generate_studio_html
+
+        studio_path = Path("studio/toposnail_portable_studio.html")
+        if studio_path.exists():
+            html = studio_path.read_text(encoding="utf-8")
+        else:
+            html = generate_studio_html()
+
+        # 1. Firefox CSS Grid + absolute canvas intrinsic sizing fix
+        assert "grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);" in html
+        assert "grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);" in html
+        assert ".quad-canvas-wrap canvas {" in html
+        assert "position: absolute;" in html
+        assert "const wrap = canvas.parentElement || canvas;" in html
+        assert "const rect = wrap.getBoundingClientRect();" in html
+
+        # 2. Live 60-iteration erosion state machine & dynamic rendering
+        assert "maxErosionIters: 60" in html
+        assert "STATE.erosionIter / STATE.maxErosionIters" in html
+        assert "function updateUIValues()" in html
+        assert "PAUSE EROSION" in html
+        assert "RUN EROSION (60/60 DONE)" in html
+        assert "RUN EROSION (0/60)" in html
+
+        # 3. Clickable Quad C & Quad D lower-panel elements
+        assert 'id="btnExportSTL"' in html
+        assert 'id="btnExportOBJ"' in html
+        assert 'id="btnExportJSON"' in html
+        assert 'id="fileInput"' in html
+        assert "triggerDropzoneInput()" in html
+        assert "selectKpiField(" in html
+        assert 'tr.id = "row-" + rowIdSuffix;' in html
+
+
