@@ -600,4 +600,71 @@ class TestStudioInteractiveAndFirefoxFix:
         assert "selectKpiField(" in html
         assert 'tr.id = "row-" + rowIdSuffix;' in html
 
+    def test_studio_cad_view_controls_and_anatomical_scenarios(self):
+        from toposnail.studio import (
+            _build_smooth_scenario_mesh,
+            _generate_synthetic_baselines,
+            generate_studio_html,
+        )
+
+        dummy_rho = np.zeros(CANONICAL_GRID, dtype=np.float64)
+        dummy_vm = np.zeros(CANONICAL_GRID, dtype=np.float64)
+
+        # 1. Verify all 5 high-resolution 3D procedural meshes & anatomical femur landmarks
+        for s_id in list_scenarios():
+            mesh_out = _build_smooth_scenario_mesh(s_id, dummy_rho, dummy_vm)
+            assert mesh_out is not None
+            verts, faces, colors, normals = mesh_out
+            assert len(verts) >= 1500, f"{s_id} has too few vertices: {len(verts)}"
+            assert len(faces) >= 2000, f"{s_id} has too few faces: {len(faces)}"
+            assert len(colors) == len(verts)
+            assert len(normals) == len(verts)
+            v_arr = np.asarray(verts, dtype=np.float64)
+            n_arr = np.asarray(normals, dtype=np.float64)
+            c_arr = np.asarray(colors, dtype=np.float64)
+            assert np.all(np.isfinite(v_arr))
+            assert np.all(np.isfinite(n_arr))
+            assert np.all((c_arr >= 0.0) & (c_arr <= 1.0))
+
+            if s_id == "03_trabecular_femur_anisotropic_so6":
+                # Verify Spherical Femoral Head (x < -0.55, z > 0.70), Greater Trochanter (x > 0.40),
+                # and Distal Cylindrical Diaphysis (z = -0.82)
+                assert float(np.min(v_arr[:, 0])) <= -0.58
+                assert float(np.max(v_arr[:, 0])) >= 0.40
+                assert float(np.min(v_arr[:, 2])) == pytest.approx(-0.82, abs=1e-3)
+                assert float(np.max(v_arr[:, 2])) >= 0.72
+
+            # Verify scenario-specific benchmark baselines
+            base = _generate_synthetic_baselines(s_id)
+            assert len(base) == 5
+            assert base[0]["active"] is True
+            assert base[0]["compliance_ratio"] < base[2]["compliance_ratio"]
+            assert base[0]["checkerboards"] == 0.0
+            assert base[0]["beta2_voids"] == 0
+
+        # 2. Verify CAD View Controls & Scenario-Specific Quad C Profile in Studio HTML
+        studio_path = Path("studio/toposnail_portable_studio.html")
+        html = studio_path.read_text(encoding="utf-8") if studio_path.exists() else generate_studio_html()
+        for token in [
+            "function setCameraPreset(",
+            "function setRenderMode(",
+            "function toggleSectionClip(",
+            "function toggleTurntable(",
+            "function toggleBCs(",
+            "function toggleCadGrid(",
+            "function zoomCamera(",
+            "function resetQuadBView(",
+            "function toggleQuadBFibers(",
+            "function zoomQuadB(",
+            "scen._quadCProfile",
+            "STATE.axisGizmoHits",
+            'id="cadViewBarA"',
+            'id="btnCamIso"',
+            'id="btnRenderEdges"',
+            'id="btnRenderWire"',
+            'id="btnRenderXray"',
+            'id="btnToggleClip"',
+        ]:
+            assert token in html, f"Missing CAD control token in studio HTML: {token}"
+
 
