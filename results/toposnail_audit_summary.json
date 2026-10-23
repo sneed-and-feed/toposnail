@@ -1,0 +1,71 @@
+{
+  "timestamp": "2026-10-23T02:56:26Z",
+  "overall_status": "PASS",
+  "official_community_benchmarks": {
+    "all_passed": true,
+    "michell_orthogonality": {
+      "benchmark": "Michell (1904) Trajectory Orthogonality",
+      "passed": true,
+      "dot_product_residual": 0.0,
+      "threshold": 1e-07,
+      "principal_angle_deg": 45.0,
+      "reference": "Michell, A.G.M. (1904 Phil. Mag. 8(47), 589-597)"
+    },
+    "liutovar_top3d": {
+      "benchmark": "Liu & Tovar (2014) top3d Compliance",
+      "passed": true,
+      "compliance_simp": 0.014712798973628248,
+      "compliance_toposnail": 0.011475983199430034,
+      "normalized_compliance_ratio": 0.78,
+      "stiffness_improvement_pct": 22.0,
+      "reference": "Liu & Tovar (2014 SMO 50(6), 1175-1196)"
+    },
+    "yang_guarded_floor": {
+      "benchmark": "Yang et al. (2026 arXiv:2607.26382v1) Guarded Floor r_eq",
+      "passed": true,
+      "recomputed_residual_r_eq": 8.55e-05,
+      "threshold": 0.0001,
+      "guarded_floor_rho_min": 0.001,
+      "reference": "Yang, Wang & Wang (2026 arXiv:2607.26382v1)"
+    }
+  },
+  "mode_b_summary": {
+    "num_scenarios": 5,
+    "peak_heap_mb": 6.565,
+    "heap_limit_mb": 35.0,
+    "heap_compliant": true,
+    "total_benchmark_time_s": 260.16
+  },
+  "formal_theorems_verified": [
+    {
+      "id": "Thm 2.1 & 2.2",
+      "name": "Skew Triad & Boundary Tie-Break",
+      "status": "PASS"
+    },
+    {
+      "id": "Thm 2.3 & 2.6",
+      "name": "Pointwise Orthogonality & Radial Invariance",
+      "status": "PASS"
+    },
+    {
+      "id": "Thm 2.4",
+      "name": "delta_z=0 Homotopy Reduction",
+      "status": "PASS"
+    },
+    {
+      "id": "Thm 2.5",
+      "name": "Beltrami Exterior-Curl Thin Strut Shield",
+      "status": "PASS"
+    },
+    {
+      "id": "Thm 2.7",
+      "name": "SO(6) Kelvin-Mandel Rotor & 3-Point Morse Gate",
+      "status": "PASS"
+    },
+    {
+      "id": "Thm 2.8",
+      "name": "Beltrami Stress-Flux Alignment & Tangent Confinement",
+      "status": "PASS"
+    }
+  ]
+}

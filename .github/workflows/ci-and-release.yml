@@ -1,0 +1,86 @@
+name: TopoSnail CI & Release
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-and-test:
+    name: Build & Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+        python-version: [ '3.11', '3.12' ]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pytest
+
+      - name: Set up Rust Toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Test `#![no_std]` Rust SIMD Kernel
+        run: cargo test --manifest-path rust/toposnail_rs/Cargo.toml --release
+
+      - name: Build Rust Native Shared Library
+        run: cargo build --manifest-path rust/toposnail_rs/Cargo.toml --release
+
+      - name: Verify Formal Runtime Invariants
+        run: python -c "from toposnail.optimizer import TopoSnailOptimizer; opt = TopoSnailOptimizer(); res = opt.verify_formal_theorems(); print(res); assert res['all_theorems_passed']"
+
+      - name: Run Pytest Test Suite
+        run: pytest tests/test_toposnail.py -v
+
+      - name: Run Official & Mode B Benchmarks
+        run: python scripts/evaluate_toposnail.py
+
+      - name: Audit 21-Rule GFM & KaTeX Math Compliance
+        run: python scripts/audit_gfm_math.py README.md docs/ARCHITECTURE.md
+
+      - name: Generate Portable WebGL2 Studio HTML
+        run: python toposnail/studio.py
+
+      - name: Headless Browser Visual Verification (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          Start-Process -FilePath "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" -ArgumentList @("--headless", "--window-size=1920,1080", "--screenshot=results/studio_screenshot.png", "file:///${{ github.workspace }}/studio/toposnail_portable_studio.html") -Wait -PassThru
+          Get-Item results/studio_screenshot.png
+
+  release:
+    name: GitHub Release
+    needs: build-and-test
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            studio/toposnail_portable_studio.html
+            results/studio_screenshot.png
+            results/toposnail_evaluation_summary.json
+            results/toposnail_audit_summary.json
+          draft: false
+          prerelease: false
+          generate_release_notes: true
