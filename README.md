@@ -1,12 +1,13 @@
-# TopoSnail: Beltrami-Triad 3D Anisotropic Topology, Michell Truss & `#![no_std]` Rust SIMD Optimizer
+# TopoSnail: Beltrami-Triad 3D Anisotropic Topology, Michell Truss & `#![no_std]` Rust SIMD Optimizer (v0.2.0)
 
+[![Version: v0.2.0](https://img.shields.io/badge/Version-v0.2.0-brightgreen.svg)](pyproject.toml)
 [![CI](https://github.com/sneed-and-feed/toposnail/actions/workflows/ci-and-release.yml/badge.svg)](https://github.com/sneed-and-feed/toposnail/actions/workflows/ci-and-release.yml)
 [![License: CC0-1.0](https://img.shields.io/badge/License-CC0_1.0-lightgrey.svg)](LICENSE)
 [![Rust: no_std](https://img.shields.io/badge/Rust-no__std%20SIMD-orange.svg)](rust/toposnail_rs)
 [![Memory: < 1.5 MB Arena](https://img.shields.io/badge/RAM-%3C%201.5%20MB%20SRAM-blue.svg)](docs/ARCHITECTURE.md)
 [![Theorems: OcclusionTriad.lean](https://img.shields.io/badge/Lean%204-Theorems%202.1--2.8%20PASS-success.svg)](formalization/OcclusionTriad.lean)
 
-TopoSnail is an industrial-grade, zero-install 3D anisotropic continuum topology optimization engine, bare-metal `#![no_std]` Rust SIMD (`AVX2`/`NEON`) + WebAssembly kernel, and zero-dependency WebGL2 CAD/3D-printing workstation powered by the machine-checked invariants of `formalization/OcclusionTriad.lean` (Theorems 2.1--2.8).
+TopoSnail (`v0.2.0`) is an industrial-grade, zero-install 3D anisotropic continuum topology optimization engine, bare-metal `#![no_std]` Rust SIMD (`AVX2`/`NEON`) + WebAssembly kernel, 4-stage CAD-to-Bionic CSG hybridization pipeline, and zero-dependency WebGL2 CAD/3D-printing workstation powered by the machine-checked invariants of `formalization/OcclusionTriad.lean` (Theorems 2.1--2.8).
 
 ---
 
@@ -16,10 +17,29 @@ TopoSnail is an industrial-grade, zero-install 3D anisotropic continuum topology
 
 TopoSnail provides a zero-install single-file portable HTML5 workstation (`studio/toposnail_portable_studio.html`) featuring a live 60--240 Hz erosion physics loop with 4 synchronized CAD viewports:
 
-- **Quad A (3D Organic Isosurface)**: Dual-contouring / Marching Cubes surface with Phong lighting, von Mises stress colormap, external force arrows, and fixed Dirichlet supports.
+- **Quad A (3D Organic Isosurface & `LINEUP 1→4` Showroom)**: Dual-contouring / Marching Cubes surface with Phong lighting, von Mises stress colormap, external force arrows, fixed Dirichlet supports, and interactive 4-stage CAD-to-Bionic progression (`S1`, `S2`, `S3`, `S4`, and synchronized 4-bay `LINEUP 1→4` turntable mode).
 - **Quad B (SO(6) Principal Fibers & Slicer)**: Interactive $X, Y, Z$ chair-cut cross-section display with overlaid $\mathrm{SO}(6)$ Kelvin-Mandel principal stress orientation needles (cyan tension, gold compression).
 - **Quad C (Solver Pathology Comparison)**: Side-by-side comparison illustrating TopoSnail (razor-sharp 1-voxel struts, 0% checkerboards, >98% crispness) vs. Heaviside SIMP (continuation shocks) vs. Gaussian SIMP (blurry gray mush) vs. Unfiltered SIMP (severe checkerboards).
 - **Quad D (Live Telemetry HUD & 1-Click Export)**: Real-time telemetry scorecard (Compliance $J$, crispness, 0 trapped $\beta_2$ cavities, rotor conservation), 1-click binary `.STL` and colored `.OBJ` export, and boundary-condition dropzone.
+
+### 1.1 4-Stage CAD-to-Bionic Progression & Showroom Lineup (`S1 → S2 → S3 → S4`)
+
+![TopoSnail 4-Stage Showroom Lineup](results/studio_4stage_lineup.png)
+
+![TopoSnail 5x4 Master CAD-to-Bionic Progression](results/audit_4stage_progression.png)
+
+Every canonical scenario includes a 4-stage progressive CAD-to-Bionic sequence (`toposnail/cad_to_bionic.py` and `SCENARIO_STAGE_BUILDERS`) partitioning the domain into $\Omega = \Omega_{\mathrm{design}} \cup \Omega_{\mathrm{solid}} \cup \Omega_{\mathrm{KOZ}}$:
+
+1. **Stage 1 (`S1: FRESH CAD`)** ($V = 1.00$): Uncarved prismatic or stepped CNC billet stock with machined mounting bosses ($\Omega_{\mathrm{solid}}$) and open fastener/fluid keep-out bores (`Omega_KOZ`).
+2. **Stage 2 (`S2: COARSE HULL`)** ($V \in [0.62, 0.68]$): Solid, continuous, un-perforated outer load-bearing hull after initial low-strain exterior envelope carving (zero interior through-holes).
+3. **Stage 3 (`S3: FENESTRATED`)** ($V \in [0.38, 0.45]$): Thick fenestrated plate/shell topology where initial weight-relief windows open along low-energy shear cores before secondary strut bifurcation.
+4. **Stage 4 (`S4: BIONIC HYBRID`)** ($V = V_{\mathrm{budget}}$): Converged Beltrami-Morse bionic truss/lattice welded seamlessly to preserved crisp CAD mounting bosses (`Omega_solid`) with 100% unobstructed keep-out bores (`Omega_KOZ`).
+
+All 20 progressive stage meshes ($5\text{ scenarios} \times 4\text{ stages}$) are verified by `TestProgressive20StageManifoldAudit` for strict 2-manifold watertightness (`boundary_edges == 0`, `non_manifold_edges == 0`, `degenerate_triangles == 0`, outward normal alignment $\langle \hat n_f, \hat n_v \rangle > 0.05$) and strict divergence-theorem volume monotonicity:
+
+```math
+V_{\mathrm{S1}} > V_{\mathrm{S2}} > V_{\mathrm{S3}} > V_{\mathrm{S4}}
+```
 
 ---
 

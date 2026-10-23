@@ -544,5 +544,6 @@
       }
     }
   },
-  "peak_heap_mb": 6.565
+  "peak_heap_mb": 6.565,
+  "version": "0.2.0"
 }

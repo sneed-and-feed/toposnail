@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scripts/run_challenger_stress_suite.py: Adversarial Challenger Stress Suite for TopoSnail v0.1.0.
+scripts/run_challenger_stress_suite.py: Adversarial Challenger Stress Suite for TopoSnail v0.2.0.
 
 Executes 4 rigorous adversarial challenger stress test suites:
 1. Monte Carlo SO(6) Kelvin-Mandel Rotor Conservation (500 random rotations):
@@ -475,7 +475,7 @@ def run_suite_4_memory_and_throughput(
 
 def run_all_challenger_stress_suites() -> bool:
     """Run all 4 adversarial challenger stress test suites and print full report."""
-    print_header("TOPOSNAIL v0.1.0 — ADVERSARIAL CHALLENGER STRESS SUITE")
+    print_header("TOPOSNAIL v0.2.0 — ADVERSARIAL CHALLENGER STRESS SUITE")
     
     # Suite 1
     print("\n--- Suite 1: Monte Carlo SO(6) Kelvin-Mandel Rotor Conservation (500 Rotations) ---")

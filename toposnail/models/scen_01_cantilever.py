@@ -893,8 +893,10 @@ def build_scen_01_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], Li
 
 def build_scen_01_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
-    Stage 2 (V~0.62): Tapered parabolic cantilever hull after outer dead-corner carving,
-    forming a continuous load-bearing envelope without interior through-voids.
+    Stage 2 (V=0.62): Solid, continuous, un-perforated tapered parabolic cantilever hull
+    after outer dead-corner carving above/below Z(x) = +/-(0.14 + 0.56*(1 - u_x)^0.7).
+    Features solid continuous web walls with zero internal diamond holes, thick parabolic
+    top/bottom flanges, 4 preserved root bolt bosses, and preserved tip clevis lug.
     """
     verts: List[List[float]] = []
     faces: List[List[int]] = []
@@ -904,7 +906,7 @@ def build_scen_01_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     def stress_color(ratio: float) -> List[float]:
         return turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
 
-    # 1. 4 Clamped Bulkhead Mounting Annular Bolt Bosses at X = -0.92
+    # 1. 4 Clamped Bulkhead Mounting Annular Bolt Bosses at X = -0.92 (open bores r = 0.052)
     anchor_coords = [
         (-0.92, -0.54, 0.68),
         (-0.92, 0.54, 0.68),
@@ -912,64 +914,110 @@ def build_scen_01_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], Li
         (-0.92, 0.54, -0.68),
     ]
     for ax_c, ay_c, az_c in anchor_coords:
-        _add_annular_boss(verts, faces, colors, normals, (ax_c, ay_c, az_c), (1.0, 0.0, 0.0), 0.052, 0.125, 0.090, 0.52, 0.60, n_sides=24)
+        _add_annular_boss(verts, faces, colors, normals, (ax_c, ay_c, az_c), (1.0, 0.0, 0.0), 0.052, 0.125, 0.090, 0.52, 0.62, n_sides=24)
 
-    # 2. Tip Shear Clevis Pin Boss at (0.90, 0.0, 0.0) with bore along Y
-    _add_annular_boss(verts, faces, colors, normals, (0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.240, 0.78, 0.85, n_sides=24)
+    # 2. Tip Shear Clevis Pin Boss at (0.90, 0.0, 0.0) with bore along Y (open bore r = 0.056)
+    _add_annular_boss(verts, faces, colors, normals, (0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.240, 0.78, 0.86, n_sides=24)
 
-    # 3. 5 Tapered Parabolic Chords Stations (Thick Chords, radii 0.066 -> 0.045)
+    # 3. Root Bulkhead Backing Plate (X in [-0.93, -0.85], Y in [-0.45, +0.45] keeping bolt bores open)
+    clr_root = stress_color(0.46)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, -0.38, 0.38, -0.70, 0.70, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, -0.45, -0.38, 0.58, 0.72, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, 0.38, 0.45, 0.58, 0.72, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, -0.45, -0.38, -0.72, -0.58, clr_root)
+    _add_watertight_box(verts, faces, colors, normals, -0.93, -0.85, 0.38, 0.45, -0.72, -0.58, clr_root)
+
+    # 4. Smooth Continuous Un-Perforated Tapered Parabolic Hull (X from -0.86 to +0.84)
+    #    No internal diamond holes exist in Stage 2: overlapping Catmull-Rom parabolic spline ribbons
+    #    form a 100% smooth, continuous, un-perforated web and tapered parabolic flange deck without stair-steps.
+    x_ctrl = [-0.86, -0.44, -0.02, 0.41, 0.83]
+    z_prof_ctrl = [0.66, 0.52, 0.38, 0.25, 0.13]
+    y_flange_ctrl = [0.44, 0.35, 0.26, 0.18, 0.11]
+
+    # 4a. Smooth Tapered Parabolic Top (+Z) and Bottom (-Z) Flange Decks
+    for sz in [-1.0, 1.0]:
+        for fy in [-0.62, 0.0, 0.62]:
+            deck_pts = [
+                (x_ctrl[k], fy * y_flange_ctrl[k], sz * z_prof_ctrl[k])
+                for k in range(len(x_ctrl))
+            ]
+            deck_radii = [0.072, 0.066, 0.060, 0.052, 0.044]
+            deck_stress = [0.82, 0.72, 0.62, 0.56, 0.74]
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                deck_pts, deck_radii, deck_stress,
+                subdiv=7, n_sides=16, ry_scale=2.10, rz_scale=0.85, cap_ends=True,
+            )
+
+    # 4b. Smooth Solid Continuous Central Shear Web Sheet (7 overlapping parabolic longitudinal ribbons, zero holes!)
+    for fz in [-0.75, -0.50, -0.25, 0.0, 0.25, 0.50, 0.75]:
+        web_pts = [
+            (x_ctrl[k], 0.0, fz * (z_prof_ctrl[k] - 0.03))
+            for k in range(len(x_ctrl))
+        ]
+        web_radii = [0.095, 0.084, 0.074, 0.064, 0.052]
+        s_base = 0.28 + 0.36 * abs(fz)
+        web_stress = [
+            float(np.clip(s_base + 0.18, 0.22, 0.78)),
+            float(np.clip(s_base + 0.10, 0.22, 0.78)),
+            float(np.clip(s_base + 0.02, 0.22, 0.78)),
+            float(np.clip(s_base + 0.04, 0.22, 0.78)),
+            float(np.clip(s_base + 0.16, 0.22, 0.78)),
+        ]
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            web_pts, web_radii, web_stress,
+            subdiv=7, n_sides=16, ry_scale=1.65, rz_scale=1.35, cap_ends=True,
+        )
+
+    # 4c. 3 Smooth Exterior Transverse Stiffening Bulkhead Ribs along the solid web
+    for xm_rib, y_rib, z_rib, s_rib in [
+        (-0.46, 0.33, 0.50, 0.58),
+        (-0.02, 0.25, 0.37, 0.50),
+        (0.42, 0.17, 0.24, 0.54),
+    ]:
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(xm_rib, 0.0, -z_rib), (xm_rib, 0.0, 0.0), (xm_rib, 0.0, z_rib)],
+            [0.052, 0.056, 0.052],
+            [s_rib + 0.10, s_rib, s_rib + 0.10],
+            subdiv=5, n_sides=16, ry_scale=y_rib / 0.054, rz_scale=1.0, cap_ends=True,
+        )
+
+    # 5. Smooth Parabolic Perimeter Rim Moldings along the 4 Outer Flange Edges
     stations = [
-        (-0.880, 0.472, 0.592),
-        (-0.425, 0.378, 0.465),
-        (0.020, 0.284, 0.340),
-        (0.440, 0.190, 0.215),
-        (0.832, 0.092, 0.088),
+        (-0.880, 0.465, 0.640),
+        (-0.425, 0.370, 0.505),
+        (0.020, 0.275, 0.370),
+        (0.440, 0.185, 0.240),
+        (0.832, 0.105, 0.115),
     ]
-    chord_radii_s2 = [0.048, 0.060, 0.055, 0.050, 0.045]
-    chord_stress_s2 = [0.82, 0.74, 0.62, 0.58, 0.78]
-
+    chord_radii_s2 = [0.052, 0.056, 0.052, 0.048, 0.042]
+    chord_stress_s2 = [0.78, 0.70, 0.60, 0.56, 0.74]
     for sy in [-1.0, 1.0]:
         for sz in [-1.0, 1.0]:
             chord_pts = [(xs, sy * ys, sz * zs) for (xs, ys, zs) in stations]
-            _add_spline_tube(verts, faces, colors, normals, chord_pts, chord_radii_s2, chord_stress_s2, subdiv=4, n_sides=14)
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                chord_pts, chord_radii_s2, chord_stress_s2,
+                subdiv=5, n_sides=14, ry_scale=1.25, rz_scale=0.85, cap_ends=True,
+            )
 
-    # 4. Continuous Solid Web (no internal diamond voids, genus-0 web)
-    web_radii_s2 = [0.048, 0.052, 0.046, 0.042, 0.038]
-    for sy in [-1.0, 1.0]:
-        mid_web_pts = [(xs, sy * (ys * 0.45), 0.0) for (xs, ys, zs) in stations]
-        _add_spline_tube(verts, faces, colors, normals, mid_web_pts, web_radii_s2, [0.45, 0.42, 0.40, 0.38, 0.55], subdiv=4, n_sides=12)
-
-    for b_idx in range(len(stations) - 1):
-        x0, y0, z0 = stations[b_idx]
-        x1, y1, z1 = stations[b_idx + 1]
-        w0 = z0 / (z0 + z1)
-        xm = x0 + w0 * (x1 - x0)
-        ym = y0 + w0 * (y1 - y0)
-        r_web_s2 = 0.050 - 0.003 * b_idx
-        for sy in [-1.0, 1.0]:
-            _add_spline_tube(verts, faces, colors, normals, [(x0, sy * y0, z0), (xm, sy * ym * 0.95, 0.0), (x1, sy * y1, -z1)], [r_web_s2, r_web_s2, r_web_s2], [0.55, 0.50, 0.55], subdiv=3, n_sides=12)
-            _add_spline_tube(verts, faces, colors, normals, [(x0, sy * y0, -z0), (xm, sy * ym * 0.95, 0.0), (x1, sy * y1, z1)], [r_web_s2, r_web_s2, r_web_s2], [0.55, 0.50, 0.55], subdiv=3, n_sides=12)
-            _add_strut(verts, faces, colors, normals, (xm, sy * ym * 0.95, -0.5 * (z0 + z1) * 0.5), (xm, sy * ym * 0.95, 0.5 * (z0 + z1) * 0.5), r_web_s2, r_web_s2, 0.45, 0.45, n_segs=4, n_sides=10)
-
-    # 5. Station Ties and Root Bulkhead Columns
-    for b_idx, (xs_i, ys_i, zs_i) in enumerate(stations):
-        r_tie = 0.048 - 0.003 * b_idx
-        _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, zs_i), (xs_i, ys_i, zs_i), r_tie, r_tie, 0.65, 0.65, n_segs=6, n_sides=12)
-        _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, -zs_i), (xs_i, ys_i, -zs_i), r_tie, r_tie, 0.65, 0.65, n_segs=6, n_sides=12)
-        if b_idx == 0:
-            _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, -zs_i), (xs_i, -ys_i, zs_i), 0.044, 0.044, 0.82, 0.82, n_segs=6, n_sides=12)
-            _add_strut(verts, faces, colors, normals, (xs_i, ys_i, -zs_i), (xs_i, ys_i, zs_i), 0.044, 0.044, 0.82, 0.82, n_segs=6, n_sides=12)
-        r_sph = 0.055 if b_idx == 0 else 1.25 * chord_radii_s2[b_idx]
-        for sy in [-1.0, 1.0]:
-            for sz in [-1.0, 1.0]:
-                _add_joint_sphere(verts, faces, colors, normals, (xs_i, sy * ys_i, sz * zs_i), r_sph, 0.70, n_lat=8, n_lon=14)
+    # 6. Tip Clevis Lug Mounting Cheeks (stopping outside r_inner = 0.056 bore at X=0.90, Z=0.0)
+    clr_tip = stress_color(0.74)
+    _add_watertight_box(verts, faces, colors, normals, 0.80, 0.91, -0.18, -0.11, -0.14, 0.14, clr_tip)
+    _add_watertight_box(verts, faces, colors, normals, 0.80, 0.91, 0.11, 0.18, -0.14, 0.14, clr_tip)
 
     return verts, faces, colors, normals
 
 
 def build_scen_01_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
-    Stage 3 (V~0.38): Fenestrated web shell with diamond cutouts open along principal shear trajectories.
+    Stage 3 (V=0.38): Thick Fenestrated Web Shell with initial mid-span weight-relief cutouts.
+    Visually distinct intermediate topology between the solid parabolic hull (Stage 2) and the
+    slender 4-bay space-frame Michell truss (Stage 4): retains wide plate-like parabolic top/bottom
+    flange slabs, solid root & tip shear web gusset plates, and thick flat diagonal web bands
+    framing 3 initial central weight-relief pockets (without Stage 4's fine lateral X-bracing).
     """
     verts: List[List[float]] = []
     faces: List[List[int]] = []
@@ -987,12 +1035,16 @@ def build_scen_01_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], Li
         (-0.92, 0.54, -0.68),
     ]
     for ax_c, ay_c, az_c in anchor_coords:
-        _add_annular_boss(verts, faces, colors, normals, (ax_c, ay_c, az_c), (1.0, 0.0, 0.0), 0.052, 0.125, 0.090, 0.82, 0.88, n_sides=24)
+        _add_annular_boss(verts, faces, colors, normals, (ax_c, ay_c, az_c), (1.0, 0.0, 0.0), 0.052, 0.125, 0.090, 0.78, 0.86, n_sides=24)
 
     # 2. Tip Shear Clevis Pin Boss at (0.90, 0.0, 0.0) with bore along Y
     _add_annular_boss(verts, faces, colors, normals, (0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.240, 0.84, 0.92, n_sides=24)
 
-    # 3. 5 Stations for Catmull-Rom chords (radii 0.048 -> 0.040)
+    # 3. Solid Root Bulkhead Gusset Web Plate (X in [-0.90, -0.68]) & Solid Tip Shear Web Gusset (X in [0.56, 0.83])
+    _add_watertight_box(verts, faces, colors, normals, -0.90, -0.68, -0.36, 0.36, -0.58, 0.58, stress_color(0.68))
+    _add_watertight_box(verts, faces, colors, normals, 0.56, 0.83, -0.11, 0.11, -0.16, 0.16, stress_color(0.76))
+
+    # 4. Wide Plate-Like Parabolic Top & Bottom Flange Shells (spanning X from -0.88 to +0.83)
     stations = [
         (-0.880, 0.472, 0.592),
         (-0.425, 0.378, 0.465),
@@ -1000,54 +1052,75 @@ def build_scen_01_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], Li
         (0.440, 0.190, 0.215),
         (0.832, 0.092, 0.088),
     ]
-    chord_radii_s3 = [0.048, 0.048, 0.044, 0.041, 0.038]
-    chord_stress_s3 = [0.88, 0.78, 0.65, 0.60, 0.82]
-
+    # Thick outer flange rims + wide central flange plates (ry_scale=2.2 gives flat plate cross-section)
+    chord_radii_s3 = [0.054, 0.054, 0.050, 0.046, 0.042]
+    chord_stress_s3 = [0.86, 0.76, 0.64, 0.60, 0.82]
     for sy in [-1.0, 1.0]:
         for sz in [-1.0, 1.0]:
             chord_pts = [(xs, sy * ys, sz * zs) for (xs, ys, zs) in stations]
-            _add_spline_tube(verts, faces, colors, normals, chord_pts, chord_radii_s3, chord_stress_s3, subdiv=4, n_sides=14)
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                chord_pts, chord_radii_s3, chord_stress_s3,
+                subdiv=5, n_sides=14, ry_scale=1.35, rz_scale=0.85, cap_ends=True,
+            )
+    # Continuous top and bottom parabolic flange deck plates bridging -Y to +Y
+    for sz in [-1.0, 1.0]:
+        deck_pts = [(xs, 0.0, sz * zs) for (xs, ys, zs) in stations]
+        deck_radii = [0.115, 0.098, 0.080, 0.058, 0.036]
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            deck_pts, deck_radii, chord_stress_s3,
+            subdiv=6, n_sides=16, ry_scale=2.6, rz_scale=0.38, cap_ends=True,
+        )
 
-    # 4. Diagonal +/-45 deg Shear Web Struts framing open diamond windows
+    # 5. Thick Vertical Web Bulkhead Pillars & Broad Plate-Like Shear Web Bands framing 3 Initial Cutout Windows
     def st_stress(xv: float, zv: float) -> float:
         xn = (xv + 1.0) * 0.5
-        return float(np.clip(0.26 + 0.68 * (1.0 - xn) * (0.45 + 0.55 * abs(zv)) + 0.18 * max(0.0, xn - 0.60), 0.18, 0.95))
+        return float(np.clip(0.28 + 0.62 * (1.0 - xn) * (0.45 + 0.55 * abs(zv)) + 0.16 * max(0.0, xn - 0.60), 0.22, 0.92))
 
+    # Solid vertical web pillars at stations 1, 2, 3 separating the 3 initial mid-span windows
+    for b_idx in (1, 2, 3):
+        xs_i, ys_i, zs_i = stations[b_idx]
+        _add_watertight_box(
+            verts, faces, colors, normals,
+            xs_i - 0.045, xs_i + 0.045,
+            -ys_i * 0.88, ys_i * 0.88,
+            -zs_i * 0.92, zs_i * 0.92,
+            stress_color(st_stress(xs_i, zs_i * 0.6)),
+        )
+
+    # Thick plate-like diagonal shear bands across the 3 central bays
     for b_idx in range(len(stations) - 1):
         x0, y0, z0 = stations[b_idx]
         x1, y1, z1 = stations[b_idx + 1]
         w0 = z0 / (z0 + z1)
         xm = x0 + w0 * (x1 - x0)
         ym = y0 + w0 * (y1 - y0)
-        r_web_s3 = 0.038 - 0.003 * b_idx
+        r_web_s3 = 0.050 - 0.003 * b_idx
 
         for sy in [-1.0, 1.0]:
-            _add_spline_tube(verts, faces, colors, normals, [(x0, sy * y0, z0), (xm, sy * ym * 1.01, 0.0), (x1, sy * y1, -z1)], [r_web_s3, r_web_s3 * 0.95, r_web_s3 * 0.92], [st_stress(x0, z0), st_stress(xm, 0.15), st_stress(x1, z1)], subdiv=3, n_sides=12)
-            _add_spline_tube(verts, faces, colors, normals, [(x0, sy * y0, -z0), (xm, sy * ym * 1.01, 0.0), (x1, sy * y1, z1)], [r_web_s3, r_web_s3 * 0.95, r_web_s3 * 0.92], [st_stress(x0, z0), st_stress(xm, 0.15), st_stress(x1, z1)], subdiv=3, n_sides=12)
-            _add_joint_sphere(verts, faces, colors, normals, (xm, sy * ym * 1.01, 0.0), r_web_s3 * 1.20, st_stress(xm, 0.15), n_lat=8, n_lon=14)
-
-        # Transverse tie at neutral axis
-        _add_strut(verts, faces, colors, normals, (xm, -ym * 1.01, 0.0), (xm, ym * 1.01, 0.0), r_web_s3 * 0.80, r_web_s3 * 0.80, st_stress(xm, 0.0) * 0.75, st_stress(xm, 0.0) * 0.75, n_segs=4, n_sides=10)
-
-        # Lateral ties on top and bottom planes
-        for sz in [-1.0, 1.0]:
-            r_lat = 0.030 - 0.002 * b_idx
-            _add_strut(verts, faces, colors, normals, (x0, -y0, sz * z0), (x1, y1, sz * z1), r_lat, r_lat, st_stress(x0, z0) * 0.85, st_stress(x1, z1) * 0.85, n_segs=4, n_sides=10)
-            _add_strut(verts, faces, colors, normals, (x0, y0, sz * z0), (x1, -y1, sz * z1), r_lat, r_lat, st_stress(x0, z0) * 0.85, st_stress(x1, z1) * 0.85, n_segs=4, n_sides=10)
-
-    # 5. Station Ties and Bulkhead Columns
-    for b_idx, (xs_i, ys_i, zs_i) in enumerate(stations):
-        r_tie = 0.040 - 0.003 * b_idx
-        s_fr = st_stress(xs_i, zs_i) * 0.85
-        _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, zs_i), (xs_i, ys_i, zs_i), r_tie, r_tie, s_fr, s_fr, n_segs=6, n_sides=12)
-        _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, -zs_i), (xs_i, ys_i, -zs_i), r_tie, r_tie, s_fr, s_fr, n_segs=6, n_sides=12)
-        if b_idx == 0:
-            _add_strut(verts, faces, colors, normals, (xs_i, -ys_i, -zs_i), (xs_i, -ys_i, zs_i), 0.044, 0.044, 0.88, 0.88, n_segs=6, n_sides=12)
-            _add_strut(verts, faces, colors, normals, (xs_i, ys_i, -zs_i), (xs_i, ys_i, zs_i), 0.044, 0.044, 0.88, 0.88, n_segs=6, n_sides=12)
-        r_sph = 0.055 if b_idx == 0 else 1.25 * chord_radii_s3[b_idx]
-        for sy in [-1.0, 1.0]:
-            for sz in [-1.0, 1.0]:
-                _add_joint_sphere(verts, faces, colors, normals, (xs_i, sy * ys_i, sz * zs_i), r_sph, st_stress(xs_i, zs_i), n_lat=8, n_lon=14)
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(x0, sy * y0 * 0.82, z0), (xm, sy * ym * 0.82, 0.0), (x1, sy * y1 * 0.82, -z1)],
+                [r_web_s3, r_web_s3 * 1.05, r_web_s3 * 0.96],
+                [st_stress(x0, z0), st_stress(xm, 0.15), st_stress(x1, z1)],
+                subdiv=4, n_sides=12, ry_scale=1.55, rz_scale=1.05, cap_ends=True,
+            )
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(x0, sy * y0 * 0.82, -z0), (xm, sy * ym * 0.82, 0.0), (x1, sy * y1 * 0.82, z1)],
+                [r_web_s3, r_web_s3 * 1.05, r_web_s3 * 0.96],
+                [st_stress(x0, z0), st_stress(xm, 0.15), st_stress(x1, z1)],
+                subdiv=4, n_sides=12, ry_scale=1.55, rz_scale=1.05, cap_ends=True,
+            )
+        # Thick central neutral-axis web hub at each diagonal crossing
+        _add_watertight_box(
+            verts, faces, colors, normals,
+            xm - 0.055, xm + 0.055,
+            -ym * 0.92, ym * 0.92,
+            -0.065, 0.065,
+            stress_color(st_stress(xm, 0.10)),
+        )
 
     return verts, faces, colors, normals
 

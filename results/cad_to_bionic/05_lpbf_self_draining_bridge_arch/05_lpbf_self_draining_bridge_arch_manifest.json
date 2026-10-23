@@ -1,0 +1,90 @@
+[
+  {
+    "stage_num": 1,
+    "stage_id": "stage_1_fresh_cad",
+    "label": "STAGE 1: Solid Bridge Stock (V=1.00)",
+    "iter": 0,
+    "volume_fraction": 1.0,
+    "stl": "05_lpbf_self_draining_bridge_arch_s1_stage_1_fresh_cad.stl",
+    "obj": "05_lpbf_self_draining_bridge_arch_s1_stage_1_fresh_cad.obj",
+    "audit": {
+      "V": 1090,
+      "E": 3186,
+      "F": 2124,
+      "chi": 28,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 6.15948341560757e-05,
+      "min_dot": 0.8499764070454404,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 2,
+    "stage_id": "stage_2_coarse_envelope",
+    "label": "STAGE 2: Under-Arch Vault (V=0.60)",
+    "iter": 20,
+    "volume_fraction": 0.6,
+    "stl": "05_lpbf_self_draining_bridge_arch_s2_stage_2_coarse_envelope.stl",
+    "obj": "05_lpbf_self_draining_bridge_arch_s2_stage_2_coarse_envelope.obj",
+    "audit": {
+      "V": 1434,
+      "E": 3960,
+      "F": 2640,
+      "chi": 114,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 6.15948341560757e-05,
+      "min_dot": 0.8499764070454404,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 3,
+    "stage_id": "stage_3_fenestrated_shell",
+    "label": "STAGE 3: Fenestrated Web & Bays (V=0.38)",
+    "iter": 40,
+    "volume_fraction": 0.38,
+    "stl": "05_lpbf_self_draining_bridge_arch_s3_stage_3_fenestrated_shell.stl",
+    "obj": "05_lpbf_self_draining_bridge_arch_s3_stage_3_fenestrated_shell.obj",
+    "audit": {
+      "V": 9828,
+      "E": 28986,
+      "F": 19324,
+      "chi": 166,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 6.15948341560757e-05,
+      "min_dot": 0.7731135222736445,
+      "is_manifold_2d": true
+    }
+  },
+  {
+    "stage_num": 4,
+    "stage_id": "stage_4_bionic_hybrid",
+    "label": "STAGE 4: Converged Funicular Arch (V=0.24)",
+    "iter": 60,
+    "volume_fraction": 0.24,
+    "stl": "05_lpbf_self_draining_bridge_arch_s4_stage_4_bionic_hybrid.stl",
+    "obj": "05_lpbf_self_draining_bridge_arch_s4_stage_4_bionic_hybrid.obj",
+    "audit": {
+      "V": 12976,
+      "E": 37836,
+      "F": 25224,
+      "chi": 364,
+      "genus": 0,
+      "boundary_edges": 0,
+      "non_manifold_edges": 0,
+      "degenerate_faces": 0,
+      "min_area": 6.15948341560757e-05,
+      "min_dot": 0.4513137094175147,
+      "is_manifold_2d": true
+    }
+  }
+]

@@ -1,5 +1,5 @@
 """
-tests/test_toposnail.py: Comprehensive Verification Suite for TopoSnail (v0.1.0).
+tests/test_toposnail.py: Comprehensive Verification Suite for TopoSnail (v0.2.0).
 
 Verifies:
 1. Machine-Checked OcclusionTriad.lean Runtime Theorems (Theorems 2.1 through 2.8):

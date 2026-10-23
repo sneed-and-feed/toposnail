@@ -1126,107 +1126,108 @@ def build_scen_02_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], Li
 
 def build_scen_02_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
-    Stage 2: Coarse Carved Envelope (Swept Shroud / Organic Hull).
-    Features lofted swept shroud envelopes from 4 bolt bosses to clevis lugs,
-    scooped under-arch dome, and solid continuous web without through-holes.
+    Stage 2 (V=0.65): Coarse Carved Envelope (Solid, Continuous, Un-Perforated Organic Outer Shroud / Hull).
+    Wraps smoothly from the 4 counterbored base bolt bosses (+/-0.58, +/-0.58, -0.76) up to the
+    2 upper coaxial clevis ears (0.0, +/-0.30, +0.56) with a scooped under-arch belly and solid
+    continuous side walls — ZERO thin struts or open lateral/central windows yet, while keeping all
+    4 vertical bolt bores (r >= 0.085) and the upper clevis pin bore (r >= 0.099) 100% open.
     """
     verts: List[List[float]] = []
     faces: List[List[int]] = []
     colors: List[List[float]] = []
     normals: List[List[float]] = []
 
-    # 4 Corner bolt bosses
+    def stress_color(s: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
+
+    # 1. 4 Precision counterbored corner bolt bosses (open vertical bore r = 0.085)
     bosses = [(-0.58, -0.58), (-0.58, 0.58), (0.58, -0.58), (0.58, 0.58)]
     for bx, by in bosses:
-        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.83), (0.0, 0.0, 1.0), 0.085, 0.194, 0.10, 0.28, 0.52, n_sides=28)
-        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.76), (0.0, 0.0, 1.0), 0.085, 0.182, 0.24, 0.32, 0.55, n_sides=28)
-        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.615), (0.0, 0.0, 1.0), 0.085, 0.142, 0.05, 0.36, 0.60, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.83), (0.0, 0.0, 1.0), 0.085, 0.194, 0.10, 0.26, 0.50, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.76), (0.0, 0.0, 1.0), 0.085, 0.182, 0.24, 0.30, 0.54, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.615), (0.0, 0.0, 1.0), 0.085, 0.142, 0.05, 0.35, 0.58, n_sides=28)
 
-    # Twin clevis bearing lugs
+    # 2. Twin coaxial clevis pin bearing lugs at (0.0, +/-0.30, 0.56) (open pin bore r = 0.099)
     for ey in [-0.30, 0.30]:
         _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.226, 0.132, 0.72, 0.88, n_sides=32)
         _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.148, 0.168, 0.76, 0.90, n_sides=32)
 
-    # Perimeter base tubes
+    # 3. Sculpted Solid Base Flange Apron (stopping >= 0.16 from (+/-0.58, +/-0.58) so bolt bores remain 100% open)
+    clr_base = stress_color(0.24)
+    _add_watertight_box(verts, faces, colors, normals, -0.41, 0.41, -0.58, -0.24, -0.86, -0.68, clr_base)
+    _add_watertight_box(verts, faces, colors, normals, -0.41, 0.41, 0.24, 0.58, -0.86, -0.68, clr_base)
+    _add_watertight_box(verts, faces, colors, normals, -0.58, -0.24, -0.41, 0.41, -0.86, -0.68, clr_base)
+    _add_watertight_box(verts, faces, colors, normals, 0.24, 0.58, -0.41, 0.41, -0.86, -0.68, clr_base)
+
+    # Smooth organic base perimeter rim fairings
     for sy in [-1.0, 1.0]:
         _add_spline_tube(
             verts, faces, colors, normals,
-            [(-0.38, sy * 0.56, -0.76), (-0.20, sy * 0.52, -0.74), (0.0, sy * 0.48, -0.72), (0.20, sy * 0.52, -0.74), (0.38, sy * 0.56, -0.76)],
-            [0.062, 0.065, 0.062, 0.065, 0.062],
-            [0.32, 0.36, 0.40, 0.36, 0.32],
-            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.90, cap_start=True, cap_end=True
+            [(-0.41, sy * 0.56, -0.76), (-0.20, sy * 0.52, -0.74), (0.0, sy * 0.48, -0.72), (0.20, sy * 0.52, -0.74), (0.41, sy * 0.56, -0.76)],
+            [0.064, 0.066, 0.064, 0.066, 0.064],
+            [0.28, 0.34, 0.38, 0.34, 0.28],
+            subdiv=5, n_sides=16, ry_scale=1.20, rz_scale=0.90, cap_start=True, cap_end=True,
         )
     for sx in [-1.0, 1.0]:
         _add_spline_tube(
             verts, faces, colors, normals,
-            [(sx * 0.56, -0.38, -0.76), (sx * 0.52, -0.20, -0.74), (sx * 0.48, 0.0, -0.72), (sx * 0.52, 0.20, -0.74), (sx * 0.56, 0.38, -0.76)],
-            [0.062, 0.065, 0.062, 0.065, 0.062],
-            [0.32, 0.36, 0.40, 0.36, 0.32],
-            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.90, cap_start=True, cap_end=True
+            [(sx * 0.56, -0.41, -0.76), (sx * 0.52, -0.20, -0.74), (sx * 0.48, 0.0, -0.72), (sx * 0.52, 0.20, -0.74), (sx * 0.56, 0.41, -0.76)],
+            [0.064, 0.066, 0.064, 0.066, 0.064],
+            [0.28, 0.34, 0.38, 0.34, 0.28],
+            subdiv=5, n_sides=16, ry_scale=1.20, rz_scale=0.90, cap_start=True, cap_end=True,
         )
 
-    # Central base ring
-    ring_angles = np.linspace(0.0, 2.0 * math.pi, 29)
-    ring_pts = [(0.38 * math.cos(a), 0.38 * math.sin(a), -0.73) for a in ring_angles]
-    _add_tube_along_curve(
-        verts, faces, colors, normals, ring_pts, [0.055] * 29, [0.38] * 29, n_sides=14, ry_scale=1.15, rz_scale=0.85, cap_start=True, cap_end=True
-    )
-
-    # Swept shroud buttresses
+    # 4. Smooth, Continuous, Un-Perforated Tapered Side Shroud Walls (ey = -0.30 and ey = +0.30)
+    #    Each flank is formed by overlapping Catmull-Rom spline shroud plates sweeping from Z = -0.68 up to Z = +0.46,
+    #    creating a 100% solid, continuous, un-perforated organic shroud wall with a scooped under-arch at the bottom!
     for ey_sign, ey in [(-1.0, -0.30), (1.0, 0.30)]:
-        for bx_sign in [-1.0, 1.0]:
+        for f_x in [-1.0, -0.72, -0.44, -0.18, 0.18, 0.44, 0.72, 1.0]:
+            z_bot = -0.68 if abs(f_x) >= 0.40 else -0.36
+            shroud_pts = [
+                (f_x * 0.52, ey_sign * (0.35 + 0.04 * abs(f_x)), z_bot),
+                (f_x * 0.44, ey_sign * (0.33 + 0.03 * abs(f_x)), -0.24),
+                (f_x * 0.33, ey_sign * (0.31 + 0.02 * abs(f_x)), 0.12),
+                (f_x * 0.21, ey, 0.45),
+            ]
+            shroud_radii = [0.064, 0.060, 0.055, 0.048]
+            s_base = 0.28 + 0.14 * abs(f_x)
+            shroud_stress = [s_base, s_base + 0.14, s_base + 0.28, 0.78]
             _add_spline_tube(
                 verts, faces, colors, normals,
-                [(bx_sign * 0.56, ey_sign * 0.39, -0.66), (bx_sign * 0.48, ey_sign * 0.36, -0.24), (bx_sign * 0.36, ey_sign * 0.32, 0.16), (bx_sign * 0.22, ey, 0.46), (bx_sign * 0.18, ey, 0.54)],
-                [0.068, 0.075, 0.072, 0.068, 0.065],
-                [0.38, 0.50, 0.65, 0.75, 0.82],
-                subdiv=6, n_sides=16, ry_scale=0.90, rz_scale=1.12, cap_start=True, cap_end=True
-            )
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                [(bx_sign * 0.32, ey_sign * 0.44, -0.70), (bx_sign * 0.22, ey_sign * 0.36, -0.24), (bx_sign * 0.14, ey_sign * 0.30, 0.12), (bx_sign * 0.09, ey, 0.40)],
-                [0.064, 0.068, 0.065, 0.062],
-                [0.40, 0.55, 0.68, 0.78],
-                subdiv=6, n_sides=14, ry_scale=0.92, rz_scale=1.10, cap_start=True, cap_end=True
-            )
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                [(bx_sign * 0.38, ey_sign * 0.36, -0.28), (bx_sign * 0.26, ey_sign * 0.32, 0.06), (bx_sign * 0.16, ey, 0.36)],
-                [0.060, 0.064, 0.060],
-                [0.48, 0.62, 0.76],
-                subdiv=4, n_sides=14, cap_start=True, cap_end=True
-            )
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                [(bx_sign * 0.42, ey_sign * 0.24, -0.15), (bx_sign * 0.28, ey_sign * 0.18, 0.15), (bx_sign * 0.14, ey_sign * 0.15, 0.38)],
-                [0.055, 0.058, 0.055],
-                [0.45, 0.58, 0.70],
-                subdiv=4, n_sides=14, cap_start=True, cap_end=True
+                shroud_pts, shroud_radii, shroud_stress,
+                subdiv=6, n_sides=16, ry_scale=0.95, rz_scale=1.18, cap_start=True, cap_end=True,
             )
 
-    # Central under-arch and portal fillers (closing the central portal for Stage 2)
-    for sx in [-1.0, 1.0]:
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            [(sx * 0.14, -0.30, 0.38), (sx * 0.14, 0.0, 0.34), (sx * 0.14, 0.30, 0.38)],
-            [0.065, 0.070, 0.065],
-            [0.65, 0.60, 0.65],
-            subdiv=5, n_sides=14, cap_start=True, cap_end=True
-        )
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            [(sx * 0.32, -0.25, 0.0), (sx * 0.25, 0.0, 0.05), (sx * 0.32, 0.25, 0.0)],
-            [0.062, 0.065, 0.062],
-            [0.55, 0.52, 0.55],
-            subdiv=4, n_sides=14, cap_start=True, cap_end=True
-        )
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            [(sx * 0.42, -0.22, -0.35), (sx * 0.35, 0.0, -0.30), (sx * 0.42, 0.22, -0.35)],
-            [0.060, 0.062, 0.060],
-            [0.45, 0.42, 0.45],
-            subdiv=4, n_sides=14, cap_start=True, cap_end=True
-        )
+        # Smooth lower under-arch belly crown connecting the left and right lower shroud flanks at Z = -0.34 .. +0.38
+        for z_c, x_span, r_c, s_c in [
+            (-0.30, 0.38, 0.056, 0.42),
+            (-0.08, 0.32, 0.054, 0.52),
+            (0.14, 0.26, 0.052, 0.64),
+            (0.34, 0.21, 0.048, 0.74),
+        ]:
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(-x_span, ey_sign * 0.32, z_c), (0.0, ey_sign * 0.31, z_c + 0.03), (x_span, ey_sign * 0.32, z_c)],
+                [r_c, r_c * 1.05, r_c],
+                [s_c + 0.04, s_c, s_c + 0.04],
+                subdiv=5, n_sides=16, ry_scale=0.95, rz_scale=1.10, cap_start=True, cap_end=True,
+            )
+
+    # 5. Smooth Solid Central Transverse Shroud Saddle (connecting -Y and +Y side walls beneath the clevis slot)
+    for z_b, x_b, r_b, s_b in [
+        (-0.30, 0.36, 0.056, 0.40),
+        (-0.08, 0.30, 0.054, 0.50),
+        (0.14, 0.24, 0.050, 0.62),
+        (0.32, 0.18, 0.046, 0.72),
+    ]:
+        for fx_b in [-0.65, 0.0, 0.65]:
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(fx_b * x_b, -0.30, z_b), (fx_b * x_b, 0.0, z_b - 0.02), (fx_b * x_b, 0.30, z_b)],
+                [r_b, r_b * 1.05, r_b],
+                [s_b + 0.04, s_b, s_b + 0.04],
+                subdiv=5, n_sides=16, ry_scale=1.05, rz_scale=1.05, cap_start=True, cap_end=True,
+            )
 
     rounded_verts = [[round(float(c), 3) for c in v] for v in verts]
     rounded_colors = [[round(float(c), 3) for c in clr] for clr in colors]
@@ -1242,115 +1243,102 @@ def build_scen_02_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], Li
 
 def build_scen_02_stage_3_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
-    Stage 3: Fenestrated Shell (Weight-Relief Windows Punched Open).
-    Features open lateral triangular weight-relief windows and open central A-frame portal,
-    retaining robust structural load paths and thicker rib walls.
+    Stage 3 (V=0.42): Fenestrated Plate Shell (Initial Weight-Relief Window Newly Opened).
+    Visually midway between the solid un-perforated shroud of Stage 2 and the sleek bifurcated
+    twin-rib + X-brace truss of Stage 4: features a thick solid base skirt, broad plate-like
+    A-frame side walls where a single central/lateral weight-relief window has newly opened,
+    and smooth curved upper throat & lower gusset webs (before splitting into Stage 4's twin ribs).
     """
     verts: List[List[float]] = []
     faces: List[List[int]] = []
     colors: List[List[float]] = []
     normals: List[List[float]] = []
 
-    # 4 Corner bolt bosses
+    def stress_color(s: float) -> List[float]:
+        return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
+
+    # 1. 4 Corner bolt bosses (open vertical bore r = 0.085)
     bosses = [(-0.58, -0.58), (-0.58, 0.58), (0.58, -0.58), (0.58, 0.58)]
     for bx, by in bosses:
-        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.83), (0.0, 0.0, 1.0), 0.085, 0.194, 0.10, 0.35, 0.58, n_sides=28)
+        _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.83), (0.0, 0.0, 1.0), 0.085, 0.194, 0.10, 0.34, 0.56, n_sides=28)
         _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.76), (0.0, 0.0, 1.0), 0.085, 0.182, 0.24, 0.38, 0.60, n_sides=28)
         _add_annular_boss(verts, faces, colors, normals, (bx, by, -0.615), (0.0, 0.0, 1.0), 0.085, 0.142, 0.05, 0.44, 0.65, n_sides=28)
 
-    # Twin clevis bearing lugs
+    # 2. Twin clevis bearing lugs (open pin bore r = 0.099)
     for ey in [-0.30, 0.30]:
-        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.226, 0.132, 0.82, 0.92, n_sides=32)
-        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.148, 0.168, 0.86, 0.94, n_sides=32)
+        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.226, 0.132, 0.80, 0.92, n_sides=32)
+        _add_annular_boss(verts, faces, colors, normals, (0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.099, 0.148, 0.168, 0.84, 0.94, n_sides=32)
 
-    # Perimeter base tubes
+    # 3. Thick Solid Base Flange Skirt & Central Ring (much thicker/wider than Stage 4's thin perimeter tubes)
+    clr_skirt = stress_color(0.34)
+    _add_watertight_box(verts, faces, colors, normals, -0.40, 0.40, -0.56, -0.36, -0.84, -0.70, clr_skirt)
+    _add_watertight_box(verts, faces, colors, normals, -0.40, 0.40, 0.36, 0.56, -0.84, -0.70, clr_skirt)
+    _add_watertight_box(verts, faces, colors, normals, -0.56, -0.36, -0.40, 0.40, -0.84, -0.70, clr_skirt)
+    _add_watertight_box(verts, faces, colors, normals, 0.36, 0.56, -0.40, 0.40, -0.84, -0.70, clr_skirt)
+
     for sy in [-1.0, 1.0]:
         _add_spline_tube(
             verts, faces, colors, normals,
-            [(-0.40, sy * 0.58, -0.76), (-0.22, sy * 0.53, -0.74), (0.0, sy * 0.49, -0.72), (0.22, sy * 0.53, -0.74), (0.40, sy * 0.58, -0.76)],
-            [0.056, 0.054, 0.050, 0.054, 0.056],
-            [0.36, 0.42, 0.48, 0.44, 0.38],
-            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.88, cap_start=True, cap_end=True
+            [(-0.41, sy * 0.57, -0.76), (-0.22, sy * 0.52, -0.74), (0.0, sy * 0.48, -0.72), (0.22, sy * 0.52, -0.74), (0.41, sy * 0.57, -0.76)],
+            [0.056, 0.054, 0.052, 0.054, 0.056],
+            [0.35, 0.40, 0.46, 0.40, 0.35],
+            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.88, cap_start=True, cap_end=True,
         )
     for sx in [-1.0, 1.0]:
         _add_spline_tube(
             verts, faces, colors, normals,
-            [(sx * 0.58, -0.40, -0.76), (sx * 0.53, -0.22, -0.74), (sx * 0.49, 0.0, -0.72), (sx * 0.53, 0.22, -0.74), (sx * 0.58, 0.40, -0.76)],
-            [0.054, 0.052, 0.048, 0.052, 0.054],
-            [0.34, 0.40, 0.46, 0.40, 0.34],
-            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.88, cap_start=True, cap_end=True
+            [(sx * 0.57, -0.41, -0.76), (sx * 0.52, -0.22, -0.74), (sx * 0.48, 0.0, -0.72), (sx * 0.52, 0.22, -0.74), (sx * 0.57, 0.41, -0.76)],
+            [0.056, 0.054, 0.052, 0.054, 0.056],
+            [0.35, 0.40, 0.46, 0.40, 0.35],
+            subdiv=5, n_sides=16, ry_scale=1.15, rz_scale=0.88, cap_start=True, cap_end=True,
         )
 
-    # Central base ring
     ring_angles = np.linspace(0.0, 2.0 * math.pi, 29)
     ring_pts = [(0.38 * math.cos(a), 0.38 * math.sin(a), -0.73) for a in ring_angles]
     _add_tube_along_curve(
-        verts, faces, colors, normals, ring_pts, [0.042] * 29, [0.44] * 29, n_sides=14, ry_scale=1.15, rz_scale=0.85, cap_start=True, cap_end=True
+        verts, faces, colors, normals, ring_pts, [0.048] * 29, [0.42] * 29, n_sides=14, ry_scale=1.15, rz_scale=0.85, cap_start=True, cap_end=True
     )
 
-    # Primary outer buttress and inner arch legs with open windows
+    # 4. Broad, Un-Bifurcated Plate-Like A-Frame Side Walls framing a Single Central Arch Window
+    #    Unlike Stage 4 (which bifurcates each side leg into slender outer + inner ribs with a lateral pocket),
+    #    Stage 3 has a single broad, solid plate-like A-frame leg on each side plus smooth curved lower corner
+    #    gusset webs and a curved upper clevis throat collar!
     for ey_sign, ey in [(-1.0, -0.30), (1.0, 0.30)]:
+        # Smooth upper clevis throat collar arch (closing the upper throat around Z = +0.20 .. +0.38)
+        _add_spline_tube(
+            verts, faces, colors, normals,
+            [(-0.26, ey_sign * 0.31, 0.18), (0.0, ey, 0.34), (0.26, ey_sign * 0.31, 0.18)],
+            [0.056, 0.066, 0.056],
+            [0.72, 0.80, 0.72],
+            subdiv=6, n_sides=16, ry_scale=1.05, rz_scale=1.18, cap_start=True, cap_end=True,
+        )
+
         for bx_sign in [-1.0, 1.0]:
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                [(bx_sign * 0.62, ey_sign * 0.42, -0.66), (bx_sign * 0.54, ey_sign * 0.39, -0.26), (bx_sign * 0.40, ey_sign * 0.34, 0.14), (bx_sign * 0.24, ey, 0.44), (bx_sign * 0.19, ey, 0.55)],
-                [0.056, 0.058, 0.056, 0.054, 0.052],
-                [0.42, 0.58, 0.74, 0.84, 0.90],
-                subdiv=6, n_sides=16, ry_scale=0.88, rz_scale=1.10, cap_start=True, cap_end=True
-            )
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                [(bx_sign * 0.34, ey_sign * 0.48, -0.71), (bx_sign * 0.23, ey_sign * 0.41, -0.28), (bx_sign * 0.15, ey_sign * 0.34, 0.10), (bx_sign * 0.10, ey, 0.39)],
-                [0.048, 0.050, 0.048, 0.050],
-                [0.44, 0.62, 0.76, 0.86],
-                subdiv=6, n_sides=14, ry_scale=0.90, rz_scale=1.08, cap_start=True, cap_end=True
-            )
-            _add_spline_tube(
-                verts, faces, colors, normals,
-                [(bx_sign * 0.32, ey_sign * 0.33, 0.26), (bx_sign * 0.21, ey, 0.34), (bx_sign * 0.12, ey, 0.40)],
-                [0.042, 0.040, 0.044],
-                [0.75, 0.82, 0.88],
-                subdiv=4, n_sides=12, cap_start=True, cap_end=True
-            )
+            # Broad outer + inner overlapping A-frame plate web (un-perforated lateral flank, no lateral pocket yet!)
+            for f_off, r_w in [(1.0, 0.062), (0.76, 0.058)]:
+                _add_spline_tube(
+                    verts, faces, colors, normals,
+                    [
+                        (bx_sign * (0.52 * f_off), ey_sign * (0.35 + 0.03 * f_off), -0.68),
+                        (bx_sign * (0.41 * f_off), ey_sign * (0.33 + 0.02 * f_off), -0.24),
+                        (bx_sign * (0.29 * f_off), ey_sign * 0.31, 0.12),
+                        (bx_sign * (0.19 * f_off), ey, 0.44),
+                    ],
+                    [r_w, r_w * 1.06, r_w * 1.02, r_w * 0.88],
+                    [0.38, 0.56, 0.72, 0.84],
+                    subdiv=6, n_sides=16, ry_scale=1.05, rz_scale=1.15, cap_start=True, cap_end=True,
+                )
 
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            [(-0.15, ey, 0.42), (-0.08, ey, 0.392), (0.0, ey, 0.386), (0.08, ey, 0.392), (0.15, ey, 0.42)],
-            [0.048, 0.050, 0.050, 0.050, 0.048],
-            [0.86, 0.88, 0.90, 0.88, 0.86],
-            subdiv=5, n_sides=14, cap_start=True, cap_end=True
-        )
-
+    # 5. Smooth Transverse Saddle Web Arches connecting -Y and +Y flanks (instead of Stage 4's thin X-braces)
     for sx in [-1.0, 1.0]:
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            [(sx * 0.145, -0.30, 0.40), (sx * 0.150, 0.0, 0.372), (sx * 0.145, 0.30, 0.40)],
-            [0.046, 0.044, 0.046],
-            [0.82, 0.76, 0.82],
-            subdiv=5, n_sides=14, cap_start=True, cap_end=True
-        )
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            [(sx * 0.54, -0.39, -0.26), (sx * 0.40, 0.0, 0.14), (sx * 0.24, 0.30, 0.44)],
-            [0.042, 0.040, 0.042],
-            [0.60, 0.72, 0.84],
-            subdiv=4, n_sides=12, cap_start=True, cap_end=True
-        )
-        _add_spline_tube(
-            verts, faces, colors, normals,
-            [(sx * 0.54, 0.39, -0.26), (sx * 0.40, 0.0, 0.14), (sx * 0.24, -0.30, 0.44)],
-            [0.042, 0.040, 0.042],
-            [0.60, 0.72, 0.84],
-            subdiv=4, n_sides=12, cap_start=True, cap_end=True
-        )
-
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.0, -0.30, 0.390), (0.0, 0.0, 0.382), (0.0, 0.30, 0.390)],
-        [0.046, 0.044, 0.046],
-        [0.84, 0.78, 0.84],
-        subdiv=5, n_sides=14, cap_start=True, cap_end=True
-    )
+        for z_t, x_t, r_t, s_t in [(-0.08, 0.34, 0.056, 0.58), (0.14, 0.25, 0.052, 0.68), (0.36, 0.17, 0.048, 0.78)]:
+            _add_spline_tube(
+                verts, faces, colors, normals,
+                [(sx * x_t, -0.31, z_t), (sx * (x_t - 0.03), 0.0, z_t - 0.03), (sx * x_t, 0.31, z_t)],
+                [r_t, r_t * 1.04, r_t],
+                [s_t + 0.04, s_t, s_t + 0.04],
+                subdiv=5, n_sides=16, ry_scale=1.08, rz_scale=1.08, cap_start=True, cap_end=True,
+            )
 
     rounded_verts = [[round(float(c), 3) for c in v] for v in verts]
     rounded_colors = [[round(float(c), 3) for c in clr] for clr in colors]

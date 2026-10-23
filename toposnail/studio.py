@@ -1,6 +1,6 @@
 """
 toposnail.studio: Zero-Install 3D WebGL2 Organic Topology Optimization Workstation,
-Binary .STL / .OBJ CAD Exporter, and Synchronized 4-Quad Visual Studio (v0.1.0).
+Binary .STL / .OBJ CAD Exporter, and Synchronized 4-Quad Visual Studio (v0.2.0).
 
 Features:
 - Single-file dark-mode HTML5 + WebGL2 + TypedArray portable studio (< 2.0 MB active JS/WebGL arena).
@@ -39,7 +39,7 @@ if str(_REPO_ROOT) not in sys.path:
 
 import numpy as np
 
-STUDIO_VERSION = "0.1.0"
+STUDIO_VERSION = "0.2.0"
 
 SCENARIO_DESCRIPTIONS: Dict[str, str] = {
     "01_cantilever_michell_truss": "01 Cantilever Michell Truss (Tip Shear, +/-45 deg Struts, 0% Checkerboards)",
@@ -2880,18 +2880,20 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
             ctx.stroke();
         }}
 
-        // Top Pill Badge for this bay
-        const badgeText = stage.label || `STAGE ${{b + 1}}`;
-        ctx.font = `bold ${{Math.round(9.5 * dpr)}}px monospace`;
+        // Top Pill Badge for this bay (placed at badgeY = 38*dpr cleanly below #cadViewBarA)
+        const volPct = Math.round(stage.volume_fraction * 100);
+        const shortTitles = ["S1: FRESH CAD", "S2: COARSE HULL", "S3: FENESTRATED", "S4: BIONIC HYBRID"];
+        const badgeText = `${{shortTitles[b] || `STAGE ${{b + 1}}`}} (${{volPct}}%)`;
+        ctx.font = `bold ${{Math.round(9.0 * dpr)}}px monospace`;
         const tw = ctx.measureText(badgeText).width;
-        const badgeW = tw + 16 * dpr;
+        const badgeW = Math.min(bayW - 8 * dpr, tw + 14 * dpr);
         const badgeH = 20 * dpr;
         const badgeX = bayCenterX - badgeW * 0.5;
-        const badgeY = 12 * dpr;
+        const badgeY = 38 * dpr;
 
-        ctx.fillStyle = "rgba(11, 15, 25, 0.85)";
-        const isS4 = (stage.stage_id === "S4");
-        ctx.strokeStyle = isS4 ? "rgba(34, 197, 94, 0.65)" : "rgba(56, 189, 248, 0.55)";
+        ctx.fillStyle = "rgba(11, 15, 25, 0.88)";
+        const isS4 = (b === 3) || Boolean(stage.stage_id && stage.stage_id.includes("4"));
+        ctx.strokeStyle = isS4 ? "rgba(34, 197, 94, 0.72)" : "rgba(56, 189, 248, 0.60)";
         ctx.lineWidth = 1.2 * dpr;
         ctx.beginPath();
         if (ctx.roundRect) {{
@@ -2903,21 +2905,15 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
         ctx.stroke();
 
         ctx.fillStyle = isS4 ? "#4ade80" : "#38bdf8";
-        ctx.fillText(badgeText, badgeX + 8 * dpr, badgeY + 14 * dpr);
+        ctx.fillText(badgeText, bayCenterX - tw * 0.5, badgeY + 13.5 * dpr);
 
         // Bottom Volume Fraction & Iteration Subtitle
-        const volPct = Math.round(stage.volume_fraction * 100);
         const subText = `V = ${{volPct}}% | Iter ${{stage.iter}}`;
         ctx.font = `${{Math.round(8.5 * dpr)}}px monospace`;
         const subTw = ctx.measureText(subText).width;
         ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
         ctx.fillText(subText, bayCenterX - subTw * 0.5, h - 16 * dpr);
     }}
-
-    // Top-Left Showroom Header
-    ctx.fillStyle = "rgba(255, 255, 255, 0.90)";
-    ctx.font = `bold ${{Math.round(10 * dpr)}}px monospace`;
-    ctx.fillText("SHOWROOM LINEUP 1→4 (SYNCHRONIZED TURNTABLE)", 10 * dpr, 16 * dpr);
 
     // Bottom-Center Hint
     ctx.fillStyle = "rgba(148, 163, 184, 0.75)";
@@ -3655,18 +3651,18 @@ function renderQuadA() {{
 
     ctx.restore();
 
-    // Top-Center Active Stage Pill Badge
+    // Top-Center Active Stage Pill Badge (placed at badgeY = 38*dpr cleanly below #cadViewBarA)
     if (activeStageObj) {{
         const badgeText = activeStageObj.label || activeStageObj.stage_id;
-        ctx.font = `bold ${{Math.round(10.5 * dpr)}}px monospace`;
+        ctx.font = `bold ${{Math.round(10.0 * dpr)}}px monospace`;
         const tw = ctx.measureText(badgeText).width;
         const badgeW = tw + 20 * dpr;
         const badgeH = 22 * dpr;
         const badgeX = (w - badgeW) * 0.5;
-        const badgeY = 12 * dpr;
+        const badgeY = 38 * dpr;
 
         ctx.fillStyle = "rgba(11, 15, 25, 0.85)";
-        const isS4 = (STATE.activeStage === "S4");
+        const isS4 = (STATE.activeStage === "S4") || Boolean(activeStageObj.stage_id && activeStageObj.stage_id.includes("4"));
         ctx.strokeStyle = isS4 ? "rgba(34, 197, 94, 0.65)" : "rgba(56, 189, 248, 0.55)";
         ctx.lineWidth = 1.2 * dpr;
         ctx.beginPath();
@@ -3682,20 +3678,20 @@ function renderQuadA() {{
         ctx.fillText(badgeText, badgeX + 10 * dpr, badgeY + 15 * dpr);
     }}
 
-    // --- 1. Top-Left Live Status Overlay (compact so it never collides with cadViewBarA) ---
+    // --- 1. Top-Left Live Status Overlay (placed below #cadViewBarA so it never collides with toolbar buttons) ---
     ctx.fillStyle = "rgba(255, 255, 255, 0.90)";
     ctx.font = `bold ${{Math.round(10 * dpr)}}px monospace`;
     const stateLabel = progress < 0.02 ? "SOLID BILLET" : (progress < 1.0 ? "ERODING" : "CONVERGED");
     ctx.fillText(
         `Iter ${{Math.round(STATE.erosionIter)}}/${{STATE.maxErosionIters}} [${{stateLabel}}]`,
-        10 * dpr, 16 * dpr
+        12 * dpr, 48 * dpr
     );
     ctx.fillStyle = "rgba(148, 163, 184, 0.92)";
     ctx.font = `${{Math.round(9.2 * dpr)}}px monospace`;
     const clipTag = STATE.sectionClip ? " | CLIP:ON" : "";
     ctx.fillText(
         `${{STATE.solverMode}} | V=${{Math.round(STATE.vBudget * 100)}}% | ${{(STATE.renderMode || "solid").toUpperCase()}}${{clipTag}}`,
-        10 * dpr, 28 * dpr
+        12 * dpr, 61 * dpr
     );
 
     // --- 2. Bottom-Left Scalar Colorbar Legend ---
@@ -4467,7 +4463,7 @@ function exportBinarySTL() {{
     const buffer = new ArrayBuffer(bufferSize);
     const view = new DataView(buffer);
 
-    const header = "TopoSnail v0.1.0 Binary STL Mesh - CC0-1.0 Public Domain";
+    const header = "TopoSnail v0.2.0 Binary STL Mesh - CC0-1.0 Public Domain";
     for (let i = 0; i < 80; i++) {{
         view.setUint8(i, i < header.length ? header.charCodeAt(i) : 32);
     }}
@@ -4529,7 +4525,7 @@ function exportWavefrontOBJ() {{
     const scen = getActiveScenario();
     if (!scen || !scen.mesh || !scen.mesh.faces) return;
     const mesh = scen.mesh;
-    const lines = ["# TopoSnail v0.1.0 Wavefront OBJ Export", "# CC0-1.0 Public Domain"];
+    const lines = ["# TopoSnail v0.2.0 Wavefront OBJ Export", "# CC0-1.0 Public Domain"];
 
     for (let i = 0; i < mesh.vertices.length; i++) {{
         const v = mesh.vertices[i];

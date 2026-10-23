@@ -482,7 +482,7 @@ def export_binary_stl(
     V = len(verts)
     F = len(faces)
 
-    header = b"TopoSnail v0.1.0 Binary STL Mesh Exporter - CC0-1.0 Public Domain"
+    header = b"TopoSnail v0.2.0 Binary STL Mesh Exporter - CC0-1.0 Public Domain"
     header = header.ljust(80, b" ")[:80]
 
     if F == 0:
@@ -568,7 +568,7 @@ def export_obj_mesh(
         Complete Wavefront .OBJ text string.
     """
     lines: List[str] = [
-        "# TopoSnail v0.1.0 Wavefront .OBJ Exporter",
+        "# TopoSnail v0.2.0 Wavefront .OBJ Exporter",
         "# Machine-Checked Topology Invariants (CC0-1.0)",
     ]
 

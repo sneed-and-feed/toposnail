@@ -1706,6 +1706,73 @@ bpy.ops.wm.obj_export(filepath=r"{out_obj_path}", export_selected_objects=True)
         exported["manifest"] = meta_p
         return exported
 
+    @staticmethod
+    def _compute_phong_face_colors(
+        verts: np.ndarray,
+        f_plot: np.ndarray,
+        colors: np.ndarray,
+        face_normals: Optional[np.ndarray] = None,
+        elev_deg: float = 22.0,
+        azim_deg: float = -55.0,
+    ) -> np.ndarray:
+        """
+        Compute 3-point Studio Phong (diffuse + specular) per-triangle RGB colors
+        from face normals and vertex colors.
+        """
+        triangles = verts[f_plot]
+        if face_normals is not None and len(face_normals) == len(f_plot):
+            fn_raw = np.asarray(face_normals, dtype=np.float64)
+        else:
+            v0 = triangles[:, 0, :]
+            v1 = triangles[:, 1, :]
+            v2 = triangles[:, 2, :]
+            fn_raw = np.cross(v1 - v0, v2 - v0)
+        fn_norm = np.linalg.norm(fn_raw, axis=1, keepdims=True) + 1e-12
+        fn = fn_raw / fn_norm
+
+        el_r = math.radians(elev_deg)
+        az_r = math.radians(azim_deg)
+        v_cam = np.array(
+            [math.cos(el_r) * math.cos(az_r), math.cos(el_r) * math.sin(az_r), math.sin(el_r)],
+            dtype=np.float64,
+        )
+        v_cam /= np.linalg.norm(v_cam) + 1e-12
+
+        az_key = math.radians(azim_deg + 15.0)
+        el_key = math.radians(elev_deg + 18.0)
+        l_key = np.array(
+            [math.cos(el_key) * math.cos(az_key), math.cos(el_key) * math.sin(az_key), math.sin(el_key)],
+            dtype=np.float64,
+        )
+        l_key /= np.linalg.norm(l_key) + 1e-12
+
+        az_fill = math.radians(azim_deg - 75.0)
+        l_fill = np.array([math.cos(az_fill), math.sin(az_fill), 0.35], dtype=np.float64)
+        l_fill /= np.linalg.norm(l_fill) + 1e-12
+
+        l_rim = np.array([-v_cam[0], -v_cam[1], 0.68], dtype=np.float64)
+        l_rim /= np.linalg.norm(l_rim) + 1e-12
+
+        h_vec = l_key + v_cam
+        h_vec /= np.linalg.norm(h_vec) + 1e-12
+
+        key_dot = np.maximum(0.0, np.sum(fn * l_key, axis=1))
+        fill_dot = np.maximum(0.0, np.sum(fn * l_fill, axis=1))
+        rim_dot = np.maximum(0.0, np.sum(fn * l_rim, axis=1))
+        hemi = 0.5 + 0.5 * fn[:, 2]
+        diffuse = np.clip(
+            0.26 + 0.58 * key_dot + 0.22 * fill_dot + 0.12 * rim_dot + 0.10 * hemi,
+            0.25,
+            1.08,
+        )
+        spec = (np.maximum(0.0, np.sum(fn * h_vec, axis=1)) ** 24) * 0.34
+
+        base_c = (
+            colors[f_plot[:, 0]] + colors[f_plot[:, 1]] + colors[f_plot[:, 2]]
+        ) / 3.0
+        f_colors = np.clip(base_c * diffuse[:, None] + spec[:, None], 0.0, 1.0)
+        return f_colors
+
     def generate_audit_sheet(
         self,
         stages: List[StageMesh],
@@ -1713,56 +1780,65 @@ bpy.ops.wm.obj_export(filepath=r"{out_obj_path}", export_selected_objects=True)
         title: str = "TopoSnail 4-Stage Progressive Topology Optimization Audit",
     ) -> Path:
         """
-        Generate 4-stage side-by-side visual audit sheet image with matplotlib.
+        Generate 4-stage side-by-side visual audit sheet image with matplotlib,
+        rendering 100% of mesh triangles with 3-point Phong shading.
         """
         import matplotlib.pyplot as plt
-        from mpl_toolkits.mplot3d import Axes3D
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
         from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
         out_file = Path(output_path)
         out_file.parent.mkdir(parents=True, exist_ok=True)
 
-        fig = plt.figure(figsize=(20, 5), dpi=150, facecolor="#0e1117")
-        fig.suptitle(title, color="#f0f2f6", fontsize=14, fontweight="bold", y=0.98)
+        is_femur = "femur" in title.lower() or "03_" in str(out_file).lower() or "scen_03" in str(out_file).lower()
+        elev_deg, azim_deg = (18.0, 65.0) if is_femur else (22.0, -55.0)
+
+        fig = plt.figure(figsize=(20, 5.2), dpi=160, facecolor="#0e1117")
+        fig.suptitle(title, color="#f0f2f6", fontsize=14, fontweight="bold", y=0.97)
 
         for idx, stage in enumerate(stages):
             ax = fig.add_subplot(1, 4, idx + 1, projection="3d")
             ax.set_facecolor("#0e1117")
 
-            verts = stage.vertices
-            faces = stage.faces
-            colors = stage.vertex_colors
+            verts = np.asarray(stage.vertices, dtype=np.float64)
+            faces = np.asarray(stage.faces, dtype=np.int32)
+            colors = np.asarray(stage.vertex_colors, dtype=np.float64)
 
-            # Downsample face collection for fast plotting if mesh is very high-res
-            if len(faces) > 4000:
-                stride = max(1, len(faces) // 3000)
-                f_plot = faces[::stride]
-            else:
-                f_plot = faces
+            # Render 100% of faces (never subsample/decimate triangles!)
+            f_plot = faces
 
             if len(f_plot) > 0 and len(verts) > 0:
                 triangles = verts[f_plot]
-                f_colors = colors[f_plot[:, 0]]
+                f_colors = self._compute_phong_face_colors(
+                    verts, f_plot, colors, stage.normals, elev_deg=elev_deg, azim_deg=azim_deg
+                )
                 poly = Poly3DCollection(
                     triangles,
                     facecolors=f_colors,
-                    alpha=0.95,
+                    edgecolor="none",
+                    linewidths=0.0,
+                    antialiased=False,
+                    alpha=1.0,
+                    zsort="average",
                 )
                 ax.add_collection3d(poly)
 
-                # Set plot limits
-                for axis_idx, axis_setter in enumerate([ax.set_xlim, ax.set_ylim, ax.set_zlim]):
-                    vals = verts[:, axis_idx]
-                    vmin, vmax = float(np.min(vals)), float(np.max(vals))
-                    pad = max(0.1, (vmax - vmin) * 0.1)
-                    axis_setter(vmin - pad, vmax + pad)
+                # Set isotropic equal-aspect plot limits so 3D geometry is never distorted
+                vmin = np.min(verts, axis=0)
+                vmax = np.max(verts, axis=0)
+                vmid = 0.5 * (vmin + vmax)
+                half_span = max(0.25, float(np.max(vmax - vmin)) * 0.52)
+                ax.set_xlim(vmid[0] - half_span, vmid[0] + half_span)
+                ax.set_ylim(vmid[1] - half_span, vmid[1] + half_span)
+                ax.set_zlim(vmid[2] - half_span, vmid[2] + half_span)
+                if hasattr(ax, "set_box_aspect"):
+                    ax.set_box_aspect((1.0, 1.0, 1.0))
 
-            ax.view_init(elev=22, azim=-55)
+            ax.view_init(elev=elev_deg, azim=azim_deg)
             ax.set_axis_off()
 
             audit = stage.audit_manifold()
             pass_str = "PASS" if audit["is_manifold_2d"] else "FAIL"
-            status_color = "#4ade80" if audit["is_manifold_2d"] else "#f87171"
 
             sub_txt = (
                 f"{stage.label}\n"
@@ -1772,7 +1848,114 @@ bpy.ops.wm.obj_export(filepath=r"{out_obj_path}", export_selected_objects=True)
             ax.set_title(sub_txt, color="#e2e8f0", fontsize=10, pad=2)
 
         plt.tight_layout()
-        plt.subplots_adjust(top=0.85, bottom=0.05, left=0.02, right=0.98)
+        plt.subplots_adjust(top=0.84, bottom=0.04, left=0.02, right=0.98)
+        fig.savefig(str(out_file), facecolor=fig.get_facecolor(), edgecolor="none")
+        plt.close(fig)
+        return out_file
+
+    def generate_master_progression_sheet(
+        self,
+        all_scenario_stages: Dict[str, List[StageMesh]],
+        output_path: Union[str, Path] = "results/audit_4stage_progression.png",
+    ) -> Path:
+        """
+        Generate the 5x4 master progression audit matrix across all 5 canonical scenarios,
+        rendering 100% of mesh triangles with 3-point Phong lighting.
+        """
+        import matplotlib.pyplot as plt
+        from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+        from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+
+        out_file = Path(output_path)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+
+        row_titles = {
+            "01_cantilever_michell_truss": "01 Michell Cantilever\n(Tip Shear | +/-45 deg Michell Frame)",
+            "02_aerospace_jet_bracket": "02 Aerospace Bracket\n(Clevis Lug | 4 Keep-Out Bores)",
+            "03_trabecular_femur_anisotropic_so6": "03 Femur Arch\n(Wolff Law | SO(6) Trabecular System)",
+            "04_regenerative_thruster_gimbal_thermo": "04 Regenerative Thruster\n(Cardan Gimbal | 16 Helical Channels)",
+            "05_lpbf_self_draining_bridge_arch": "05 LPBF Bridge Arch\n(D4 Self-Draining | 0 Beta-2 Voids)",
+        }
+
+        n_rows = len(all_scenario_stages)
+        fig = plt.figure(figsize=(20, 4.4 * n_rows), dpi=150, facecolor="#0b0e14")
+        fig.suptitle(
+            "TOPOSNAIL 4-STAGE PROGRESSIVE TOPOLOGY OPTIMIZATION MASTER MATRIX\n"
+            "Watertight 2-Manifold Industrial Generative Design Progression across All 5 Benchmark Scenarios",
+            color="#f8fafc",
+            fontsize=14,
+            fontweight="bold",
+            y=0.985,
+        )
+
+        for r_idx, (s_id, stages) in enumerate(all_scenario_stages.items()):
+            is_femur = "femur" in s_id.lower() or s_id.startswith("03")
+            elev_deg, azim_deg = (18.0, 65.0) if is_femur else (22.0, -55.0)
+            for c_idx, stage in enumerate(stages):
+                ax = fig.add_subplot(n_rows, 4, r_idx * 4 + c_idx + 1, projection="3d")
+                ax.set_facecolor("#0b0e14")
+
+                verts = np.asarray(stage.vertices, dtype=np.float64)
+                faces = np.asarray(stage.faces, dtype=np.int32)
+                colors = np.asarray(stage.vertex_colors, dtype=np.float64)
+                f_plot = faces
+
+                if len(f_plot) > 0 and len(verts) > 0:
+                    triangles = verts[f_plot]
+                    f_colors = self._compute_phong_face_colors(
+                        verts, f_plot, colors, stage.normals, elev_deg=elev_deg, azim_deg=azim_deg
+                    )
+                    poly = Poly3DCollection(
+                        triangles,
+                        facecolors=f_colors,
+                        edgecolor="none",
+                        linewidths=0.0,
+                        antialiased=False,
+                        alpha=1.0,
+                        zsort="average",
+                    )
+                    ax.add_collection3d(poly)
+
+                    vmin = np.min(verts, axis=0)
+                    vmax = np.max(verts, axis=0)
+                    vmid = 0.5 * (vmin + vmax)
+                    half_span = max(0.25, float(np.max(vmax - vmin)) * 0.52)
+                    ax.set_xlim(vmid[0] - half_span, vmid[0] + half_span)
+                    ax.set_ylim(vmid[1] - half_span, vmid[1] + half_span)
+                    ax.set_zlim(vmid[2] - half_span, vmid[2] + half_span)
+                    if hasattr(ax, "set_box_aspect"):
+                        ax.set_box_aspect((1.0, 1.0, 1.0))
+
+                ax.view_init(elev=elev_deg, azim=azim_deg)
+                ax.set_axis_off()
+
+                audit = stage.audit_manifold()
+                pass_str = "PASS" if audit["is_manifold_2d"] else "FAIL"
+                title_clr = "#38bdf8" if c_idx == 3 else "#e2e8f0"
+                fw = "bold" if c_idx == 3 else "normal"
+                ax.set_title(
+                    f"{stage.label}\nIter {stage.iteration}/60 | V={stage.volume_fraction:.2f}\n2-Manifold: {pass_str}",
+                    color=title_clr,
+                    fontsize=8.5,
+                    fontweight=fw,
+                    pad=1,
+                )
+                if c_idx == 0:
+                    ax.text2D(
+                        -0.06,
+                        0.5,
+                        row_titles.get(s_id, s_id),
+                        transform=ax.transAxes,
+                        color="#fbbf24",
+                        fontsize=9.5,
+                        fontweight="bold",
+                        rotation=90,
+                        va="center",
+                        ha="center",
+                    )
+
+        plt.tight_layout()
+        plt.subplots_adjust(top=0.93, bottom=0.02, left=0.05, right=0.99, hspace=0.18, wspace=0.04)
         fig.savefig(str(out_file), facecolor=fig.get_facecolor(), edgecolor="none")
         plt.close(fig)
         return out_file

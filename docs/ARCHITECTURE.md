@@ -269,14 +269,30 @@ CAD surface generation is implemented in pure NumPy without third-party geometry
 5. **Wavefront `.OBJ` Export**:
    Emits vertex coordinates with mapped RGB stress colors (`v x y z r g b`).
 
+### 5.1 4-Stage CAD-to-Bionic CSG Hybridization Pipeline (`v0.2.0`)
+
+`toposnail/cad_to_bionic.py` (`CADToBionicPipeline`) and `SCENARIO_STAGE_BUILDERS` implement a 3-zone domain partition:
+
+```math
+\Omega = \Omega_{\mathrm{design}} \cup \Omega_{\mathrm{solid}} \cup \Omega_{\mathrm{KOZ}}, \quad \Omega_i \cap \Omega_j = \emptyset \;\; (i \neq j)
+```
+
+Here $\Omega_{\mathrm{solid}}$ preserves precision-machined mounting bosses (bolt flanges, clevis ears, gimbal trunnions).
+Meanwhile $\Omega_{\mathrm{KOZ}}$ enforces open cylindrical bolt bores, pin slots, and fluid passages across four progressive morphological stages (`S1: Fresh CAD Stock` $\to$ `S2: Coarse Carved Hull` $\to$ `S3: Fenestrated Shell` $\to$ `S4: Converged Bionic Hybrid`).
+Every stage mesh across all 5 scenarios (20 meshes total) satisfies strict 2-manifold paired half-edge invariants (`boundary_edges == 0`, `non_manifold_edges == 0`, `degenerate_triangles == 0`, $\langle \hat n_f, \hat n_v \rangle > 0.05$) and strict divergence-theorem volume monotonicity:
+
+```math
+V_{\mathrm{S1}} > V_{\mathrm{S2}} > V_{\mathrm{S3}} > V_{\mathrm{S4}}
+```
+
 ---
 
 ## 6. Verification and Test Gates
 
-TopoSnail is verified through a four-tier automated testing hierarchy:
+TopoSnail (`v0.2.0`) is verified through a four-tier automated testing hierarchy:
 
 ```bash
-# Tier 1: Unit tests and formal theorem verification
+# Tier 1: Unit tests, 20-stage 2-manifold audit, and formal theorem verification
 pytest tests/test_toposnail.py -v
 
 # Tier 2: 5-scenario Mode B evaluation and official community benchmarks
@@ -285,6 +301,7 @@ python scripts/evaluate_toposnail.py
 # Tier 3: 21-rule GFM and KaTeX math compliance audit
 python scripts/audit_gfm_math.py README.md docs/ARCHITECTURE.md
 
-# Tier 4: Headless browser visual audit
-python toposnail/studio.py
+# Tier 4: Headless browser visual audit & 4-stage progression generation
+python -m toposnail.studio
+python -m toposnail.cad_to_bionic --scenario all --backend numpy --output-dir results/cad_to_bionic
 ```

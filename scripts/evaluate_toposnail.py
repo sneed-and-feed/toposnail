@@ -74,7 +74,7 @@ def main() -> int:
     out_dir = PROJECT_ROOT / args.output_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    print_banner(f"TOPOSNAIL v0.1.0 — 3D TOPOLOGY OPTIMIZER BENCHMARK & AUDIT SUITE")
+    print_banner(f"TOPOSNAIL v0.2.0 — 3D TOPOLOGY OPTIMIZER BENCHMARK & AUDIT SUITE")
     print(f"  • Grid Shape: {grid_shape} ({grid_shape[0]*grid_shape[1]*grid_shape[2]:,} voxels)")
     print(f"  • Solver Iterations: {max_iters}")
     print(f"  • Load Perturbations: SNR = 20.0 dB + 10% transient impulse glints")

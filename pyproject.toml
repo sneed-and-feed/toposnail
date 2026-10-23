@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "toposnail"
-version = "0.1.0"
+version = "0.2.0"
 description = "toposnail: Beltrami-Triad 3D Anisotropic Topology, Michell Truss & #![no_std] Rust SIMD Optimizer + 3D WebGL .STL Studio"
 readme = "README.md"
 requires-python = ">=3.10"

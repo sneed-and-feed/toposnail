@@ -584,6 +584,7 @@ def build_scen_03_mesh(
     rho: Optional[np.ndarray] = None,
     vm: Optional[np.ndarray] = None,
     trabecular_scale: float = 1.0,
+    coarse_stage_3: bool = False,
 ) -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
     Construct the 100% watertight 2-manifold (`boundary_edges == 0`, `non_manifold_edges == 0`)
@@ -1099,27 +1100,51 @@ def build_scen_03_mesh(
             faces.append([c_end, r_last + j, r_last + jn])
 
     comp_fan, tens_bundle, sec_arches, head_cross = _get_wolff_trabecular_groups()
-    for y_off, r_sc_base in [(0.013, 1.0), (0.032, 0.86)]:
-        r_sc = r_sc_base * trabecular_scale
-        for idx_c, traj in enumerate(comp_fan):
-            r_list = [0.0108 * r_sc * (1.06 - 0.02 * k) for k in range(len(traj))]
-            s_list = [float(np.clip(0.80 + 0.032 * k - 0.012 * idx_c, 0.74, 0.96)) for k in range(len(traj))]
-            add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=8, snap_ends=True)
+    if coarse_stage_3:
+        # Stage 3: Only 4 coarse, thick primary load-bearing trabecular bands framing the newly opened Ward's window
+        # plus solid epiphyseal/metaphyseal gusset blocks before refining into Stage 4's 18-arch filigree
+        for y_off, r_sc_base in [(0.014, 1.0), (0.034, 0.92)]:
+            r_sc = r_sc_base * trabecular_scale
+            for idx_c in (1, 4):
+                traj = comp_fan[idx_c]
+                r_list = [0.0115 * r_sc * (1.06 - 0.02 * k) for k in range(len(traj))]
+                s_list = [float(np.clip(0.76 + 0.032 * k - 0.012 * idx_c, 0.70, 0.94)) for k in range(len(traj))]
+                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=10, snap_ends=True)
+            for idx_t in (0, 2):
+                traj = tens_bundle[idx_t]
+                r_list = [0.0105 * r_sc] * len(traj)
+                s_list = [float(np.clip(0.50 + 0.052 * k + 0.012 * idx_t, 0.44, 0.82)) for k in range(len(traj))]
+                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=10, snap_ends=True)
+            for idx_s in (1, 3):
+                traj = sec_arches[idx_s]
+                r_list = [0.0098 * r_sc] * len(traj)
+                s_list = [0.38 + 0.060 * k for k in range(len(traj))]
+                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=3, n_sides=10, snap_ends=True)
+        # Solid un-eroded epiphyseal dome core & distal metaphyseal plug in Stage 3
+        _add_joint_sphere(verts, faces, colors, normals, (-0.38, 0.06, 0.56), 0.088, 0.82, n_lat=8, n_lon=14)
+        _add_watertight_box(verts, faces, colors, normals, 0.04, 0.24, -0.02, 0.09, -0.42, -0.08, _turbo_colormap(0.38))
+    else:
+        for y_off, r_sc_base in [(0.013, 1.0), (0.032, 0.86)]:
+            r_sc = r_sc_base * trabecular_scale
+            for idx_c, traj in enumerate(comp_fan):
+                r_list = [0.0108 * r_sc * (1.06 - 0.02 * k) for k in range(len(traj))]
+                s_list = [float(np.clip(0.80 + 0.032 * k - 0.012 * idx_c, 0.74, 0.96)) for k in range(len(traj))]
+                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=8, snap_ends=True)
 
-        for idx_t, traj in enumerate(tens_bundle):
-            r_list = [0.0094 * r_sc] * len(traj)
-            s_list = [float(np.clip(0.52 + 0.052 * k + 0.012 * idx_t, 0.46, 0.84)) for k in range(len(traj))]
-            add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=8, snap_ends=True)
+            for idx_t, traj in enumerate(tens_bundle):
+                r_list = [0.0094 * r_sc] * len(traj)
+                s_list = [float(np.clip(0.52 + 0.052 * k + 0.012 * idx_t, 0.46, 0.84)) for k in range(len(traj))]
+                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=4, n_sides=8, snap_ends=True)
 
-        for traj in sec_arches:
-            r_list = [0.0086 * r_sc] * len(traj)
-            s_list = [0.36 + 0.062 * k for k in range(len(traj))]
-            add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=3, n_sides=8, snap_ends=True)
+            for traj in sec_arches:
+                r_list = [0.0086 * r_sc] * len(traj)
+                s_list = [0.36 + 0.062 * k for k in range(len(traj))]
+                add_spline_trabecula(traj, y_off, r_list, s_list, subdiv=3, n_sides=8, snap_ends=True)
 
-        for idx_h, traj in enumerate(head_cross):
-            r_list = [0.0080 * r_sc] * len(traj)
-            s_list = [0.84 - 0.03 * idx_h - 0.02 * k for k in range(len(traj))]
-            add_spline_trabecula(traj, y_off + 0.005, r_list, s_list, subdiv=3, n_sides=8, flare=0.18, snap_ends=True)
+            for idx_h, traj in enumerate(head_cross):
+                r_list = [0.0080 * r_sc] * len(traj)
+                s_list = [0.84 - 0.03 * idx_h - 0.02 * k for k in range(len(traj))]
+                add_spline_trabecula(traj, y_off + 0.005, r_list, s_list, subdiv=3, n_sides=8, flare=0.18, snap_ends=True)
 
     # Ensure 100% contiguous half-edge orientation across all 2-manifold components
     from collections import deque
@@ -1177,8 +1202,9 @@ def build_scen_03_mesh(
 
 def build_scen_03_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
-    Stage 1: Fresh CAD Stock Envelope (Solid Proximal Femur Anatomical Billet).
-    Solid uncarved blank covering femoral head, neck, trochanters, and distal shaft.
+    Stage 1 (V=1.00): Fresh Stepped Prismatic CNC Stock Billet.
+    Blocky rough-machined rectangular stock slabs enclosing the distal diaphyseal shaft,
+    intertrochanteric block, greater trochanter shoulder, and femoral neck/head blank.
     """
     from toposnail.models.scen_01_cantilever import _add_spline_tube
 
@@ -1190,59 +1216,46 @@ def build_scen_03_stage_1_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     def sc(s: float) -> List[float]:
         return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
 
-    # Flat base collar pad at z in [-0.820, -0.760]
-    _add_watertight_box(verts, faces, colors, normals, -0.02, 0.30, -0.14, 0.14, -0.820, -0.760, sc(0.18))
+    # 1. Stepped Prismatic CNC Billet Slabs (blocky stock envelope covering the proximal femur)
+    # Distal clamping base block and lower diaphyseal rectangular stock
+    _add_watertight_box(verts, faces, colors, normals, -0.04, 0.34, -0.16, 0.16, -0.820, -0.680, sc(0.16))
+    _add_watertight_box(verts, faces, colors, normals, -0.02, 0.32, -0.15, 0.15, -0.680, -0.320, sc(0.20))
+    # Subtrochanteric & lesser trochanter rectangular billet block
+    _add_watertight_box(verts, faces, colors, normals, -0.08, 0.36, -0.16, 0.15, -0.320, 0.020, sc(0.26))
+    # Intertrochanteric & greater trochanter rectangular shoulder block
+    _add_watertight_box(verts, faces, colors, normals, -0.16, 0.44, -0.16, 0.16, 0.020, 0.360, sc(0.34))
+    _add_watertight_box(verts, faces, colors, normals, 0.10, 0.44, -0.15, 0.15, 0.360, 0.560, sc(0.42))
+    # Stepped femoral neck & head stock blocks
+    _add_watertight_box(verts, faces, colors, normals, -0.38, 0.14, -0.15, 0.15, 0.280, 0.540, sc(0.52))
+    _add_watertight_box(verts, faces, colors, normals, -0.62, -0.18, -0.17, 0.17, 0.420, 0.780, sc(0.68))
 
-    # Distal shaft stock
+    # 2. Rough-machined cylindrical stock bosses (providing smooth high-resolution mesh density > 2000 faces)
     _add_spline_tube(
         verts, faces, colors, normals,
-        [(0.14, 0.0, -0.76), (0.15, 0.0, -0.48), (0.16, 0.0, -0.18), (0.17, 0.0, 0.10)],
-        [0.140, 0.138, 0.142, 0.155],
-        [0.22, 0.25, 0.28, 0.32],
-        subdiv=5, n_sides=18, ry_scale=0.92, rz_scale=1.0, cap_ends=True
+        [(0.15, 0.0, -0.78), (0.16, 0.0, -0.45), (0.17, 0.0, -0.10), (0.18, 0.0, 0.25)],
+        [0.148, 0.146, 0.152, 0.162],
+        [0.20, 0.24, 0.30, 0.36],
+        subdiv=5, n_sides=18, ry_scale=0.95, rz_scale=1.0, cap_ends=True,
     )
-
-    # Metaphyseal intertrochanteric bulk
     _add_spline_tube(
         verts, faces, colors, normals,
-        [(0.17, 0.0, 0.08), (0.18, 0.0, 0.28), (0.12, 0.0, 0.42)],
-        [0.150, 0.158, 0.150],
-        [0.32, 0.38, 0.44],
-        subdiv=4, n_sides=18, cap_ends=True
+        [(0.14, 0.0, 0.34), (-0.08, 0.0, 0.46), (-0.28, 0.0, 0.56), (-0.45, 0.0, 0.64)],
+        [0.150, 0.146, 0.144, 0.148],
+        [0.44, 0.54, 0.64, 0.74],
+        subdiv=5, n_sides=18, ry_scale=0.95, rz_scale=1.05, cap_ends=True,
     )
-
-    # Greater trochanter stock
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.18, 0.0, 0.26), (0.28, 0.0, 0.42), (0.34, 0.0, 0.52)],
-        [0.140, 0.138, 0.125],
-        [0.36, 0.42, 0.48],
-        subdiv=4, n_sides=16, ry_scale=0.90, rz_scale=1.05, cap_ends=True
-    )
-    _add_joint_sphere(verts, faces, colors, normals, (0.32, 0.0, 0.50), 0.135, 0.46, n_lat=10, n_lon=16)
-
-    # Femoral neck stock
-    _add_spline_tube(
-        verts, faces, colors, normals,
-        [(0.12, 0.0, 0.38), (-0.08, 0.0, 0.48), (-0.28, 0.0, 0.58), (-0.44, 0.0, 0.65)],
-        [0.142, 0.138, 0.135, 0.140],
-        [0.45, 0.55, 0.65, 0.72],
-        subdiv=5, n_sides=18, ry_scale=0.92, rz_scale=1.05, cap_ends=True
-    )
-
-    # Femoral head stock sphere
-    _add_joint_sphere(verts, faces, colors, normals, (-0.46, 0.0, 0.66), 0.175, 0.78, n_lat=12, n_lon=20)
-
-    # Lesser trochanter bulge
-    _add_joint_sphere(verts, faces, colors, normals, (0.05, -0.09, -0.16), 0.088, 0.30, n_lat=8, n_lon=14)
+    _add_joint_sphere(verts, faces, colors, normals, (-0.44, 0.0, 0.62), 0.185, 0.76, n_lat=12, n_lon=20)
+    _add_joint_sphere(verts, faces, colors, normals, (0.30, 0.0, 0.46), 0.145, 0.44, n_lat=10, n_lon=16)
 
     return verts, faces, colors, normals
 
 
 def build_scen_03_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
-    Stage 2: Coarse Carved Diaphysis / Waisted Medullary Canal.
-    Features anatomical waisting of diaphysis and neck, contoured trochanters, and head sphere.
+    Stage 2 (V=0.68): Sculpted Closed Anatomical Periosteal Hull (Solid Outer Cortex before Cutaway).
+    Features smooth anatomical waisting of the diaphyseal shaft and femoral neck, contoured
+    greater and lesser trochanters, intertrochanteric crest, and spherical femoral head
+    with zero anterior cutaway or internal cavities exposed yet.
     """
     from toposnail.models.scen_01_cantilever import _add_spline_tube
 
@@ -1254,51 +1267,49 @@ def build_scen_03_stage_2_mesh() -> Tuple[List[List[float]], List[List[int]], Li
     def sc(s: float) -> List[float]:
         return _turbo_colormap(float(np.clip(s, 0.02, 0.98)))
 
-    # Flat base collar pad at z in [-0.820, -0.770]
-    _add_watertight_box(verts, faces, colors, normals, 0.01, 0.27, -0.11, 0.11, -0.820, -0.770, sc(0.20))
+    # Distal resection base collar at z in [-0.820, -0.775]
+    _add_watertight_box(verts, faces, colors, normals, 0.02, 0.26, -0.10, 0.10, -0.820, -0.775, sc(0.22))
 
-    # Waisted distal shaft
+    # Smoothly waisted anatomical diaphyseal shaft
     _add_spline_tube(
         verts, faces, colors, normals,
-        [(0.14, 0.0, -0.77), (0.15, 0.0, -0.48), (0.16, 0.0, -0.18), (0.17, 0.0, 0.10)],
-        [0.118, 0.105, 0.108, 0.125],
-        [0.24, 0.28, 0.32, 0.36],
-        subdiv=5, n_sides=18, ry_scale=0.92, rz_scale=1.0, cap_ends=True
+        [(0.14, 0.0, -0.78), (0.145, 0.0, -0.50), (0.155, 0.0, -0.20), (0.165, 0.0, 0.08)],
+        [0.114, 0.102, 0.106, 0.122],
+        [0.26, 0.30, 0.36, 0.42],
+        subdiv=6, n_sides=18, ry_scale=0.90, rz_scale=1.0, cap_ends=True,
     )
 
-    # Metaphyseal intertrochanteric bulk
+    # Medial calcar flare & metaphyseal transition
     _add_spline_tube(
         verts, faces, colors, normals,
-        [(0.17, 0.0, 0.08), (0.18, 0.0, 0.28), (0.12, 0.0, 0.40)],
-        [0.120, 0.128, 0.120],
-        [0.34, 0.40, 0.46],
-        subdiv=4, n_sides=18, cap_ends=True
+        [(0.14, 0.0, -0.12), (0.08, 0.0, 0.12), (-0.04, 0.0, 0.32), (-0.22, 0.0, 0.48)],
+        [0.095, 0.102, 0.096, 0.092],
+        [0.48, 0.62, 0.74, 0.80],
+        subdiv=5, n_sides=16, ry_scale=0.88, rz_scale=1.02, cap_ends=True,
     )
 
-    # Greater trochanter
+    # Greater trochanter lateral prominence & intertrochanteric crest
     _add_spline_tube(
         verts, faces, colors, normals,
-        [(0.18, 0.0, 0.26), (0.28, 0.0, 0.42), (0.34, 0.0, 0.50)],
-        [0.115, 0.110, 0.100],
-        [0.38, 0.44, 0.50],
-        subdiv=4, n_sides=16, ry_scale=0.90, rz_scale=1.05, cap_ends=True
+        [(0.18, 0.0, 0.06), (0.25, 0.0, 0.26), (0.31, 0.0, 0.42), (0.28, 0.0, 0.52)],
+        [0.108, 0.114, 0.106, 0.088],
+        [0.36, 0.42, 0.48, 0.52],
+        subdiv=5, n_sides=16, ry_scale=0.90, rz_scale=1.05, cap_ends=True,
     )
-    _add_joint_sphere(verts, faces, colors, normals, (0.32, 0.0, 0.49), 0.110, 0.48, n_lat=10, n_lon=16)
+    _add_joint_sphere(verts, faces, colors, normals, (0.29, 0.0, 0.46), 0.102, 0.48, n_lat=10, n_lon=16)
 
-    # Femoral neck
+    # Waisted femoral neck
     _add_spline_tube(
         verts, faces, colors, normals,
-        [(0.12, 0.0, 0.38), (-0.08, 0.0, 0.48), (-0.28, 0.0, 0.58), (-0.44, 0.0, 0.65)],
-        [0.118, 0.112, 0.108, 0.114],
-        [0.48, 0.58, 0.68, 0.76],
-        subdiv=5, n_sides=18, ry_scale=0.92, rz_scale=1.05, cap_ends=True
+        [(0.12, 0.0, 0.32), (-0.06, 0.0, 0.42), (-0.22, 0.0, 0.50), (-0.38, 0.0, 0.57)],
+        [0.108, 0.092, 0.088, 0.105],
+        [0.52, 0.64, 0.72, 0.80],
+        subdiv=5, n_sides=18, ry_scale=0.88, rz_scale=1.02, cap_ends=True,
     )
 
-    # Femoral head
-    _add_joint_sphere(verts, faces, colors, normals, (-0.46, 0.0, 0.66), 0.150, 0.82, n_lat=12, n_lon=20)
-
-    # Lesser trochanter
-    _add_joint_sphere(verts, faces, colors, normals, (0.05, -0.09, -0.16), 0.070, 0.32, n_lat=8, n_lon=14)
+    # Spherical femoral head & posteromedial lesser trochanter prominence
+    _add_joint_sphere(verts, faces, colors, normals, (-0.41, 0.0, 0.58), 0.148, 0.86, n_lat=12, n_lon=20)
+    _add_joint_sphere(verts, faces, colors, normals, (0.02, -0.07, -0.14), 0.068, 0.36, n_lat=8, n_lon=14)
 
     return verts, faces, colors, normals
 
@@ -1308,11 +1319,12 @@ def build_scen_03_stage_3_mesh(
     vm: Optional[np.ndarray] = None,
 ) -> Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]:
     """
-    Stage 3: Fenestrated Shell (Coronal Cutaway & Ward's Window Opened).
-    Features polished coronal cutaway rim, recessed endosteal cavity, closed distal collar,
-    and thick primary Wolff's law trabecular arches.
+    Stage 3 (V=0.45): Fenestrated Shell (Coronal Cutaway & Initial Ward's Window Opened).
+    Exposes the anterior coronal cutaway and recessed endosteal cavity with only 6 coarse,
+    thick primary load-bearing trabecular bands and solid epiphyseal/metaphyseal gussets
+    before refining into Stage 4's full 18-arch dual-layer Wolff's Law trabecular network.
     """
-    return build_scen_03_mesh(rho=rho, vm=vm, trabecular_scale=1.65)
+    return build_scen_03_mesh(rho=rho, vm=vm, trabecular_scale=1.85, coarse_stage_3=True)
 
 
 build_scen_03_stage_4_mesh = build_scen_03_mesh

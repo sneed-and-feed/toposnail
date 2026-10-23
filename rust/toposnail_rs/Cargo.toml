@@ -1,6 +1,6 @@
 [package]
 name = "toposnail_rs"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Allocation-free #![no_std] Rust SIMD and WASM 3D anisotropic topology optimization kernel"
 license = "CC0-1.0"
