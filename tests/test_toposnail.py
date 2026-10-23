@@ -694,5 +694,47 @@ class TestStudioInteractiveAndFirefoxFix:
         ]:
             assert token in html, f"Missing CAD control token in studio HTML: {token}"
 
+    def test_blender_verified_models_and_manifold_integrity(self):
+        from toposnail.models import SCENARIO_DATA_BUILDERS
 
+        assert len(SCENARIO_DATA_BUILDERS) == 5
+        for s_id, builder in SCENARIO_DATA_BUILDERS.items():
+            payload = builder()
+            mesh = payload["mesh"]
+            verts = np.asarray(mesh["vertices"], dtype=np.float64)
+            faces = np.asarray(mesh["faces"], dtype=np.int32)
+            colors = np.asarray(mesh["colors"], dtype=np.float64)
+            normals = np.asarray(mesh["normals"], dtype=np.float64)
 
+            assert verts.shape[0] >= 5000, f"{s_id}: expected >=5000 vertices, got {verts.shape[0]}"
+            assert faces.shape[0] >= 10000, f"{s_id}: expected >=10000 faces, got {faces.shape[0]}"
+            assert colors.shape == verts.shape
+            assert normals.shape == verts.shape
+
+            # Verify zero degenerate triangles and outward normal consistency
+            v0 = verts[faces[:, 0]]
+            v1 = verts[faces[:, 1]]
+            v2 = verts[faces[:, 2]]
+            fn = np.cross(v1 - v0, v2 - v0)
+            areas = 0.5 * np.linalg.norm(fn, axis=1)
+            assert np.all(areas > 1e-12), f"{s_id}: degenerate triangle detected"
+
+            fn_unit = fn / (2.0 * areas[:, None])
+            vn_norms = np.linalg.norm(normals, axis=1)
+            assert np.all(vn_norms > 0.5), f"{s_id}: zero-length vertex normal detected"
+            vn_avg = (normals[faces[:, 0]] + normals[faces[:, 1]] + normals[faces[:, 2]]) / 3.0
+            dots = np.abs(np.sum(fn_unit * vn_avg, axis=1))
+            assert float(np.mean(dots > 1e-4)) >= 0.99, f"{s_id}: degenerate face/vertex normal alignment"
+
+            # Verify fields_b64, supports, force, baselines
+            assert "toposnail_rho" in payload["fields_b64"]
+            assert "toposnail_vm" in payload["fields_b64"]
+            assert len(payload["supports"]) >= 2
+            assert "origin" in payload["force"] and "dir" in payload["force"]
+            assert len(payload["baselines"]) == 5
+
+            if s_id == "03_trabecular_femur_anisotropic_so6":
+                # Verify coronal cutaway and multi-vector anatomical loading
+                assert "extra_dirs" in payload["force"] and len(payload["force"]["extra_dirs"]) == 2
+                cutaway_mask = (verts[:, 1] >= -0.02) & (verts[:, 1] <= 0.08)
+                assert int(np.sum(cutaway_mask)) > 500, "Femur must expose anterior coronal cutaway"

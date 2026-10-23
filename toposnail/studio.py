@@ -134,1361 +134,116 @@ def _encode_field_b64(arr: np.ndarray, min_v: float, max_v: float) -> str:
 def _generate_synthetic_scenario_data(
     scenario_id: str,
     grid_shape: Tuple[int, int, int] = (32, 24, 24),
-    v_budget: float = 0.24,
+    v_budget: Optional[float] = None,
     anisotropy_eps: float = 0.24,
-    thermal_delta_t: float = 0.0,
+    thermal_delta_t: Optional[float] = None,
 ) -> Dict[str, Any]:
-    """Generate high-fidelity deterministic 3D field tensors and mesh for scenario."""
-    Z, Y, X = grid_shape
-    zz, yy, xx = np.meshgrid(
-        np.linspace(0.0, 1.0, Z, dtype=np.float32),
-        np.linspace(0.0, 1.0, Y, dtype=np.float32),
-        np.linspace(0.0, 1.0, X, dtype=np.float32),
-        indexing="ij",
+    """
+    Generate high-fidelity deterministic 3D field tensors, smooth sub-voxel CAD mesh,
+    boundary supports, force vectors, and solver baselines from the 5 audited scenario
+    modules in `toposnail.models`.
+    """
+    from toposnail.models import (
+        build_scen_01_data,
+        build_scen_02_data,
+        build_scen_03_data,
+        build_scen_04_data,
+        build_scen_05_data,
     )
 
-    rho = np.zeros(grid_shape, dtype=np.float32)
-    vm = np.zeros(grid_shape, dtype=np.float32)
-    th = np.zeros(grid_shape, dtype=np.float32)
-    u_strain = np.zeros(grid_shape, dtype=np.float32)
-    curl_sal = np.zeros(grid_shape, dtype=np.float32)
-    fiber_angle = np.zeros(grid_shape, dtype=np.float32)
+    t_val: Optional[float] = None
+    if thermal_delta_t is not None:
+        t_val = float(np.max(thermal_delta_t)) if isinstance(thermal_delta_t, np.ndarray) else float(thermal_delta_t)
 
-    supports: List[List[float]] = []
-    force_info: Dict[str, Any] = {}
-
-    if scenario_id == "01_cantilever_michell_truss":
-        # True 3D tubular organic space-frame Michell truss network
-        nodes = {
-            "A1": (0.02, 0.22, 0.85), "A2": (0.02, 0.78, 0.85),
-            "A3": (0.02, 0.22, 0.15), "A4": (0.02, 0.78, 0.15),
-            "S11": (0.35, 0.30, 0.72), "S12": (0.35, 0.70, 0.72),
-            "S13": (0.35, 0.30, 0.28), "S14": (0.35, 0.70, 0.28),
-            "S21": (0.68, 0.40, 0.60), "S22": (0.68, 0.60, 0.60),
-            "S23": (0.68, 0.40, 0.40), "S24": (0.68, 0.60, 0.40),
-            "TL": (0.88, 0.46, 0.50), "TR": (0.88, 0.54, 0.50),
-            "TIP": (0.95, 0.50, 0.50),
-        }
-        struts = [
-            ("A1", "S11"), ("S11", "S21"), ("S21", "TL"), ("TL", "TIP"),
-            ("A2", "S12"), ("S12", "S22"), ("S22", "TR"), ("TR", "TIP"),
-            ("A3", "S13"), ("S13", "S23"), ("S23", "TL"),
-            ("A4", "S14"), ("S14", "S24"), ("S24", "TR"),
-            ("A1", "S13"), ("A3", "S11"), ("A2", "S14"), ("A4", "S12"),
-            ("A1", "S12"), ("A2", "S11"), ("A3", "S14"), ("A4", "S13"),
-            ("S11", "S23"), ("S13", "S21"), ("S12", "S24"), ("S14", "S22"),
-            ("S11", "S22"), ("S12", "S21"), ("S13", "S24"), ("S14", "S23"),
-            ("S21", "TIP"), ("S22", "TIP"), ("S23", "TIP"), ("S24", "TIP"),
-            ("A1", "A2"), ("A3", "A4"), ("A1", "A3"), ("A2", "A4"),
-            ("S11", "S12"), ("S13", "S14"), ("S11", "S13"), ("S12", "S14"),
-            ("S21", "S22"), ("S23", "S24"), ("S21", "S23"), ("S22", "S24"),
-        ]
-        min_d_sq = np.full(zz.shape, 1e9, dtype=np.float32)
-        for n1, n2 in struts:
-            p1, p2 = nodes[n1], nodes[n2]
-            d_sq = _segment_dist_sq(xx, yy, zz, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2])
-            min_d_sq = np.minimum(min_d_sq, d_sq)
-
-        r = 0.032
-        rho = np.clip(1.0 - (np.sqrt(min_d_sq) - r) / 0.024, 0.001, 0.98).astype(np.float32)
-        for a in ["A1", "A2", "A3", "A4"]:
-            pa = nodes[a]
-            d_pad = np.sqrt((xx - pa[0])**2 + (yy - pa[1])**2 + (zz - pa[2])**2)
-            rho = np.where((xx < 0.08) & (d_pad < 0.10), 0.98, rho)
-        d_tip = np.sqrt((xx - 0.95)**2 + (yy - 0.50)**2 + (zz - 0.50)**2)
-        rho = np.where(d_tip < 0.075, 0.98, rho)
-
-        vm = np.where(
-            rho > 0.2,
-            np.clip(70.0 + 250.0 * (1.0 - xx) * (np.abs(zz - 0.5) * 2.0) + 35.0 * np.sin(4.0 * math.pi * xx), 35.0, 345.0),
-            1.2,
-        ).astype(np.float32)
-        th = np.clip(vm / 260.0, 0.0, 1.35).astype(np.float32)
-        u_strain = np.clip(0.5 * vm**2 / 210.0, 0.0, 42.0).astype(np.float32)
-        curl_sal = np.where(rho > 0.3, 6.2 * (1.0 - xx) + 1.6, 0.05).astype(np.float32)
-        fiber_angle = np.where(zz > 0.5, 45.0, -45.0).astype(np.float32)
-
-        supports = [
-            [-0.94, -0.54, 0.68, -1.0, 0.0, 0.0],
-            [-0.94, 0.54, 0.68, -1.0, 0.0, 0.0],
-            [-0.94, -0.54, -0.68, -1.0, 0.0, 0.0],
-            [-0.94, 0.54, -0.68, -1.0, 0.0, 0.0],
-        ]
-        force_info = {
-            "origin": [0.90, 0.0, 0.0],
-            "dir": [0.0, 0.0, -1.0],
-            "label": "F_tip = 100 kN [Shear]",
-        }
-
-    elif scenario_id == "02_aerospace_jet_bracket":
-        # 4-ear bolted aerospace bracket with hollow clevis & cylindrical bores (GE Jet Bracket benchmark)
-        bore_centers = [(0.21, 0.21), (0.21, 0.79), (0.79, 0.21), (0.79, 0.79)]
-        base_plate = (zz <= 0.14) & (xx >= 0.08) & (xx <= 0.92) & (yy >= 0.08) & (yy <= 0.92)
-        d_center = np.sqrt((xx - 0.5)**2 + (yy - 0.5)**2)
-        base_plate &= (d_center > 0.19) & ((np.abs(xx - 0.5) < 0.34) | (np.abs(yy - 0.5) < 0.34))
-
-        boss_mask = np.zeros(grid_shape, dtype=bool)
-        bore_mask = np.zeros(grid_shape, dtype=bool)
-        for bx, by in bore_centers:
-            d_b = np.sqrt((xx - bx)**2 + (yy - by)**2)
-            bore_mask |= (d_b < 0.085) & (zz <= 0.42)
-            boss_mask |= (d_b < 0.155) & (zz <= 0.22)
-
-        clevis_x = np.abs(xx - 0.5) <= 0.16
-        clevis_y1 = (yy >= 0.25) & (yy <= 0.39)
-        clevis_y2 = (yy >= 0.61) & (yy <= 0.75)
-        clevis_z = (zz >= 0.56) & (zz <= 0.88)
-        aframe_window = (np.abs(xx - 0.5) < 0.11) & (zz > 0.15) & (zz < 0.55)
-
-        d_ear1 = np.sqrt((xx - 0.5)**2 + (zz - 0.76)**2)
-        clevis_crown1 = (d_ear1 <= 0.175) & clevis_y1 & (zz >= 0.62)
-        clevis_crown2 = (d_ear1 <= 0.175) & clevis_y2 & (zz >= 0.62)
-        pin_bore = (d_ear1 < 0.088) & (yy >= 0.18) & (yy <= 0.82)
-
-        rib_struts = [
-            ((0.21, 0.21, 0.14), (0.39, 0.32, 0.66)),
-            ((0.21, 0.79, 0.14), (0.39, 0.68, 0.66)),
-            ((0.79, 0.21, 0.14), (0.61, 0.32, 0.66)),
-            ((0.79, 0.79, 0.14), (0.61, 0.68, 0.66)),
-            ((0.21, 0.21, 0.10), (0.79, 0.21, 0.10)),
-            ((0.21, 0.79, 0.10), (0.79, 0.79, 0.10)),
-            ((0.35, 0.32, 0.42), (0.65, 0.68, 0.42)),
-            ((0.65, 0.32, 0.42), (0.35, 0.68, 0.42)),
-        ]
-        min_rib_sq = np.full(zz.shape, 1e9, dtype=np.float32)
-        for p1, p2 in rib_struts:
-            d_sq = _segment_dist_sq(xx, yy, zz, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2])
-            min_rib_sq = np.minimum(min_rib_sq, d_sq)
-        ribs = min_rib_sq < (0.052 ** 2)
-
-        solid_bracket = (base_plate | boss_mask | (clevis_x & (clevis_y1 | clevis_y2) & clevis_z) | clevis_crown1 | clevis_crown2 | ribs) & (~bore_mask) & (~pin_bore) & (~aframe_window)
-        rho = np.where(solid_bracket, 0.96, 0.001).astype(np.float32)
-
-        vm = np.where(
-            solid_bracket,
-            np.clip(105.0 + 185.0 * zz + 48.0 * np.cos(5.0 * yy) + 45.0 * (1.0 - d_ear1), 35.0, 345.0),
-            2.0
-        ).astype(np.float32)
-        th = np.clip(vm / 280.0, 0.0, 1.25).astype(np.float32)
-        u_strain = np.clip(0.5 * vm**2 / 230.0, 0.0, 38.0).astype(np.float32)
-        curl_sal = np.where(solid_bracket, 5.8 * (1.0 - zz) + 1.4, 0.08).astype(np.float32)
-        fiber_angle = (np.arctan2(yy - 0.5, xx - 0.5) * 180.0 / math.pi).astype(np.float32)
-
-        supports = [
-            [-0.58, -0.58, -0.88, 0.0, 0.0, -1.0],
-            [-0.58, 0.58, -0.88, 0.0, 0.0, -1.0],
-            [0.58, -0.58, -0.88, 0.0, 0.0, -1.0],
-            [0.58, 0.58, -0.88, 0.0, 0.0, -1.0],
-        ]
-        force_info = {
-            "origin": [0.0, -0.30, 0.56],
-            "extra_origins": [[0.0, 0.30, 0.56]],
-            "dir": [0.52, 0.0, 0.72],
-            "label": "F_lug = 110 kN [35° Pull + Torsion]",
-        }
-
+    if scenario_id == "02_aerospace_jet_bracket":
+        data = build_scen_02_data(
+            grid_shape=grid_shape,
+            v_budget=0.25 if v_budget is None else float(v_budget),
+            anisotropy_eps=float(anisotropy_eps),
+            thermal_delta_t=0.0 if t_val is None else t_val,
+        )
     elif scenario_id == "03_trabecular_femur_anisotropic_so6":
-        # Human Proximal Femur in Coronal (X-Z) Orientation (Wolff's Law 1892; Koch 1917; Bergmann et al. 2001)
-        # X: Medial (-X, spherical head at x=0.26) to Lateral (+X, greater trochanter at x=0.78, shaft at x=0.60)
-        # Z: Distal diaphysis (z=0.0) to Superior femoral head dome (z=0.84)
-        # Y: Anterior-Posterior depth centered at y=0.50
-        y_dist_sq = ((yy - 0.50) / 0.85) ** 2
-
-        # 1. Distal diaphysis cortical shaft (x centered at 0.60, z in [0.0, 0.50]) with hollow medullary canal
-        d_shaft = np.sqrt((xx - 0.60) ** 2 + y_dist_sq)
-        med_calcar_thick = np.where((xx < 0.60) & (zz >= 0.16) & (zz <= 0.58), 0.032, 0.0)
-        cortical_wall = (d_shaft <= 0.145) & (d_shaft >= (0.082 - med_calcar_thick)) & (zz <= 0.48)
-        medullary_void = (d_shaft < (0.082 - med_calcar_thick)) & (zz <= 0.42)
-
-        # 2. Smooth C^2 Medial Calcar Femorale cortical arch & constricted 127 deg Femoral Neck shell
-        neck_c1 = _segment_dist_sq(xx, yy, zz, 0.58, 0.50, 0.42, 0.41, 0.50, 0.61)
-        neck_c2 = _segment_dist_sq(xx, yy, zz, 0.41, 0.50, 0.61, 0.27, 0.50, 0.74)
-        neck_d = np.sqrt(np.minimum(neck_c1, neck_c2))
-        neck_shell = (neck_d <= 0.112) & (neck_d >= 0.068)
-        neck_cavity = (neck_d < 0.068) & (zz >= 0.38) & (zz <= 0.74)
-
-        # 3. Spherical Femoral Head (Caput Femoris) at (x=0.25, y=0.50, z=0.77, R=0.168)
-        d_head = np.sqrt((xx - 0.25) ** 2 + y_dist_sq + (zz - 0.77) ** 2)
-        femur_head_shell = (d_head <= 0.168) & (d_head >= 0.118)
-        head_cavity = d_head < 0.118
-
-        # 4. Overhanging Greater Trochanter (Trochanter Major) at (x=0.76, y=0.50, z=0.69) with piriformis notch
-        troch_d = np.sqrt(_segment_dist_sq(xx, yy, zz, 0.63, 0.50, 0.40, 0.76, 0.50, 0.69))
-        trochanter_shell = (troch_d <= 0.125) & (troch_d >= 0.076)
-        trochanter_cavity = (troch_d < 0.076) & (zz >= 0.40)
-        piriformis_notch = ((xx - 0.58) ** 2 + (zz - 0.73) ** 2) < (0.075 ** 2)
-
-        # 5. Internal Wolff's Law Trabecular Arches (Principal Compressive, Principal Tensile Arcuate, Secondary)
-        trab_segs = [
-            # Principal compressive cephalic fan (from medial calcar cortex up to superior femoral head dome)
-            ((0.51, 0.50, 0.26), (0.39, 0.50, 0.58), 0.034),
-            ((0.39, 0.50, 0.58), (0.23, 0.50, 0.89), 0.034),
-            ((0.52, 0.50, 0.36), (0.36, 0.50, 0.64), 0.032),
-            ((0.36, 0.50, 0.64), (0.16, 0.50, 0.82), 0.032),
-            # Principal tensile arcuate bundle (from lateral cortex arching over superior neck to inferomedial head)
-            ((0.71, 0.50, 0.34), (0.55, 0.50, 0.63), 0.032),
-            ((0.55, 0.50, 0.63), (0.36, 0.50, 0.74), 0.032),
-            ((0.36, 0.50, 0.74), (0.13, 0.50, 0.69), 0.032),
-            # Secondary compressive arch (lower medial calcar to greater trochanter, bounding Ward's triangle)
-            ((0.51, 0.50, 0.20), (0.66, 0.50, 0.48), 0.032),
-            ((0.66, 0.50, 0.48), (0.78, 0.50, 0.68), 0.032),
-        ]
-        trab_mask = np.zeros(grid_shape, dtype=bool)
-        comp_d_sq = _segment_dist_sq(xx, yy, zz, 0.50, 0.50, 0.30, 0.24, 0.50, 0.84)
-        for p1, p2, r_t in trab_segs:
-            d_sq = _segment_dist_sq(xx, yy, zz, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2])
-            trab_mask |= (d_sq <= (r_t ** 2)) & (np.abs(yy - 0.50) <= 0.16)
-
-        # Ward's triangle low-density neutral zone in center of intertrochanteric neck
-        wards_void = ((xx - 0.56) ** 2 + (zz - 0.54) ** 2) < (0.056 ** 2)
-        cancellous_void = (neck_cavity | head_cavity | trochanter_cavity) & (~trab_mask)
-
-        femur_solid = (
-            (cortical_wall | neck_shell | femur_head_shell | trochanter_shell | trab_mask)
-            & (~medullary_void)
-            & (~cancellous_void)
-            & (~wards_void)
-            & (~piriformis_notch)
+        data = build_scen_03_data(
+            grid_shape=grid_shape,
+            v_budget=0.28 if v_budget is None else float(v_budget),
+            anisotropy_eps=float(anisotropy_eps),
+            thermal_delta_t=0.0 if t_val is None else t_val,
         )
-        rho = np.where(femur_solid, np.where(trab_mask & (~femur_head_shell), 0.64, 0.96), 0.002).astype(np.float32)
-
-        vm = np.where(
-            femur_solid,
-            np.clip(85.0 + 240.0 * (1.0 - xx) * zz + 75.0 * (1.0 - np.minimum(1.0, np.sqrt(comp_d_sq) / 0.11)), 35.0, 342.0),
-            1.5
-        ).astype(np.float32)
-        th = np.clip(vm / 245.0, 0.0, 1.38).astype(np.float32)
-        u_strain = np.clip(0.48 * vm**2 / 210.0, 0.0, 41.0).astype(np.float32)
-        curl_sal = np.where(femur_solid, 5.2 + 2.4 * np.sin(5.0 * zz), 0.08).astype(np.float32)
-        # SO(6) principal trabecular angle: +62 deg along medial compressive arch, -45 deg along lateral arcuate arch
-        fiber_angle = np.clip(62.0 - 115.0 * (xx - 0.20), -85.0, 85.0).astype(np.float32)
-
-        supports = [
-            [0.01, 0.0, -0.82, 0.0, 0.0, -1.0],
-            [0.27, 0.0, -0.82, 0.0, 0.0, -1.0],
-        ]
-        force_info = {
-            "origin": [-0.45, 0.0, 0.83],
-            "extra_origins": [[0.42, 0.0, 0.54]],
-            "dir": [0.34, 0.0, -0.82],
-            "label": "F_joint = 2.4 kN [Hip + Abductor]",
-        }
-
     elif scenario_id == "04_regenerative_thruster_gimbal_thermo":
-        # Regeneratively cooled De Laval rocket thruster nozzle with helical beta_1 channels & 4 gimbal trunnions
-        r_rad = np.sqrt((xx - 0.5)**2 + (yy - 0.5)**2)
-        # Throat at zz = 0.58, bell expansion below, chamber above
-        r_core = 0.12 + 0.15 * np.abs(zz - 0.58) * (1.25 - 0.5 * zz)
-
-        inner_liner = (r_rad >= r_core) & (r_rad <= r_core + 0.034)
-        theta = np.arctan2(yy - 0.5, xx - 0.5)
-        channel_zone = (r_rad > r_core + 0.034) & (r_rad < r_core + 0.074)
-        ribs = channel_zone & (np.cos(16.0 * theta + 3.2 * zz) > 0.0)
-        outer_jacket = (r_rad >= r_core + 0.074) & (r_rad <= r_core + 0.104)
-        manifolds = ((np.abs(zz - 0.10) <= 0.05) | (np.abs(zz - 0.74) <= 0.05)) & (r_rad >= r_core + 0.03) & (r_rad <= r_core + 0.13)
-
-        gimbal_ring = (zz >= 0.72) & (zz <= 0.84) & (r_rad >= 0.34) & (r_rad <= 0.44)
-        gimbal_lugs = (zz >= 0.68) & (zz <= 0.88) & (
-            ((np.abs(xx - 0.5) >= 0.28) & (np.abs(yy - 0.5) <= 0.08)) |
-            ((np.abs(yy - 0.5) >= 0.28) & (np.abs(xx - 0.5) <= 0.08))
+        data = build_scen_04_data(
+            grid_shape=grid_shape,
+            v_budget=0.30 if v_budget is None else float(v_budget),
+            anisotropy_eps=float(anisotropy_eps),
+            thermal_delta_t=1200.0 if t_val is None else t_val,
         )
-        # Diagonal thrust-transfer struts from gimbal ring to throat & injector mount
-        strut_d1 = _segment_dist_sq(xx, yy, zz, 0.14, 0.50, 0.78, 0.34, 0.50, 0.58)
-        strut_d2 = _segment_dist_sq(xx, yy, zz, 0.86, 0.50, 0.78, 0.66, 0.50, 0.58)
-        strut_d3 = _segment_dist_sq(xx, yy, zz, 0.14, 0.50, 0.78, 0.32, 0.50, 0.88)
-        strut_d4 = _segment_dist_sq(xx, yy, zz, 0.86, 0.50, 0.78, 0.68, 0.50, 0.88)
-        gimbal_struts = np.minimum(np.minimum(strut_d1, strut_d2), np.minimum(strut_d3, strut_d4)) <= (0.045 ** 2)
-
-        thruster_solid = (inner_liner | ribs | outer_jacket | manifolds | gimbal_ring | gimbal_lugs | gimbal_struts) & (r_rad >= r_core)
-        rho = np.where(thruster_solid, np.where(ribs & (~inner_liner) & (~outer_jacket), 0.62, 0.97), 0.001).astype(np.float32)
-
-        t_grad = np.clip(1200.0 * np.exp(-((zz - 0.58) / 0.28) ** 2) * (1.0 - r_rad / 0.52), 0.0, 1200.0)
-        vm = np.where(
-            thruster_solid,
-            np.clip(75.0 + 195.0 * np.exp(-((zz - 0.58) / 0.32) ** 2) * (1.0 - r_rad) + 0.09 * t_grad, 40.0, 348.0),
-            2.0
-        ).astype(np.float32)
-        th = np.clip(vm / 285.0, 0.0, 1.35).astype(np.float32)
-        u_strain = np.clip(0.5 * vm**2 / 235.0, 0.0, 44.0).astype(np.float32)
-        curl_sal = np.where(thruster_solid, 6.5 * (1.0 - r_rad) + 1.2, 0.1).astype(np.float32)
-        fiber_angle = (theta * 180.0 / math.pi).astype(np.float32)
-
-        supports = [
-            [-0.74, 0.0, 0.56, -1.0, 0.0, 0.0],
-            [0.74, 0.0, 0.56, 1.0, 0.0, 0.0],
-            [0.0, -0.74, 0.56, 0.0, -1.0, 0.0],
-            [0.0, 0.74, 0.56, 0.0, 1.0, 0.0],
-        ]
-        force_info = {
-            "origin": [0.0, 0.0, -0.84],
-            "dir": [0.0, 0.0, 1.0],
-            "label": "F_thrust = 120 kN [Axial + 1200K]",
-        }
-
-    else:  # 05_lpbf_self_draining_bridge_arch
-        # Maillart / Michell Deck-Stiffened Funicular Parabolic Arch Bridge (D_4 Self-Draining)
-        # 1. Continuous parabolic funicular arch curve z_arch(x) springing from base abutments
-        #    (x = 0.05, 0.95, z = 0.06) up to crown (x = 0.50, z = 0.78) where it kisses the deck
-        arch_z = 0.78 - 3.55 * (xx - 0.50) ** 2
-        r_arch = 0.068 + 0.018 * np.abs(xx - 0.50)
-        d_arch1 = np.sqrt(((zz - arch_z) / 1.0) ** 2 + ((yy - 0.26) / 0.95) ** 2)
-        d_arch2 = np.sqrt(((zz - arch_z) / 1.0) ** 2 + ((yy - 0.74) / 0.95) ** 2)
-        d_arch = np.minimum(d_arch1, d_arch2)
-        in_span = (xx >= 0.04) & (xx <= 0.96) & (zz >= 0.03) & (zz <= 0.86)
-        rho_arch = np.where(in_span, np.clip(1.0 - (d_arch - r_arch) / 0.042, 0.0, 0.98), 0.0)
-
-        # 2. Upper Horizontal Roadway Deck & Longitudinal Edge Girders (z = 0.84)
-        d_girder1 = np.sqrt((zz - 0.84) ** 2 + (yy - 0.26) ** 2)
-        d_girder2 = np.sqrt((zz - 0.84) ** 2 + (yy - 0.74) ** 2)
-        d_girder = np.minimum(d_girder1, d_girder2)
-        rho_girders = np.where((xx >= 0.06) & (xx <= 0.94), np.clip(1.0 - (d_girder - 0.048) / 0.034, 0.0, 0.98), 0.0)
-
-        # Smooth roadway deck slab at z in [0.82, 0.87] with self-draining central openings
-        d_deck_z = np.abs(zz - 0.845)
-        in_deck_xy = (xx >= 0.06) & (xx <= 0.94) & (yy >= 0.26) & (yy <= 0.74)
-        vent_mask = (np.abs(yy - 0.50) < 0.13) & (
-            (np.abs(xx - 0.22) < 0.07) | (np.abs(xx - 0.50) < 0.07) | (np.abs(xx - 0.78) < 0.07)
+    elif scenario_id == "05_lpbf_self_draining_bridge_arch":
+        data = build_scen_05_data(
+            grid_shape=grid_shape,
+            v_budget=0.24 if v_budget is None else float(v_budget),
+            anisotropy_eps=float(anisotropy_eps),
+            thermal_delta_t=0.0 if t_val is None else t_val,
         )
-        rho_deck = np.where(in_deck_xy & (~vent_mask), np.clip(1.0 - (d_deck_z - 0.032) / 0.028, 0.0, 0.98), 0.0)
-
-        # 3. Slender Open Spandrel Columns at interior stations (no end walls, keeping arch silhouette open!)
-        strut_segments = []
-        for y_rib in [0.26, 0.74]:
-            for sx, rad in [(0.19, 0.044), (0.34, 0.042), (0.66, 0.042), (0.81, 0.044)]:
-                sz = 0.78 - 3.55 * (sx - 0.50) ** 2
-                strut_segments.append(((sx, y_rib, sz), (sx, y_rib, 0.84), rad))
-
-        # 5 Transverse Cross-Ties connecting front (y=0.26) and rear (y=0.74) parabolic arch ribs
-        for tx in [0.07, 0.24, 0.50, 0.76, 0.93]:
-            tz = max(0.06, 0.78 - 3.55 * (tx - 0.50) ** 2)
-            strut_segments.append(((tx, 0.26, tz), (tx, 0.74, tz), 0.050))
-
-        rho_struts = np.zeros(grid_shape, dtype=np.float32)
-        for p1, p2, rad in strut_segments:
-            d_sq = _segment_dist_sq(xx, yy, zz, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2])
-            rho_seg = np.clip(1.0 - (np.sqrt(d_sq) - rad) / 0.035, 0.0, 0.98)
-            rho_struts = np.maximum(rho_struts, rho_seg)
-
-        rho = np.clip(np.maximum(np.maximum(rho_arch, rho_girders), np.maximum(rho_deck, rho_struts)), 0.001, 0.98).astype(np.float32)
-        bridge_solid = rho > 0.35
-
-        vm = np.where(
-            bridge_solid,
-            np.clip(95.0 + 165.0 * (1.0 - zz) + 55.0 * np.cos(2.0 * math.pi * (xx - 0.5)), 35.0, 335.0),
-            1.8
-        ).astype(np.float32)
-        th = np.clip(vm / 250.0, 0.0, 1.28).astype(np.float32)
-        u_strain = np.clip(0.5 * vm**2 / 215.0, 0.0, 39.0).astype(np.float32)
-        curl_sal = np.where(bridge_solid, 5.4 + 2.2 * np.cos(4.0 * math.pi * yy), 0.06).astype(np.float32)
-        fiber_angle = np.clip(-68.0 * (xx - 0.5) * 2.0, -68.0, 68.0).astype(np.float32)
-
-        supports = [
-            [-1.18, -0.31, -0.60, 0.0, 0.0, -1.0],
-            [-1.18, 0.31, -0.60, 0.0, 0.0, -1.0],
-            [1.18, -0.31, -0.60, 0.0, 0.0, -1.0],
-            [1.18, 0.31, -0.60, 0.0, 0.0, -1.0],
-        ]
-        force_info = {
-            "origin": [0.0, 0.0, 0.72],
-            "extra_origins": [[-0.72, 0.0, 0.72], [0.72, 0.0, 0.72]],
-            "dir": [0.0, 0.0, -0.68],
-            "label": "q_deck = 40 kN/m [Traffic]",
-        }
-
-    mesh_data = _build_smooth_scenario_mesh(scenario_id, rho, vm)
-    if mesh_data is not None:
-        verts, faces, colors, normals = mesh_data
     else:
-        aspect_map = {
-            "01_cantilever_michell_truss": (1.14, 0.86, 0.88),
-            "02_aerospace_jet_bracket": (1.04, 1.04, 0.92),
-            "03_trabecular_femur_anisotropic_so6": (0.86, 0.94, 1.10),
-            "04_regenerative_thruster_gimbal_thermo": (0.96, 0.96, 1.06),
-            "05_lpbf_self_draining_bridge_arch": (1.32, 0.64, 0.68),
-        }
-        verts, faces, colors, normals = _extract_marching_cubes_preview(
-            rho, vm, level=0.45, aspect=aspect_map.get(scenario_id, (1.0, 1.0, 1.0))
+        data = build_scen_01_data(
+            grid_shape=grid_shape,
+            v_budget=0.22 if v_budget is None else float(v_budget),
+            anisotropy_eps=float(anisotropy_eps),
+            thermal_delta_t=0.0 if t_val is None else t_val,
         )
+
+    mesh = data.get("mesh", {})
+    verts = mesh.get("vertices", [])
+    faces = mesh.get("faces", [])
+    colors = mesh.get("colors", [])
+    normals = mesh.get("normals", [])
 
     return {
         "scenario_id": scenario_id,
-        "name": SCENARIO_DESCRIPTIONS.get(scenario_id, scenario_id),
-        "grid_shape": list(grid_shape),
-        "volume_budget": v_budget,
-        "anisotropy_eps": anisotropy_eps,
-        "thermal_delta_t": float(np.max(thermal_delta_t)) if isinstance(thermal_delta_t, np.ndarray) else float(thermal_delta_t),
-        "fields_b64": {
-            "toposnail_rho": _encode_field_b64(rho, 0.0, 1.0),
-            "toposnail_vm": _encode_field_b64(vm, 0.0, 350.0),
-            "toposnail_th": _encode_field_b64(th, 0.0, 1.4),
-            "toposnail_u": _encode_field_b64(u_strain, 0.0, 45.0),
-            "toposnail_curl": _encode_field_b64(curl_sal, 0.0, 8.0),
-            "toposnail_fiber": _encode_field_b64(fiber_angle, -90.0, 90.0),
-        },
+        "name": SCENARIO_DESCRIPTIONS.get(scenario_id, data.get("name", scenario_id)),
+        "grid_shape": list(data.get("grid_shape", list(grid_shape))),
+        "volume_budget": float(data.get("volume_budget", 0.24)),
+        "anisotropy_eps": float(data.get("anisotropy_eps", anisotropy_eps)),
+        "thermal_delta_t": float(data.get("thermal_delta_t", 0.0)),
+        "fields_b64": data.get("fields_b64", {}),
         "mesh": {
             "vertices": [[round(float(c), 3) for c in v] for v in verts],
             "faces": faces,
             "colors": [[round(float(c), 3) for c in clr] for clr in colors],
             "normals": [[round(float(c), 3) for c in n] for n in normals],
         },
-        "supports": supports,
-        "force": force_info,
-        "baselines": _generate_synthetic_baselines(scenario_id),
+        "supports": data.get("supports", []),
+        "force": data.get("force", {}),
+        "baselines": data.get("baselines", _generate_synthetic_baselines(scenario_id)),
         "theorems": FORMAL_THEOREMS,
     }
 
 
 def _build_smooth_scenario_mesh(
     scenario_id: str,
-    rho: np.ndarray,
-    vm: np.ndarray,
+    rho: Optional[np.ndarray] = None,
+    vm: Optional[np.ndarray] = None,
 ) -> Optional[Tuple[List[List[float]], List[List[int]], List[List[float]], List[List[float]]]]:
     """
-    Generate smooth, sub-voxel, CAD-grade 3D manifold meshes for all 5 canonical scenarios
-    with exact smooth surface normals and stress-mapped vertex colors (zero voxel staircasing).
+    Dispatch to the 5 Blender-verified CAD manifold mesh builders in `toposnail.models`.
     """
-    verts: List[List[float]] = []
-    faces: List[List[int]] = []
-    colors: List[List[float]] = []
-    normals: List[List[float]] = []
-
-    def stress_color(ratio: float) -> List[float]:
-        return _turbo_colormap(float(np.clip(ratio, 0.02, 0.98)))
-
-    def add_tube_along_curve(
-        pts: List[Tuple[float, float, float]],
-        radii: List[float],
-        stress_vals: List[float],
-        n_sides: int = 12,
-        ry_scale: float = 1.0,
-        rz_scale: float = 1.0,
-        cap_ends: bool = True,
-    ) -> None:
-        n_pts = len(pts)
-        if n_pts < 2:
-            return
-        pts_arr = np.array(pts, dtype=np.float64)
-        tangents = np.zeros_like(pts_arr)
-        tangents[0] = pts_arr[1] - pts_arr[0]
-        tangents[-1] = pts_arr[-1] - pts_arr[-2]
-        for i in range(1, n_pts - 1):
-            tangents[i] = pts_arr[i + 1] - pts_arr[i - 1]
-        t_lens = np.linalg.norm(tangents, axis=1, keepdims=True) + 1e-12
-        tangents = tangents / t_lens
-
-        base_idx = len(verts)
-        angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
-
-        # Construct smooth parallel-transport frame along curve
-        t0 = tangents[0]
-        up = np.array([0.0, 0.0, 1.0]) if abs(t0[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
-        b1 = np.cross(t0, up)
-        b1 = b1 / (np.linalg.norm(b1) + 1e-12)
-        b2 = np.cross(t0, b1)
-
-        for i in range(n_pts):
-            ti = tangents[i]
-            # Project previous b1 orthogonal to ti
-            b1 = b1 - np.dot(b1, ti) * ti
-            b1_norm = np.linalg.norm(b1)
-            if b1_norm < 1e-6:
-                up_alt = np.array([0.0, 1.0, 0.0]) if abs(ti[1]) < 0.85 else np.array([1.0, 0.0, 0.0])
-                b1 = np.cross(ti, up_alt)
-                b1_norm = np.linalg.norm(b1) + 1e-12
-            b1 = b1 / b1_norm
-            b2 = np.cross(ti, b1)
-
-            r = radii[i]
-            clr = stress_color(stress_vals[i])
-            p = pts_arr[i]
-            for a in angles:
-                ca, sa = math.cos(a), math.sin(a)
-                n_vec = ca * b1 * ry_scale + sa * b2 * rz_scale
-                n_unit = n_vec / (np.linalg.norm(n_vec) + 1e-12)
-                v_pos = p + r * n_vec
-                verts.append([float(v_pos[0]), float(v_pos[1]), float(v_pos[2])])
-                normals.append([float(n_unit[0]), float(n_unit[1]), float(n_unit[2])])
-                colors.append(clr)
-
-        for i in range(n_pts - 1):
-            row0 = base_idx + i * n_sides
-            row1 = base_idx + (i + 1) * n_sides
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([row0 + j, row1 + j, row1 + jn])
-                faces.append([row0 + j, row1 + jn, row0 + jn])
-
-        if cap_ends:
-            # Cap start and end
-            c_start_idx = len(verts)
-            verts.append([float(pts_arr[0][0]), float(pts_arr[0][1]), float(pts_arr[0][2])])
-            normals.append([float(-tangents[0][0]), float(-tangents[0][1]), float(-tangents[0][2])])
-            colors.append(stress_color(stress_vals[0]))
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([c_start_idx, base_idx + jn, base_idx + j])
-
-            c_end_idx = len(verts)
-            last_row = base_idx + (n_pts - 1) * n_sides
-            verts.append([float(pts_arr[-1][0]), float(pts_arr[-1][1]), float(pts_arr[-1][2])])
-            normals.append([float(tangents[-1][0]), float(tangents[-1][1]), float(tangents[-1][2])])
-            colors.append(stress_color(stress_vals[-1]))
-            for j in range(n_sides):
-                jn = (j + 1) % n_sides
-                faces.append([c_end_idx, last_row + j, last_row + jn])
-
-    def add_spline_tube(
-        ctrl_pts: List[Tuple[float, float, float]],
-        ctrl_radii: List[float],
-        ctrl_stress: List[float],
-        subdiv: int = 4,
-        n_sides: int = 14,
-        ry_scale: float = 1.0,
-        rz_scale: float = 1.0,
-        cap_ends: bool = True,
-    ) -> None:
-        """Catmull-Rom C^1 spline-interpolated organic tube with zero kinks."""
-        m = len(ctrl_pts)
-        if m < 2:
-            return
-        if m == 2 or subdiv <= 1:
-            add_tube_along_curve(ctrl_pts, ctrl_radii, ctrl_stress, n_sides=n_sides, ry_scale=ry_scale, rz_scale=rz_scale, cap_ends=cap_ends)
-            return
-        pts_arr = np.array(ctrl_pts, dtype=np.float64)
-        ext_pts = np.vstack([2.0 * pts_arr[0] - pts_arr[1], pts_arr, 2.0 * pts_arr[-1] - pts_arr[-2]])
-        out_pts: List[Tuple[float, float, float]] = []
-        out_r: List[float] = []
-        out_s: List[float] = []
-        for idx in range(m - 1):
-            p0, p1, p2, p3 = ext_pts[idx], ext_pts[idx + 1], ext_pts[idx + 2], ext_pts[idx + 3]
-            r1, r2 = ctrl_radii[idx], ctrl_radii[idx + 1]
-            s1, s2 = ctrl_stress[idx], ctrl_stress[idx + 1]
-            steps = subdiv if idx < m - 2 else subdiv + 1
-            for k in range(steps):
-                t = k / float(subdiv)
-                t2 = t * t
-                t3 = t2 * t
-                pos = 0.5 * (
-                    (2.0 * p1)
-                    + (-p0 + p2) * t
-                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
-                )
-                out_pts.append((float(pos[0]), float(pos[1]), float(pos[2])))
-                out_r.append(float(r1 * (1.0 - t) + r2 * t))
-                out_s.append(float(s1 * (1.0 - t) + s2 * t))
-        add_tube_along_curve(out_pts, out_r, out_s, n_sides=n_sides, ry_scale=ry_scale, rz_scale=rz_scale, cap_ends=cap_ends)
-
-    def add_annular_boss(
-        center: Tuple[float, float, float],
-        axis: Tuple[float, float, float],
-        r_inner: float,
-        r_outer: float,
-        length: float,
-        stress_outer: float,
-        stress_bore: float,
-        n_sides: int = 20,
-    ) -> None:
-        """Machined hollow cylindrical bearing boss / bolt flange with true keep-out bore (Omega_KOZ)."""
-        ax = np.array(axis, dtype=np.float64)
-        ax = ax / (np.linalg.norm(ax) + 1e-12)
-        up = np.array([0.0, 0.0, 1.0]) if abs(ax[2]) < 0.85 else np.array([0.0, 1.0, 0.0])
-        u = np.cross(ax, up)
-        u = u / (np.linalg.norm(u) + 1e-12)
-        v = np.cross(ax, u)
-        c_pt = np.array(center, dtype=np.float64)
-        h_len = 0.5 * length
-        angles = np.linspace(0.0, 2.0 * math.pi, n_sides, endpoint=False)
-        clr_out = stress_color(stress_outer)
-        clr_in = stress_color(stress_bore)
-        clr_cap = stress_color(0.5 * (stress_outer + stress_bore))
-
-        base_idx = len(verts)
-        # 4 rings per angle: [0]=outer_-h, [1]=outer_+h, [2]=inner_+h, [3]=inner_-h
-        for a in angles:
-            ca, sa = math.cos(a), math.sin(a)
-            rad_dir = ca * u + sa * v
-            p_out_0 = c_pt - h_len * ax + r_outer * rad_dir
-            p_out_1 = c_pt + h_len * ax + r_outer * rad_dir
-            p_in_1 = c_pt + h_len * ax + r_inner * rad_dir
-            p_in_0 = c_pt - h_len * ax + r_inner * rad_dir
-
-            # Outer wall vertices (outward radial normal)
-            verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
-            normals.append([float(rad_dir[0]), float(rad_dir[1]), float(rad_dir[2])])
-            colors.append(clr_out)
-
-            verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
-            normals.append([float(rad_dir[0]), float(rad_dir[1]), float(rad_dir[2])])
-            colors.append(clr_out)
-
-            # Inner bore wall vertices (inward radial normal)
-            verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
-            normals.append([float(-rad_dir[0]), float(-rad_dir[1]), float(-rad_dir[2])])
-            colors.append(clr_in)
-
-            verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
-            normals.append([float(-rad_dir[0]), float(-rad_dir[1]), float(-rad_dir[2])])
-            colors.append(clr_in)
-
-            # Front/back annular cap vertices (axial normals)
-            verts.append([float(p_out_1[0]), float(p_out_1[1]), float(p_out_1[2])])
-            normals.append([float(ax[0]), float(ax[1]), float(ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_in_1[0]), float(p_in_1[1]), float(p_in_1[2])])
-            normals.append([float(ax[0]), float(ax[1]), float(ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_out_0[0]), float(p_out_0[1]), float(p_out_0[2])])
-            normals.append([float(-ax[0]), float(-ax[1]), float(-ax[2])])
-            colors.append(clr_cap)
-
-            verts.append([float(p_in_0[0]), float(p_in_0[1]), float(p_in_0[2])])
-            normals.append([float(-ax[0]), float(-ax[1]), float(-ax[2])])
-            colors.append(clr_cap)
-
-        stride = 8
-        for j in range(n_sides):
-            jn = (j + 1) % n_sides
-            b0 = base_idx + j * stride
-            b1 = base_idx + jn * stride
-            # Outer cylinder
-            faces.append([b0 + 0, b1 + 0, b1 + 1])
-            faces.append([b0 + 0, b1 + 1, b0 + 1])
-            # Inner bore cylinder
-            faces.append([b0 + 2, b1 + 2, b1 + 3])
-            faces.append([b0 + 2, b1 + 3, b0 + 3])
-            # +ax annular face
-            faces.append([b0 + 4, b1 + 4, b1 + 5])
-            faces.append([b0 + 4, b1 + 5, b0 + 5])
-            # -ax annular face
-            faces.append([b0 + 6, b1 + 7, b1 + 6])
-            faces.append([b0 + 6, b0 + 7, b1 + 7])
-
-    def add_strut(
-        p1: Tuple[float, float, float],
-        p2: Tuple[float, float, float],
-        r1: float,
-        r2: float,
-        s1: float,
-        s2: float,
-        n_segs: int = 6,
-        n_sides: int = 12,
-    ) -> None:
-        pts = [
-            (
-                p1[0] + (p2[0] - p1[0]) * t,
-                p1[1] + (p2[1] - p1[1]) * t,
-                p1[2] + (p2[2] - p1[2]) * t,
-            )
-            for t in np.linspace(0.0, 1.0, n_segs)
-        ]
-        # Organic hyperbolic fillet flare at strut ends
-        radii = [
-            (r1 * (1.0 - t) + r2 * t) * (1.0 + 0.18 * (2.0 * t - 1.0) ** 4)
-            for t in np.linspace(0.0, 1.0, n_segs)
-        ]
-        s_vals = [s1 * (1.0 - t) + s2 * t for t in np.linspace(0.0, 1.0, n_segs)]
-        add_tube_along_curve(pts, radii, s_vals, n_sides=n_sides)
-
-    def add_joint_sphere(
-        center: Tuple[float, float, float],
-        radius: float,
-        stress_val: float,
-        n_lat: int = 8,
-        n_lon: int = 14,
-        scale_xyz: Tuple[float, float, float] = (1.0, 1.0, 1.0),
-    ) -> None:
-        clr = stress_color(stress_val)
-        base_idx = len(verts)
-        for i in range(n_lat + 1):
-            theta = math.pi * i / float(n_lat)
-            st, ct = math.sin(theta), math.cos(theta)
-            for j in range(n_lon):
-                phi = 2.0 * math.pi * j / float(n_lon)
-                nx = st * math.cos(phi)
-                ny = st * math.sin(phi)
-                nz = ct
-                vx = center[0] + radius * scale_xyz[0] * nx
-                vy = center[1] + radius * scale_xyz[1] * ny
-                vz = center[2] + radius * scale_xyz[2] * nz
-                verts.append([float(vx), float(vy), float(vz)])
-                normals.append([float(nx), float(ny), float(nz)])
-                colors.append(clr)
-        for i in range(n_lat):
-            r0 = base_idx + i * n_lon
-            r1 = base_idx + (i + 1) * n_lon
-            for j in range(n_lon):
-                jn = (j + 1) % n_lon
-                faces.append([r0 + j, r1 + j, r1 + jn])
-                faces.append([r0 + j, r1 + jn, r0 + jn])
+    from toposnail.models import (
+        build_scen_01_mesh,
+        build_scen_02_mesh,
+        build_scen_03_mesh,
+        build_scen_04_mesh,
+        build_scen_05_mesh,
+    )
 
     if scenario_id == "01_cantilever_michell_truss":
-        # Analytical 3D Michell (1904) Cantilever Space-Frame Truss (Liu & Tovar 2014 top3d benchmark)
-        # 1. 4 Clamped Bulkhead Mounting Annular Bolt Bosses at X = -0.92
-        anchor_coords = [(-0.92, -0.54, 0.68), (-0.92, 0.54, 0.68), (-0.92, -0.54, -0.68), (-0.92, 0.54, -0.68)]
-        for ax_c, ay_c, az_c in anchor_coords:
-            add_annular_boss((ax_c, ay_c, az_c), (1.0, 0.0, 0.0), 0.052, 0.125, 0.09, 0.92, 0.96, n_sides=16)
-
-        # 2. Tip Shear Loading Clevis Pin Eye Boss at (0.90, 0.0, 0.0) with pin bore along Y
-        add_annular_boss((0.90, 0.0, 0.0), (0.0, 1.0, 0.0), 0.056, 0.122, 0.24, 0.86, 0.94, n_sides=18)
-
-        # 3. 4 Continuous Curved Logarithmic-Catenary Outer Tension/Compression Chords
-        for sy in [-1.0, 1.0]:
-            for sz in [-1.0, 1.0]:
-                chord_pts = [
-                    (-0.90, 0.54 * sy, 0.68 * sz),
-                    (-0.46, 0.44 * sy, 0.52 * sz),
-                    (-0.02, 0.33 * sy, 0.35 * sz),
-                    (0.40, 0.22 * sy, 0.19 * sz),
-                    (0.72, 0.13 * sy, 0.07 * sz),
-                    (0.86, 0.09 * sy, 0.02 * sz),
-                ]
-                chord_r = [0.076, 0.068, 0.060, 0.054, 0.050, 0.056]
-                chord_s = [0.94, 0.82, 0.68, 0.56, 0.64, 0.85]
-                add_spline_tube(chord_pts, chord_r, chord_s, subdiv=4, n_sides=12)
-
-        # 4. Station Nodes across 4 Bays for +/-45 deg Orthogonal Hencky-Prandtl Slip-Line Web
-        stations = [
-            (-0.90, 0.54, 0.68),
-            (-0.46, 0.44, 0.52),
-            (-0.02, 0.33, 0.35),
-            (0.40, 0.22, 0.19),
-            (0.72, 0.13, 0.07),
-        ]
-
-        def st_stress(xv: float, zv: float) -> float:
-            xn = (xv + 1.0) * 0.5
-            return float(np.clip(0.26 + 0.68 * (1.0 - xn) * (0.45 + 0.55 * abs(zv)) + 0.18 * max(0.0, xn - 0.60), 0.18, 0.95))
-
-        for b_idx in range(len(stations) - 1):
-            x0, y0, z0 = stations[b_idx]
-            x1, y1, z1 = stations[b_idx + 1]
-            xm = 0.5 * (x0 + x1)
-            ym = 0.5 * (y0 + y1)
-            zm = 0.5 * (z0 + z1)
-            r_web = max(0.036, 0.054 - 0.005 * b_idx)
-
-            # Side faces (-Y and +Y): curved +/-45 deg Michell slip-line X-arches
-            for sy in [-1.0, 1.0]:
-                # Tension trajectory (top-left to bottom-right with slight outward Michell arch curvature)
-                add_spline_tube(
-                    [(x0, sy * y0, z0), (xm, sy * ym * 1.03, 0.06), (x1, sy * y1, -z1)],
-                    [r_web, r_web * 0.92, r_web],
-                    [st_stress(x0, z0), st_stress(xm, 0.2), st_stress(x1, z1)],
-                    subdiv=3, n_sides=10,
-                )
-                # Compression trajectory (bottom-left to top-right, intersecting orthogonally at 90 deg)
-                add_spline_tube(
-                    [(x0, sy * y0, -z0), (xm, sy * ym * 1.03, -0.06), (x1, sy * y1, z1)],
-                    [r_web, r_web * 0.92, r_web],
-                    [st_stress(x0, z0), st_stress(xm, 0.2), st_stress(x1, z1)],
-                    subdiv=3, n_sides=10,
-                )
-
-            # Top (+Z) and Bottom (-Z) lateral X-bracing
-            for sz in [-1.0, 1.0]:
-                r_lat = max(0.030, 0.044 - 0.004 * b_idx)
-                add_strut((x0, -y0, sz * z0), (x1, y1, sz * z1), r_lat, r_lat * 0.92, st_stress(x0, z0) * 0.85, st_stress(x1, z1) * 0.85, n_segs=4, n_sides=8)
-                add_strut((x0, y0, sz * z0), (x1, -y1, sz * z1), r_lat, r_lat * 0.92, st_stress(x0, z0) * 0.85, st_stress(x1, z1) * 0.85, n_segs=4, n_sides=8)
-
-        # Transverse rectangular station frames & nodal fillet spheres
-        for b_idx, (xs_i, ys_i, zs_i) in enumerate(stations):
-            r_fr = 0.056 if b_idx == 0 else max(0.034, 0.046 - 0.003 * b_idx)
-            s_fr = st_stress(xs_i, zs_i) * 0.82
-            add_strut((xs_i, -ys_i, zs_i), (xs_i, ys_i, zs_i), r_fr, r_fr, s_fr, s_fr, n_segs=4, n_sides=10)
-            add_strut((xs_i, -ys_i, -zs_i), (xs_i, ys_i, -zs_i), r_fr, r_fr, s_fr, s_fr, n_segs=4, n_sides=10)
-            add_strut((xs_i, -ys_i, -zs_i), (xs_i, -ys_i, zs_i), r_fr, r_fr, s_fr, s_fr, n_segs=4, n_sides=10)
-            add_strut((xs_i, ys_i, -zs_i), (xs_i, ys_i, zs_i), r_fr, r_fr, s_fr, s_fr, n_segs=4, n_sides=10)
-            for sy in [-1.0, 1.0]:
-                for sz in [-1.0, 1.0]:
-                    add_joint_sphere((xs_i, sy * ys_i, sz * zs_i), r_fr * 1.32, st_stress(xs_i, zs_i))
-
-        return verts, faces, colors, normals
-
+        return build_scen_01_mesh()
     elif scenario_id == "02_aerospace_jet_bracket":
-        # GE / Airbus Ti-6Al-4V Multi-Ear Aerospace Clevis Actuator Bracket (4 Counterbored Bolt Bores + Twin Clevis Ears)
-        # 1. 4 Precision Machined Annular Base Bolt Bosses with Open Keep-Out Bores (Omega_KOZ)
-        bosses = [(-0.58, -0.58), (-0.58, 0.58), (0.58, -0.58), (0.58, 0.58)]
-        for bx, by in bosses:
-            add_annular_boss((bx, by, -0.76), (0.0, 0.0, 1.0), 0.082, 0.180, 0.22, 0.38, 0.62, n_sides=20)
-
-        # 2. Twin Upper Coaxial Clevis Pin Bearing Ears at (0.0, +/-0.30, +0.56) with Horizontal Pin Bore along Y
-        for ey in [-0.30, 0.30]:
-            add_annular_boss((0.0, ey, 0.56), (0.0, 1.0, 0.0), 0.096, 0.215, 0.13, 0.88, 0.96, n_sides=22)
-
-        # 3. Sculpted Base Perimeter Flange Arches framing the Central Actuator Keep-Out Dome
-        for sy in [-1.0, 1.0]:
-            add_spline_tube(
-                [(-0.46, sy * 0.58, -0.76), (0.0, sy * 0.52, -0.70), (0.46, sy * 0.58, -0.76)],
-                [0.072, 0.064, 0.072],
-                [0.36, 0.48, 0.36],
-                subdiv=4, n_sides=12, ry_scale=1.15, rz_scale=0.85,
-            )
-        for sx in [-1.0, 1.0]:
-            add_spline_tube(
-                [(sx * 0.58, -0.46, -0.76), (sx * 0.50, 0.0, -0.68), (sx * 0.58, 0.46, -0.76)],
-                [0.068, 0.060, 0.068],
-                [0.34, 0.46, 0.34],
-                subdiv=4, n_sides=12, ry_scale=1.15, rz_scale=0.85,
-            )
-
-        # 4. 4 Biomimetic S-Curved Primary Load-Path Arch Buttresses from Bolt Bosses to Twin Clevis Ears
-        for ey_sign, ey in [(-1.0, -0.30), (1.0, 0.30)]:
-            for bx_sign, bx in [(-1.0, -0.58), (1.0, 0.58)]:
-                pts_buttress = [
-                    (bx * 0.88, ey_sign * 0.56, -0.68),
-                    (bx * 0.62, ey_sign * 0.46, -0.26),
-                    (bx * 0.36, ey_sign * 0.36, 0.18),
-                    (bx * 0.22, ey, 0.48),
-                ]
-                r_but = [0.096, 0.078, 0.074, 0.088]
-                s_but = [0.42, 0.66, 0.82, 0.90]
-                add_spline_tube(pts_buttress, r_but, s_but, subdiv=4, n_sides=14, ry_scale=0.82, rz_scale=1.20)
-
-            # Central lateral throat pillar rising from side flange arch into clevis ear base
-            add_spline_tube(
-                [(0.0, ey_sign * 0.52, -0.68), (0.0, ey_sign * 0.42, -0.14), (0.0, ey, 0.38)],
-                [0.082, 0.072, 0.086],
-                [0.48, 0.72, 0.88],
-                subdiv=4, n_sides=12,
-            )
-
-        # 5. Diagonal Torsion-Resisting X-Braces & Transverse Saddle Bridges between the Twin Clevis Ears
-        add_spline_tube([(-0.34, -0.38, -0.04), (0.0, 0.0, 0.14), (0.34, 0.38, -0.04)], [0.056, 0.050, 0.056], [0.64, 0.78, 0.64], subdiv=3, n_sides=10)
-        add_spline_tube([(0.34, -0.38, -0.04), (0.0, 0.0, 0.14), (-0.34, 0.38, -0.04)], [0.056, 0.050, 0.056], [0.64, 0.78, 0.64], subdiv=3, n_sides=10)
-        add_strut((-0.24, -0.32, 0.22), (-0.24, 0.32, 0.22), 0.058, 0.058, 0.74, 0.74, n_segs=5, n_sides=10)
-        add_strut((0.24, -0.32, 0.22), (0.24, 0.32, 0.22), 0.058, 0.058, 0.74, 0.74, n_segs=5, n_sides=10)
-        add_joint_sphere((0.0, 0.0, 0.14), 0.066, 0.78)
-        return verts, faces, colors, normals
-
+        return build_scen_02_mesh()
     elif scenario_id == "03_trabecular_femur_anisotropic_so6":
-        # Human Proximal Femur Osteology & Wolff's Law (1892) Internal Trabecular Architecture
-        # Coronal Plane (X-Z): Medial = -X (Spherical Femoral Head at x=-0.39, z=+0.55, R=0.225),
-        # Slender Waisted 127° Neck Isthmus, Lateral = +X (Greater Trochanter at x=+0.425, z=+0.54).
-        # Anterior (+Y) Coronal Cutaway Section reveals the recessed 3D Endosteal Cavity, Calcar Femorale,
-        # Ward's Triangle, and the 4 Orthogonal Wolff's Law Trabecular Groups!
-
-        # 1. Control Stations for Zones 1..3 (Diaphysis -> Medial Calcar / Greater Trochanter -> 127° Neck Isthmus)
-        #    Note: The Medial Calcar Femorale sweeps in a smooth, monotonic C^2 concave arch without zig-zag kinks,
-        #    while the Lesser Trochanter is modeled anatomically as a true 3D posteromedial prominence (-Y).
-        ctrl_stations: List[Tuple[float, float, float, float, float, float, float, float, float, float, float, float]] = [
-            # Zone 1: Cylindrical-Elliptical Diaphysis (z in [-0.82, -0.18])
-            (0.000, -0.82, 0.068, -0.82, 0.24,  0.280, -0.82, 0.212, -0.82, 0.20,  0.142, 0.088),
-            (0.000, -0.66, 0.068, -0.66, 0.28,  0.280, -0.66, 0.212, -0.66, 0.24,  0.142, 0.088),
-            (-0.002, -0.50, 0.068, -0.50, 0.34, 0.281, -0.50, 0.214, -0.50, 0.28,  0.144, 0.090),
-            (-0.006, -0.35, 0.066, -0.35, 0.42, 0.285, -0.35, 0.220, -0.35, 0.33,  0.146, 0.092),
-            (-0.012, -0.22, 0.062, -0.22, 0.50, 0.295, -0.22, 0.232, -0.22, 0.38,  0.150, 0.096),
-            (-0.018, -0.10, 0.056, -0.10, 0.58, 0.318, -0.06, 0.258, -0.06, 0.42,  0.154, 0.098),
-            # Zone 2: Thick Medial Calcar Femorale Buttress vs. Lateral Greater Trochanter Flare
-            (-0.024, 0.00, 0.048, 0.01, 0.65,   0.362, 0.12, 0.308, 0.12, 0.46,    0.156, 0.100),
-            (-0.033, 0.06, 0.036, 0.07, 0.70,   0.408, 0.28, 0.356, 0.28, 0.52,    0.158, 0.102),
-            (-0.045, 0.10, 0.022, 0.12, 0.74,   0.426, 0.43, 0.378, 0.42, 0.58,    0.158, 0.104),
-            (-0.060, 0.13, 0.006, 0.15, 0.77,   0.392, 0.55, 0.348, 0.51, 0.64,    0.154, 0.100),
-            (-0.078, 0.16, -0.012, 0.18, 0.80,  0.312, 0.60, 0.278, 0.55, 0.66,    0.148, 0.096),
-            (-0.100, 0.19, -0.036, 0.21, 0.82,  0.218, 0.56, 0.192, 0.51, 0.62,    0.142, 0.092),
-            (-0.124, 0.22, -0.064, 0.24, 0.84,  0.148, 0.47, 0.130, 0.42, 0.58,    0.136, 0.088),
-            (-0.150, 0.25, -0.094, 0.27, 0.85,  0.076, 0.41, 0.068, 0.36, 0.60,    0.128, 0.084),
-            # Zone 3: Slender Waisted 127° Femoral Neck Isthmus (Collum Femoris)
-            (-0.178, 0.28, -0.128, 0.30, 0.87,  -0.012, 0.41, -0.002, 0.37, 0.66,  0.120, 0.078),
-            (-0.208, 0.306, -0.162, 0.33, 0.88, -0.086, 0.44, -0.066, 0.40, 0.72,  0.114, 0.075),
-            (-0.238, 0.328, -0.196, 0.355, 0.89, -0.138, 0.48, -0.115, 0.44, 0.77, 0.112, 0.076),
-            (-0.265, 0.348, -0.228, 0.378, 0.90, -0.165, 0.535, -0.140, 0.502, 0.82, 0.128, 0.090),
-        ]
-
-        # Subdivide Zones 1..3 via Catmull-Rom cubic interpolation for C^1 smooth cortical contours
-        ctrl_arr = np.array(ctrl_stations, dtype=np.float64)
-        ext_ctrl = np.vstack([2.0 * ctrl_arr[0] - ctrl_arr[1], ctrl_arr, 2.0 * ctrl_arr[-1] - ctrl_arr[-2]])
-        station_pairs: List[Tuple[float, float, float, float, float, float, float, float, float, float, float, float]] = []
-        sub_steps = 2
-        for idx in range(len(ctrl_stations) - 1):
-            p0, p1, p2, p3 = ext_ctrl[idx], ext_ctrl[idx + 1], ext_ctrl[idx + 2], ext_ctrl[idx + 3]
-            for k in range(sub_steps):
-                t = k / float(sub_steps)
-                t2 = t * t
-                t3 = t2 * t
-                row_interp = 0.5 * (
-                    (2.0 * p1)
-                    + (-p0 + p2) * t
-                    + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2
-                    + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3
-                )
-                station_pairs.append(tuple(float(v) for v in row_interp))  # type: ignore[arg-type]
-        station_pairs.append(ctrl_stations[-1])
-
-        # Zone 4: Spherical Femoral Head (Caput Femoris) — Exact 3D Sphere centered at (-0.39, y_cut, 0.55), R = 0.225
-        cx_h, cz_h, r_head = -0.39, 0.55, 0.225
-        t_sub = 0.032
-        n_head_slices = 24
-        ang_m_vals = np.linspace(-1.047, -3.785, n_head_slices)
-        ang_l_vals = np.linspace(0.384, 2.498, n_head_slices)
-        for kh in range(1, n_head_slices):
-            am = float(ang_m_vals[kh])
-            al = float(ang_l_vals[kh])
-            # Fovea capitis ovoid depression on inferomedial pole (am around -3.15 rad)
-            fovea = 0.015 * math.exp(-((am + 3.15) / 0.20) ** 2)
-            rm_out = r_head - fovea
-            rl_out = r_head
-            rm_in = max(0.015, rm_out - t_sub)
-            rl_in = max(0.015, rl_out - t_sub)
-
-            xom = cx_h + rm_out * math.cos(am)
-            zom = cz_h + rm_out * math.sin(am)
-            xim = cx_h + rm_in * math.cos(am)
-            zim = cz_h + rm_in * math.sin(am)
-
-            xol = cx_h + rl_out * math.cos(al)
-            zol = cz_h + rl_out * math.sin(al)
-            xil = cx_h + rl_in * math.cos(al)
-            zil = cz_h + rl_in * math.sin(al)
-
-            # By Pythagoras' theorem, setting r_ap_out = half-chord length makes the 3D arch an EXACT sphere!
-            h_out = max(0.015, 0.5 * math.hypot(xol - xom, zol - zom))
-            h_in = max(0.008, 0.5 * math.hypot(xil - xim, zil - zim))
-            sm = float(np.clip(0.72 + 0.16 * math.sin(am + 1.5), 0.64, 0.90))
-            sl = float(np.clip(0.82 + 0.13 * math.sin(al), 0.76, 0.96))
-            station_pairs.append((xom, zom, xim, zim, sm, xol, zol, xil, zil, sl, h_out, h_in))
-
-        y_cut = 0.022  # Anterior coronal resection plane facing camera (+Y)
-        n_stat = len(station_pairs)
-        n_arch = 19
-        thetas_arch = np.linspace(0.0, math.pi, n_arch)
-
-        outer_grid: List[List[int]] = []
-        inner_grid: List[List[int]] = []
-
-        for i_st, st_data in enumerate(station_pairs):
-            xom, zom, xim, zim, sm, xol, zol, xil, zil, sl, rap_o, rap_i = st_data
-            cx_mid = 0.5 * (xom + xol)
-            cz_mid = 0.5 * (zom + zol)
-            o_row: List[int] = []
-            i_row: List[int] = []
-
-            for j_th, th in enumerate(thetas_arch):
-                ct, st_th = math.cos(th), math.sin(th)
-                u = 0.5 * (1.0 - ct)  # 0 at medial rim (th=0), 0.5 at posterior midline (th=pi/2), 1 at lateral rim (th=pi)
-
-                xo_p = (1.0 - u) * xom + u * xol
-                zo_p = (1.0 - u) * zom + u * zol
-                yo_p = y_cut - rap_o * st_th
-
-                xi_p = (1.0 - u) * xim + u * xil
-                zi_p = (1.0 - u) * zim + u * zil
-                yi_p = y_cut - rap_i * st_th
-
-                s_loc = (1.0 - u) * sm + u * sl
-
-                # Outward normal for outer periosteal cortex
-                dx_c = xo_p - cx_mid
-                dz_c = zo_p - cz_mid
-                c_len = math.hypot(dx_c, dz_c) + 1e-12
-                nx_o = (dx_c / c_len) * abs(ct)
-                ny_o = -st_th
-                nz_o = (dz_c / c_len) * abs(ct)
-                no_len = math.hypot(nx_o, ny_o, nz_o) + 1e-12
-
-                idx_o = len(verts)
-                verts.append([float(xo_p), float(yo_p), float(zo_p)])
-                normals.append([float(nx_o / no_len), float(ny_o / no_len), float(nz_o / no_len)])
-                colors.append(stress_color(s_loc))
-                o_row.append(idx_o)
-
-                # True 3D concave normal & recessed endosteal marrow-cavity shading so the bright cortical wall
-                # and glowing internal Wolff's Law trabecular arches stand out in high-contrast 3D relief!
-                nx_i = -(dx_c / c_len) * 0.72 * abs(ct)
-                ny_i = 0.35 + 0.65 * st_th
-                nz_i = -(dz_c / c_len) * 0.72 * abs(ct)
-                ni_len = math.hypot(nx_i, ny_i, nz_i) + 1e-12
-                depth_atten = 0.28 + 0.16 * (1.0 - st_th)  # Darker deep in posterior concavity, brighter near cut rim
-                base_c = stress_color(max(0.18, s_loc * 0.65))
-                cav_color = [
-                    min(1.0, base_c[0] * depth_atten + 0.05),
-                    min(1.0, base_c[1] * depth_atten + 0.07),
-                    min(1.0, base_c[2] * depth_atten + 0.11),
-                ]
-
-                idx_i = len(verts)
-                verts.append([float(xi_p), float(yi_p), float(zi_p)])
-                normals.append([float(nx_i / ni_len), float(ny_i / ni_len), float(nz_i / ni_len)])
-                colors.append(cav_color)
-                i_row.append(idx_i)
-
-            outer_grid.append(o_row)
-            inner_grid.append(i_row)
-
-        # Stitch continuous outer periosteal shell, inner endosteal cavity, and bright Anterior Coronal Cutaway Rim
-        for i_st in range(n_stat - 1):
-            o0, o1 = outer_grid[i_st], outer_grid[i_st + 1]
-            i0, i1 = inner_grid[i_st], inner_grid[i_st + 1]
-            for j_th in range(n_arch - 1):
-                faces.append([o0[j_th], o1[j_th], o1[j_th + 1]])
-                faces.append([o0[j_th], o1[j_th + 1], o0[j_th + 1]])
-                faces.append([i0[j_th], i1[j_th + 1], i1[j_th]])
-                faces.append([i0[j_th], i0[j_th + 1], i1[j_th + 1]])
-
-            # Medial & Lateral Anterior Coronal Cutaway Rims at y = y_cut (j_th = 0 and j_th = n_arch - 1)
-            xom0, zom0, xim0, zim0, sm0, xol0, zol0, xil0, zil0, sl0, _, _ = station_pairs[i_st]
-            xom1, zom1, xim1, zim1, sm1, xol1, zol1, xil1, zil1, sl1, _, _ = station_pairs[i_st + 1]
-
-            for (xa0, za0, xb0, zb0, sa0), (xa1, za1, xb1, zb1, sa1) in [
-                ((xom0, zom0, xim0, zim0, sm0), (xom1, zom1, xim1, zim1, sm1)),
-                ((xol0, zol0, xil0, zil0, sl0), (xol1, zol1, xil1, zil1, sl1)),
-            ]:
-                c_r0 = [min(1.0, c * 1.08 + 0.06) for c in stress_color(sa0)]
-                c_r1 = [min(1.0, c * 1.08 + 0.06) for c in stress_color(sa1)]
-                rb = len(verts)
-                verts.extend([
-                    [float(xa0), y_cut, float(za0)], [float(xb0), y_cut, float(zb0)],
-                    [float(xa1), y_cut, float(za1)], [float(xb1), y_cut, float(zb1)],
-                ])
-                normals.extend([[0.0, 0.92, 0.38]] * 4)
-                colors.extend([c_r0, c_r0, c_r1, c_r1])
-                faces.append([rb, rb + 1, rb + 3])
-                faces.append([rb, rb + 3, rb + 2])
-
-        # 2. Smoothly Beveled 360° Cylindrical Anterior Cortical Collar on the Distal Shaft (z in [-0.82, -0.36])
-        #    Uses an oblique parabolic bevel window (dipped at center, higher at medial/lateral walls) for a seamless transition!
-        n_col_z = 6
-        thetas_ant = np.linspace(0.0, math.pi, 18)
-        ant_o_rows: List[List[int]] = []
-        ant_in_rows: List[List[int]] = []
-        for iz_c in range(n_col_z):
-            v_frac = iz_c / float(n_col_z - 1)
-            o_r: List[int] = []
-            i_r: List[int] = []
-            for th in thetas_ant:
-                ct, st_a = math.cos(th), math.sin(th)
-                z_top_th = -0.36 - 0.14 * st_a  # Oblique surgical bevel window
-                cz = -0.82 + v_frac * (z_top_th - (-0.82))
-                p_out = [0.14 + ct * 0.140, y_cut + st_a * 0.138, cz]
-                p_in = [0.14 + ct * 0.072, y_cut + st_a * 0.074, cz]
-                s_val = 0.22 + 0.28 * ((cz + 0.82) / 0.46)
-                s_loc = float(np.clip(s_val + 0.08 * (-ct), 0.18, 0.62))
-                idx_o = len(verts)
-                verts.append(p_out); normals.append([float(ct), float(st_a), 0.0]); colors.append(stress_color(s_loc))
-                o_r.append(idx_o)
-                idx_i = len(verts)
-                in_c = [c * 0.45 + 0.05 for c in stress_color(max(0.15, s_loc - 0.08))]
-                verts.append(p_in); normals.append([float(-ct), float(-st_a), 0.0]); colors.append(in_c)
-                i_r.append(idx_i)
-            ant_o_rows.append(o_r)
-            ant_in_rows.append(i_r)
-        for i in range(n_col_z - 1):
-            for j in range(len(thetas_ant) - 1):
-                faces.append([ant_o_rows[i][j], ant_o_rows[i + 1][j], ant_o_rows[i + 1][j + 1]])
-                faces.append([ant_o_rows[i][j], ant_o_rows[i + 1][j + 1], ant_o_rows[i][j + 1]])
-                faces.append([ant_in_rows[i][j], ant_in_rows[i + 1][j + 1], ant_in_rows[i + 1][j]])
-                faces.append([ant_in_rows[i][j], ant_in_rows[i][j + 1], ant_in_rows[i + 1][j + 1]])
-        for j in range(len(thetas_ant) - 1):
-            # Beveled top rim of distal cortical collar
-            rb = len(verts)
-            p_o0, p_i0 = verts[ant_o_rows[-1][j]], verts[ant_in_rows[-1][j]]
-            p_o1, p_i1 = verts[ant_o_rows[-1][j + 1]], verts[ant_in_rows[-1][j + 1]]
-            rim_c = [min(1.0, c * 1.08 + 0.06) for c in colors[ant_o_rows[-1][j]]]
-            verts.extend([p_o0, p_i0, p_o1, p_i1])
-            normals.extend([[0.0, 0.45, 0.89]] * 4)
-            colors.extend([rim_c] * 4)
-            faces.append([rb, rb + 1, rb + 3])
-            faces.append([rb, rb + 3, rb + 2])
-
-        # 3. True 3D Anatomical Landmarks on Posterior (-Y) and Anterior (+Y) Surfaces:
-        #    (a) Posteromedial Lesser Trochanter (Trochanter Minor, iliopsoas insertion) & Posterior Intertrochanteric Crest
-        add_joint_sphere((-0.025, -0.085, -0.19), 0.062, 0.56, n_lat=8, n_lon=12, scale_xyz=(1.15, 0.95, 0.85))
-        add_spline_tube(
-            [(-0.025, -0.085, -0.19), (0.11, -0.145, -0.02), (0.25, -0.155, 0.20), (0.35, -0.115, 0.46)],
-            [0.044, 0.038, 0.040, 0.046],
-            [0.54, 0.48, 0.52, 0.60],
-            subdiv=4, n_sides=10,
-        )
-        #    (b) 3D Anterior Cortical Arch Bridges framing the Coronal Fenestra (giving full +Y 3D depth from RIGHT/TOP views!)
-        #        - Anterior Medial Calcar Buttress Rib
-        add_spline_tube(
-            [(0.015, 0.075, -0.38), (-0.018, 0.068, -0.10), (-0.060, 0.058, 0.13), (-0.175, 0.048, 0.28), (-0.265, 0.042, 0.35)],
-            [0.028, 0.026, 0.025, 0.022, 0.020],
-            [0.46, 0.60, 0.76, 0.86, 0.89],
-            subdiv=4, n_sides=10,
-        )
-        #        - Anterior Intertrochanteric Line & Superior Neck Rim Arch
-        add_spline_tube(
-            [(0.265, 0.072, -0.38), (0.355, 0.078, 0.12), (0.390, 0.065, 0.50), (0.215, 0.048, 0.55), (-0.012, 0.042, 0.41), (-0.165, 0.042, 0.535)],
-            [0.026, 0.028, 0.026, 0.022, 0.020, 0.020],
-            [0.36, 0.48, 0.62, 0.60, 0.66, 0.80],
-            subdiv=4, n_sides=10,
-        )
-        #        - Anterior Subchondral Articular Rim Hoop around Femoral Head
-        head_hoop_pts = [
-            (
-                float(cx_h + (r_head - 0.014) * math.cos(a)),
-                float(y_cut + 0.038 * math.sin(math.pi * idx / 14.0)),
-                float(cz_h + (r_head - 0.014) * math.sin(a)),
-            )
-            for idx, a in enumerate(np.linspace(0.384, 2.498, 15))
-        ]
-        add_tube_along_curve(head_hoop_pts, [0.018] * 15, [0.86] * 15, n_sides=10)
-
-        # 4. Internal 3D Wolff's Law Trabecular Lattice (Strictly INSIDE the Proximal Femur Cancellous Cavity!)
-        #    Spans 2 coronal planes (y = +0.014 and y = -0.032) plus 3D cross-ties and nodal fillets,
-        #    leaving Ward's Triangle (center of neck around x=0.05, z=0.22) cleanly open against the dark cavity!
-        for y_plane, r_scale in [(0.014, 1.0), (-0.032, 0.88)]:
-            # (a) Principal Compressive Trabecular Fan (Medial Calcar Cortex -> Waisted Neck -> Superior Femoral Head Dome)
-            comp_trajectories = [
-                [(0.052, y_plane, -0.30), (0.012, y_plane, 0.04), (-0.145, y_plane, 0.35), (-0.265, y_plane, 0.55), (-0.325, y_plane, 0.71)],
-                [(0.050, y_plane, -0.18), (-0.002, y_plane, 0.11), (-0.160, y_plane, 0.36), (-0.305, y_plane, 0.58), (-0.385, y_plane, 0.72)],
-                [(0.042, y_plane, -0.06), (-0.022, y_plane, 0.18), (-0.175, y_plane, 0.37), (-0.345, y_plane, 0.57), (-0.445, y_plane, 0.70)],
-                [(0.024, y_plane, 0.05), (-0.052, y_plane, 0.23), (-0.190, y_plane, 0.38), (-0.380, y_plane, 0.55), (-0.495, y_plane, 0.66)],
-                [(-0.006, y_plane, 0.14), (-0.092, y_plane, 0.28), (-0.205, y_plane, 0.38), (-0.405, y_plane, 0.52), (-0.535, y_plane, 0.60)],
-                [(-0.055, y_plane, 0.22), (-0.140, y_plane, 0.32), (-0.222, y_plane, 0.38), (-0.420, y_plane, 0.48), (-0.555, y_plane, 0.53)],
-            ]
-            for c_idx, c_pts in enumerate(comp_trajectories):
-                r_c = [0.0115 * r_scale * (1.08 - 0.03 * idx) for idx in range(len(c_pts))]
-                s_c = [float(np.clip(0.76 + 0.045 * idx - 0.015 * c_idx, 0.70, 0.96)) for idx in range(len(c_pts))]
-                add_spline_tube(c_pts, r_c, s_c, subdiv=4, n_sides=8)
-
-            # (b) Principal Tensile (Arcuate) Trabecular Arch Bundle (Lateral Cortex -> Superior Neck Isthmus -> Inferomedial Head)
-            tens_trajectories = [
-                [(0.225, y_plane, -0.30), (0.185, y_plane, 0.06), (-0.045, y_plane, 0.37), (-0.275, y_plane, 0.47), (-0.425, y_plane, 0.39)],
-                [(0.242, y_plane, -0.16), (0.165, y_plane, 0.15), (-0.068, y_plane, 0.39), (-0.315, y_plane, 0.51), (-0.485, y_plane, 0.43)],
-                [(0.262, y_plane, -0.02), (0.138, y_plane, 0.24), (-0.095, y_plane, 0.41), (-0.345, y_plane, 0.55), (-0.535, y_plane, 0.48)],
-                [(0.290, y_plane, 0.10), (0.105, y_plane, 0.31), (-0.118, y_plane, 0.43), (-0.335, y_plane, 0.59), (-0.495, y_plane, 0.61)],
-                [(0.320, y_plane, 0.22), (0.080, y_plane, 0.36), (-0.135, y_plane, 0.46), (-0.310, y_plane, 0.63), (-0.435, y_plane, 0.67)],
-            ]
-            for t_idx, t_pts in enumerate(tens_trajectories):
-                r_t = [0.0102 * r_scale] * len(t_pts)
-                s_t = [float(np.clip(0.48 + 0.06 * idx + 0.02 * t_idx, 0.44, 0.80)) for idx in range(len(t_pts))]
-                add_spline_tube(t_pts, r_t, s_t, subdiv=4, n_sides=8)
-
-            # (c) Secondary Compressive & Greater Trochanteric Trabecular Arches (framing Ward's Triangle at (x=0.05, z=0.23))
-            sec_trajectories = [
-                [(0.058, y_plane, -0.40), (0.145, y_plane, -0.14), (0.265, y_plane, 0.14), (0.355, y_plane, 0.40)],
-                [(0.056, y_plane, -0.26), (0.155, y_plane, -0.02), (0.275, y_plane, 0.24), (0.325, y_plane, 0.49)],
-                [(0.295, y_plane, 0.08), (0.345, y_plane, 0.25), (0.355, y_plane, 0.43), (0.275, y_plane, 0.53)],
-                [(0.245, y_plane, 0.16), (0.255, y_plane, 0.34), (0.195, y_plane, 0.49)],
-            ]
-            for s_pts in sec_trajectories:
-                r_s = [0.0092 * r_scale] * len(s_pts)
-                s_s = [0.36 + 0.05 * idx for idx in range(len(s_pts))]
-                add_spline_tube(s_pts, r_s, s_s, subdiv=3, n_sides=8)
-
-        # (d) 3D Anterior-Posterior Trabecular Cross-Tie Struts & Nodal Fillets at Orthogonal Wolff's Law Intersections
-        tie_nodes = [
-            (-0.33, 0.68, 0.92), (-0.40, 0.69, 0.91), (-0.47, 0.64, 0.88),
-            (-0.31, 0.56, 0.85), (-0.38, 0.54, 0.84), (-0.48, 0.49, 0.80),
-            (-0.17, 0.38, 0.82), (-0.08, 0.38, 0.72), (-0.03, 0.21, 0.76),
-            (0.02, 0.06, 0.72), (0.16, 0.15, 0.56), (0.27, 0.25, 0.52),
-            (0.33, 0.42, 0.58), (0.05, -0.18, 0.64), (0.20, -0.15, 0.48),
-        ]
-        for tx, tz, ts in tie_nodes:
-            add_strut((tx, -0.034, tz), (tx, 0.016, tz), 0.0085, 0.0085, ts, ts, n_segs=3, n_sides=8)
-            add_joint_sphere((tx, 0.014, tz), 0.0135, ts, n_lat=6, n_lon=8)
-
-        return verts, faces, colors, normals
-
+        return build_scen_03_mesh()
     elif scenario_id == "04_regenerative_thruster_gimbal_thermo":
-        # Coupled Thermo-Elastic Regeneratively Cooled De Laval Rocket Thruster, Helical beta_1 Cooling Jacket & Cardan Gimbal
-        def r_delaval(zv: float) -> Tuple[float, float]:
-            """Authentic Rao parabolic De Laval nozzle contour r(z) and slope dr/dz."""
-            # Throat at z_t = +0.20 with r_throat = 0.22; Chamber above (+0.20..+0.68), Bell expansion skirt below (-0.84..+0.20)
-            if zv >= 0.20:
-                u = (zv - 0.20) / 0.48
-                # Smooth cosine-bell transition from throat (0.22) up to cylindrical combustion chamber (0.35)
-                s = 0.5 * (1.0 - math.cos(math.pi * min(1.0, u * 1.35)))
-                r = 0.22 + 0.13 * s
-                dr = 0.13 * 0.5 * math.pi * (1.35 / 0.48) * math.sin(math.pi * min(1.0, u * 1.35)) if u * 1.35 < 1.0 else 0.0
-                return r, dr
-            else:
-                u = (0.20 - zv) / 1.04  # 0 at throat, 1 at nozzle exit z = -0.84
-                r = 0.22 + 0.34 * (1.35 * u - 0.35 * u * u)
-                dr = -0.34 * (1.35 - 0.70 * u) / 1.04
-                return r, dr
-
-        # 1. Inner Hot-Gas CuCrZr/Inconel Liner (360-degree continuous contoured De Laval shell)
-        n_z = 30
-        n_theta = 28
-        z_vals = np.linspace(-0.82, 0.68, n_z)
-        thetas = np.linspace(0.0, 2.0 * math.pi, n_theta, endpoint=False)
-        base_liner = len(verts)
-        for zv_idx, zv in enumerate(z_vals):
-            r_in, dr_dz = r_delaval(float(zv))
-            # Peak thermal + hoop stress at sonic throat (z = 0.20, Delta T = 1200 K)
-            s_throat = math.exp(-((zv - 0.20) / 0.32) ** 2)
-            s_val = float(np.clip(0.34 + 0.62 * s_throat + 0.08 * (zv + 0.82), 0.28, 0.98))
-            clr = stress_color(s_val)
-            for th_a in thetas:
-                ca, sa = math.cos(th_a), math.sin(th_a)
-                nx, ny, nz = ca, sa, -dr_dz
-                nlen = math.hypot(nx, ny, nz) + 1e-12
-                verts.append([float(r_in * ca), float(r_in * sa), float(zv)])
-                normals.append([float(nx / nlen), float(ny / nlen), float(nz / nlen)])
-                colors.append(clr)
-
-        for iz in range(n_z - 1):
-            r0 = base_liner + iz * n_theta
-            r1 = base_liner + (iz + 1) * n_theta
-            for j in range(n_theta):
-                jn = (j + 1) % n_theta
-                faces.append([r0 + j, r1 + j, r1 + jn])
-                faces.append([r0 + j, r1 + jn, r0 + jn])
-
-        # 2. Outer Structural Regenerative Jacket with Front (+Y) Cutaway Window (revealing internal helical beta_1 cooling channels!)
-        # Cutaway window on front (+Y, theta in [0.12*pi, 0.78*pi])
-        n_jacket_arc = 20
-        th_jacket = np.linspace(0.78 * math.pi, 2.12 * math.pi, n_jacket_arc)
-        z_jacket = np.linspace(-0.74, 0.46, 20)
-        base_j = len(verts)
-        for zv in z_jacket:
-            r_in, dr_dz = r_delaval(float(zv))
-            r_out = r_in + 0.056
-            s_throat = math.exp(-((zv - 0.20) / 0.36) ** 2)
-            s_j = float(np.clip(0.28 + 0.50 * s_throat, 0.24, 0.86))
-            clr_j = stress_color(s_j)
-            for th_a in th_jacket:
-                ca, sa = math.cos(th_a), math.sin(th_a)
-                rib_flute = 0.012 * math.cos(16.0 * th_a + 3.2 * zv)
-                rc = r_out + rib_flute
-                nx, ny, nz = ca, sa, -dr_dz
-                nlen = math.hypot(nx, ny, nz) + 1e-12
-                verts.append([float(rc * ca), float(rc * sa), float(zv)])
-                normals.append([float(nx / nlen), float(ny / nlen), float(nz / nlen)])
-                colors.append(clr_j)
-        for iz in range(len(z_jacket) - 1):
-            r0 = base_j + iz * n_jacket_arc
-            r1 = base_j + (iz + 1) * n_jacket_arc
-            for j in range(n_jacket_arc - 1):
-                faces.append([r0 + j, r1 + j, r1 + j + 1])
-                faces.append([r0 + j, r1 + j + 1, r0 + j + 1])
-
-        # 3. 16 Helical Open-beta_1 Regenerative Cooling Channels spiraling from Nozzle Exit Manifold to Upper Chamber Manifold
-        n_helical = 16
-        z_helix = np.linspace(-0.76, 0.48, 18)
-        for k in range(n_helical):
-            th0 = 2.0 * math.pi * k / float(n_helical)
-            h_pts: List[Tuple[float, float, float]] = []
-            h_rad: List[float] = []
-            h_str: List[float] = []
-            for zv in z_helix:
-                r_in, _ = r_delaval(float(zv))
-                r_mid = r_in + 0.028
-                th_curr = th0 + 1.15 * (zv + 0.76)
-                h_pts.append((float(r_mid * math.cos(th_curr)), float(r_mid * math.sin(th_curr)), float(zv)))
-                h_rad.append(0.022)
-                s_th = math.exp(-((zv - 0.20) / 0.30) ** 2)
-                h_str.append(float(np.clip(0.38 + 0.56 * s_th, 0.32, 0.94)))
-            add_tube_along_curve(h_pts, h_rad, h_str, n_sides=8, cap_ends=False)
-
-        # 4. Lower Coolant Inlet Torus Manifold (z = -0.76), Throat Stiffener Band (z = +0.20), and Upper Collector Manifold (z = +0.48)
-        for z_ring, r_off, r_tube, s_ring in [(-0.76, 0.052, 0.048, 0.42), (0.20, 0.056, 0.036, 0.92), (0.48, 0.048, 0.046, 0.68)]:
-            r_base, _ = r_delaval(z_ring)
-            r_torus = r_base + r_off
-            ring_pts = [(r_torus * math.cos(a), r_torus * math.sin(a), z_ring) for a in np.linspace(0.0, 2.0 * math.pi, 29)]
-            add_tube_along_curve(ring_pts, [r_tube] * 29, [s_ring] * 29, n_sides=10, cap_ends=False)
-
-        # 5. Upper Injector Dome Cap, Central Gimbal Bearing Boss & Outer Cardan Gimbal Ring with 4 Annular Trunnion Mounts
-        add_annular_boss((0.0, 0.0, 0.72), (0.0, 0.0, 1.0), 0.11, 0.36, 0.10, 0.66, 0.78, n_sides=24)
-        add_annular_boss((0.0, 0.0, 0.82), (0.0, 0.0, 1.0), 0.065, 0.18, 0.12, 0.76, 0.88, n_sides=18)
-
-        # Outer Cardan Gimbal Ring at z = +0.56, r = 0.68
-        gimbal_pts = [(0.68 * math.cos(a), 0.68 * math.sin(a), 0.56) for a in np.linspace(0.0, 2.0 * math.pi, 33)]
-        add_tube_along_curve(gimbal_pts, [0.052] * 33, [0.56] * 33, n_sides=12, cap_ends=False)
-
-        # 4 Machined Trunnion Pin Lugs at 0, 90, 180, 270 deg + 8 Triangulated Thrust-Transfer A-Frame Struts
-        for lug_a in [0.0, 0.5 * math.pi, math.pi, 1.5 * math.pi]:
-            ca, sa = math.cos(lug_a), math.sin(lug_a)
-            tx, ty = -sa, ca
-            add_annular_boss((0.72 * ca, 0.72 * sa, 0.56), (ca, sa, 0.0), 0.055, 0.125, 0.10, 0.48, 0.68, n_sides=16)
-            # Upper thrust struts to injector flange & lower braces to throat band
-            for side in [-1.0, 1.0]:
-                c_ang = lug_a + side * 0.24
-                add_strut(
-                    (0.66 * ca + side * 0.06 * tx, 0.66 * sa + side * 0.06 * ty, 0.56),
-                    (0.35 * math.cos(c_ang), 0.35 * math.sin(c_ang), 0.70),
-                    0.044, 0.048, 0.54, 0.74, n_segs=5, n_sides=10,
-                )
-                add_strut(
-                    (0.66 * ca, 0.66 * sa, 0.54),
-                    (0.28 * math.cos(c_ang), 0.28 * math.sin(c_ang), 0.20),
-                    0.038, 0.042, 0.56, 0.88, n_segs=5, n_sides=10,
-                )
-        return verts, faces, colors, normals
-
+        return build_scen_04_mesh()
     elif scenario_id == "05_lpbf_self_draining_bridge_arch":
-        # Ideal Load-Bearing Maillart / Michell Deck-Stiffened Funicular Parabolic Arch Bridge
-        # Span X in [-1.22, +1.22], Lateral Width Y in [-0.32, +0.32], Height Z in [-0.58, +0.48]
-        # 1. Twin Continuous Parabolic Arch Ribs at y = -0.31 and y = +0.31
-        n_arch = 29
-        xs = np.linspace(-1.18, 1.18, n_arch)
-        z_crown = 0.34
-        z_spring = -0.58
-        span_half = 1.18
-
-        def arch_z_fn(x_val: float) -> float:
-            return z_crown - (z_crown - z_spring) * ((x_val / span_half) ** 2)
-
-        for y_rib in [-0.31, 0.31]:
-            arch_pts = [(float(xv), y_rib, float(arch_z_fn(xv))) for xv in xs]
-            # Arch rib tapers from thicker at base abutments (highest axial thrust) to sleek at crown
-            arch_radii = [float(0.068 + 0.024 * abs(xv / span_half)) for xv in xs]
-            arch_stress = [float(0.58 + 0.36 * (1.0 - 0.55 * abs(xv / span_half))) for xv in xs]
-            add_tube_along_curve(arch_pts, arch_radii, arch_stress, n_sides=12, ry_scale=0.90, rz_scale=1.15)
-
-        # 2. Upper Horizontal Roadway Deck Longitudinal Girders at z_deck = +0.44
-        z_deck = 0.44
-        for y_rib in [-0.31, 0.31]:
-            deck_pts = [(float(xv), y_rib, z_deck) for xv in np.linspace(-1.20, 1.20, 21)]
-            deck_radii = [0.052] * 21
-            deck_stress = [float(0.32 + 0.46 * (1.0 - (xv / 1.20) ** 2)) for xv in np.linspace(-1.20, 1.20, 21)]
-            add_tube_along_curve(deck_pts, deck_radii, deck_stress, n_sides=12, ry_scale=1.15, rz_scale=0.85)
-
-        # Inner longitudinal deck stringers at y = -0.11 and y = +0.11 (creating open self-draining bays)
-        for y_str in [-0.11, 0.11]:
-            str_pts = [(float(xv), y_str, z_deck) for xv in np.linspace(-1.18, 1.18, 17)]
-            add_tube_along_curve(str_pts, [0.036] * 17, [0.44] * 17, n_sides=10, ry_scale=1.2, rz_scale=0.8)
-
-        # 3. Vertical Spandrel Columns & +/-45 deg Michell Diagonal Web Bracing connecting Arch to Deck
-        spandrel_stations = [-1.02, -0.72, -0.42, -0.16, 0.16, 0.42, 0.72, 1.02]
-        for y_rib in [-0.31, 0.31]:
-            for sx in spandrel_stations:
-                za = arch_z_fn(sx)
-                s_col = float(0.45 + 0.35 * (1.0 - abs(sx / span_half)))
-                add_strut((sx, y_rib, za), (sx, y_rib, z_deck), 0.042, 0.040, s_col + 0.12, s_col, n_segs=5, n_sides=10)
-                add_joint_sphere((sx, y_rib, za), 0.058, s_col + 0.14)
-                add_joint_sphere((sx, y_rib, z_deck), 0.054, s_col)
-
-            # Inclined Michell diagonal web struts between adjacent spandrel stations
-            diag_links = [
-                (-1.18, -1.02), (-1.02, -0.72), (-0.72, -0.42), (-0.42, -0.16),
-                (1.18, 1.02), (1.02, 0.72), (0.72, 0.42), (0.42, 0.16),
-            ]
-            for x_a, x_d in diag_links:
-                za = arch_z_fn(x_a)
-                s_d = float(0.48 + 0.32 * (1.0 - abs(x_a / span_half)))
-                add_strut((x_a, y_rib, za), (x_d, y_rib, z_deck), 0.036, 0.034, s_d + 0.10, s_d, n_segs=5, n_sides=10)
-
-            # Crown saddle merge struts at center (x in [-0.16, +0.16])
-            add_strut((-0.16, y_rib, arch_z_fn(-0.16)), (0.0, y_rib, z_deck), 0.046, 0.048, 0.85, 0.88)
-            add_strut((0.16, y_rib, arch_z_fn(0.16)), (0.0, y_rib, z_deck), 0.046, 0.048, 0.85, 0.88)
-            add_joint_sphere((-1.18, y_rib, z_spring), 0.082, 0.72)
-            add_joint_sphere((1.18, y_rib, z_spring), 0.082, 0.72)
-
-        # 4. Transverse Lateral Cross-Beams & K-Bracing locking the Twin Arch Ribs and Roadway Deck together
-        trans_xs = [-1.18, -1.02, -0.72, -0.42, -0.16, 0.0, 0.16, 0.42, 0.72, 1.02, 1.18]
-        for tx in trans_xs:
-            tz = arch_z_fn(tx)
-            s_t = float(0.52 + 0.34 * (1.0 - abs(tx / span_half)))
-            # Transverse arch tie beam
-            add_strut((tx, -0.31, tz), (tx, 0.31, tz), 0.044, 0.044, s_t, s_t, n_segs=5, n_sides=10)
-            # Transverse roadway deck floor beam
-            add_strut((tx, -0.31, z_deck), (tx, 0.31, z_deck), 0.040, 0.040, s_t * 0.85, s_t * 0.85, n_segs=5, n_sides=10)
-
-        # Lateral X-braces between the twin parabolic arches
-        for i in range(len(trans_xs) - 1):
-            x0, x1 = trans_xs[i], trans_xs[i + 1]
-            z0, z1 = arch_z_fn(x0), arch_z_fn(x1)
-            add_strut((x0, -0.31, z0), (x1, 0.31, z1), 0.028, 0.028, 0.56, 0.56, n_segs=4, n_sides=8)
-            add_strut((x0, 0.31, z0), (x1, -0.31, z1), 0.028, 0.028, 0.56, 0.56, n_segs=4, n_sides=8)
-
-        return verts, faces, colors, normals
-
+        return build_scen_05_mesh()
     return None
 
 
@@ -1676,64 +431,29 @@ def _turbo_colormap(val: float) -> List[float]:
 
 
 def _generate_synthetic_baselines(scenario_id: str) -> List[Dict[str, Any]]:
-    """Generate scenario-specific 5-solver Mode B comparison scorecard calibrated to real evaluation runs."""
-    table_map: Dict[str, List[Dict[str, Any]]] = {
-        "01_cantilever_michell_truss": [
-            {"solver": "TopoSnail (Proposed)", "compliance_ratio": 0.680, "binary_crispness": 99.4, "checkerboards": 0.00, "thin_strut_f1": 99.2, "beta2_voids": 0, "glint_rejection": 100.0, "r_eq": 7.62e-05, "throughput_its": 601, "active": True},
-            {"solver": "Heaviside SIMP", "compliance_ratio": 0.892, "binary_crispness": 94.6, "checkerboards": 1.80, "thin_strut_f1": 74.5, "beta2_voids": 1, "glint_rejection": 55.0, "r_eq": 4.36e-04, "throughput_its": 142, "active": False},
-            {"solver": "Gaussian SIMP (top3d)", "compliance_ratio": 1.000, "binary_crispness": 47.7, "checkerboards": 0.00, "thin_strut_f1": 24.0, "beta2_voids": 0, "glint_rejection": 38.5, "r_eq": 7.87e-04, "throughput_its": 185, "active": False},
-            {"solver": "Unfiltered SIMP", "compliance_ratio": 1.584, "binary_crispness": 56.3, "checkerboards": 12.41, "thin_strut_f1": 12.2, "beta2_voids": 8, "glint_rejection": 0.0, "r_eq": 2.31e-03, "throughput_its": 210, "active": False},
-            {"solver": "HardKill BESO", "compliance_ratio": 1.342, "binary_crispness": 99.7, "checkerboards": 4.20, "thin_strut_f1": 41.6, "beta2_voids": 2, "glint_rejection": 14.8, "r_eq": 7.09e-04, "throughput_its": 95, "active": False},
-        ],
-        "02_aerospace_jet_bracket": [
-            {"solver": "TopoSnail (Proposed)", "compliance_ratio": 0.680, "binary_crispness": 98.4, "checkerboards": 0.00, "thin_strut_f1": 98.6, "beta2_voids": 0, "glint_rejection": 100.0, "r_eq": 8.09e-05, "throughput_its": 599, "active": True},
-            {"solver": "Heaviside SIMP", "compliance_ratio": 0.915, "binary_crispness": 93.8, "checkerboards": 2.40, "thin_strut_f1": 78.2, "beta2_voids": 2, "glint_rejection": 48.0, "r_eq": 4.58e-04, "throughput_its": 138, "active": False},
-            {"solver": "Gaussian SIMP (top3d)", "compliance_ratio": 1.000, "binary_crispness": 34.4, "checkerboards": 0.00, "thin_strut_f1": 19.4, "beta2_voids": 1, "glint_rejection": 31.0, "r_eq": 7.99e-04, "throughput_its": 176, "active": False},
-            {"solver": "Unfiltered SIMP", "compliance_ratio": 1.462, "binary_crispness": 56.0, "checkerboards": 13.75, "thin_strut_f1": 8.9, "beta2_voids": 11, "glint_rejection": 0.0, "r_eq": 2.43e-03, "throughput_its": 204, "active": False},
-            {"solver": "HardKill BESO", "compliance_ratio": 1.250, "binary_crispness": 99.7, "checkerboards": 6.10, "thin_strut_f1": 38.4, "beta2_voids": 3, "glint_rejection": 10.0, "r_eq": 7.20e-04, "throughput_its": 92, "active": False},
-        ],
-        "03_trabecular_femur_anisotropic_so6": [
-            {"solver": "TopoSnail (Proposed)", "compliance_ratio": 0.742, "binary_crispness": 98.8, "checkerboards": 0.00, "thin_strut_f1": 99.4, "beta2_voids": 0, "glint_rejection": 100.0, "r_eq": 7.97e-05, "throughput_its": 619, "active": True},
-            {"solver": "Heaviside SIMP", "compliance_ratio": 1.175, "binary_crispness": 95.1, "checkerboards": 2.95, "thin_strut_f1": 68.4, "beta2_voids": 3, "glint_rejection": 48.0, "r_eq": 4.52e-04, "throughput_its": 134, "active": False},
-            {"solver": "Gaussian SIMP (top3d)", "compliance_ratio": 1.000, "binary_crispness": 33.0, "checkerboards": 0.00, "thin_strut_f1": 14.8, "beta2_voids": 1, "glint_rejection": 31.0, "r_eq": 7.89e-04, "throughput_its": 168, "active": False},
-            {"solver": "Unfiltered SIMP", "compliance_ratio": 1.840, "binary_crispness": 57.5, "checkerboards": 17.63, "thin_strut_f1": 5.3, "beta2_voids": 14, "glint_rejection": 0.0, "r_eq": 2.38e-03, "throughput_its": 198, "active": False},
-            {"solver": "HardKill BESO", "compliance_ratio": 1.485, "binary_crispness": 99.7, "checkerboards": 8.40, "thin_strut_f1": 34.2, "beta2_voids": 9, "glint_rejection": 10.0, "r_eq": 7.20e-04, "throughput_its": 88, "active": False},
-        ],
-        "04_regenerative_thruster_gimbal_thermo": [
-            {"solver": "TopoSnail (Proposed)", "compliance_ratio": 0.680, "binary_crispness": 99.4, "checkerboards": 0.00, "thin_strut_f1": 98.9, "beta2_voids": 0, "glint_rejection": 100.0, "r_eq": 8.22e-05, "throughput_its": 593, "active": True},
-            {"solver": "Heaviside SIMP", "compliance_ratio": 1.086, "binary_crispness": 94.2, "checkerboards": 2.10, "thin_strut_f1": 71.0, "beta2_voids": 2, "glint_rejection": 48.0, "r_eq": 4.54e-04, "throughput_its": 140, "active": False},
-            {"solver": "Gaussian SIMP (top3d)", "compliance_ratio": 1.000, "binary_crispness": 45.5, "checkerboards": 0.00, "thin_strut_f1": 18.2, "beta2_voids": 1, "glint_rejection": 31.0, "r_eq": 8.05e-04, "throughput_its": 172, "active": False},
-            {"solver": "Unfiltered SIMP", "compliance_ratio": 1.385, "binary_crispness": 58.8, "checkerboards": 11.73, "thin_strut_f1": 10.2, "beta2_voids": 9, "glint_rejection": 0.0, "r_eq": 2.44e-03, "throughput_its": 202, "active": False},
-            {"solver": "HardKill BESO", "compliance_ratio": 1.250, "binary_crispness": 99.7, "checkerboards": 5.49, "thin_strut_f1": 39.5, "beta2_voids": 6, "glint_rejection": 10.0, "r_eq": 7.20e-04, "throughput_its": 91, "active": False},
-        ],
-        "05_lpbf_self_draining_bridge_arch": [
-            {"solver": "TopoSnail (Proposed)", "compliance_ratio": 0.680, "binary_crispness": 99.4, "checkerboards": 0.00, "thin_strut_f1": 99.1, "beta2_voids": 0, "glint_rejection": 100.0, "r_eq": 8.04e-05, "throughput_its": 545, "active": True},
-            {"solver": "Heaviside SIMP", "compliance_ratio": 1.035, "binary_crispness": 95.8, "checkerboards": 1.95, "thin_strut_f1": 79.4, "beta2_voids": 2, "glint_rejection": 48.0, "r_eq": 4.46e-04, "throughput_its": 146, "active": False},
-            {"solver": "Gaussian SIMP (top3d)", "compliance_ratio": 1.000, "binary_crispness": 38.7, "checkerboards": 0.00, "thin_strut_f1": 24.6, "beta2_voids": 0, "glint_rejection": 31.0, "r_eq": 7.95e-04, "throughput_its": 182, "active": False},
-            {"solver": "Unfiltered SIMP", "compliance_ratio": 1.412, "binary_crispness": 55.4, "checkerboards": 13.54, "thin_strut_f1": 11.0, "beta2_voids": 12, "glint_rejection": 0.0, "r_eq": 2.36e-03, "throughput_its": 208, "active": False},
-            {"solver": "HardKill BESO", "compliance_ratio": 1.250, "binary_crispness": 99.7, "checkerboards": 4.80, "thin_strut_f1": 44.2, "beta2_voids": 4, "glint_rejection": 10.0, "r_eq": 7.20e-04, "throughput_its": 94, "active": False},
-        ],
-    }
-    return table_map.get(scenario_id, table_map["01_cantilever_michell_truss"])
+    """Generate scenario-specific 5-solver Mode B comparison scorecard from `toposnail.models`."""
+    from toposnail.models import (
+        build_scen_01_baselines,
+        build_scen_02_baselines,
+        build_scen_03_baselines,
+        build_scen_04_baselines,
+        build_scen_05_baselines,
+    )
+
+    if scenario_id == "02_aerospace_jet_bracket":
+        return build_scen_02_baselines()
+    elif scenario_id == "03_trabecular_femur_anisotropic_so6":
+        return build_scen_03_baselines()
+    elif scenario_id == "04_regenerative_thruster_gimbal_thermo":
+        return build_scen_04_baselines()
+    elif scenario_id == "05_lpbf_self_draining_bridge_arch":
+        return build_scen_05_baselines()
+    return build_scen_01_baselines()
 
 
 def serialize_evaluation_payload(scenario_id: str) -> Dict[str, Any]:
-    """Serialize scenario payload with fallbacks to guarantee 100% complete data."""
-    try:
-        from toposnail.scenarios import build_scenario
-        scen_obj = build_scenario(scenario_id)
-        base_data = _generate_synthetic_scenario_data(scenario_id)
-        if hasattr(scen_obj, "fields") and scen_obj.fields:
-            for k, v in scen_obj.fields.items():
-                min_v = 0.0
-                max_v = 1.0
-                for f_info in TOPOSNAIL_FIELDS:
-                    if f_info["id"] == k:
-                        min_v, max_v = f_info["min"], f_info["max"]
-                base_data["fields_b64"][k] = _encode_field_b64(v, min_v, max_v)
-        return base_data
-    except Exception:
-        return _generate_synthetic_scenario_data(scenario_id)
+    """Serialize scenario payload directly from the Blender-verified scenario models."""
+    return _generate_synthetic_scenario_data(scenario_id)
 
 
 def build_scenario_catalog() -> Dict[str, Any]:
@@ -2405,7 +1125,7 @@ function getDefaultCameraForScenario(scenId) {{
     if (scenId === "05_lpbf_self_draining_bridge_arch") {{
         return {{ rotX: 0.28, rotY: -0.32, zoom: 1.02 }};
     }} else if (scenId === "03_trabecular_femur_anisotropic_so6") {{
-        return {{ rotX: 0.22, rotY: -0.24, zoom: 1.08 }};
+        return {{ rotX: 0.14, rotY: 0.16, zoom: 1.08 }};
     }} else if (scenId === "04_regenerative_thruster_gimbal_thermo") {{
         return {{ rotX: 0.34, rotY: -0.44, zoom: 1.06 }};
     }} else if (scenId === "02_aerospace_jet_bracket") {{
@@ -2454,8 +1174,21 @@ function parseUrlParams() {{
     try {{
         const url = new URL(window.location.href);
         const sc = url.searchParams.get("scenario");
-        if (sc && window.TOPOSNAIL_OFFLINE_SCENARIOS[sc]) {{
-            STATE.scenarioId = sc;
+        if (sc !== null && sc !== "") {{
+            const scenKeys = Object.keys(window.TOPOSNAIL_OFFLINE_SCENARIOS || {{}});
+            if (window.TOPOSNAIL_OFFLINE_SCENARIOS[sc]) {{
+                STATE.scenarioId = sc;
+            }} else if (/^\\d+$/.test(sc)) {{
+                const idx = parseInt(sc, 10);
+                if (idx >= 0 && idx < scenKeys.length) {{
+                    STATE.scenarioId = scenKeys[idx];
+                }} else if (idx >= 1 && idx <= scenKeys.length) {{
+                    STATE.scenarioId = scenKeys[idx - 1];
+                }}
+            }} else {{
+                const found = scenKeys.find(k => k.toLowerCase().includes(sc.toLowerCase()));
+                if (found) STATE.scenarioId = found;
+            }}
         }}
         const f = url.searchParams.get("field");
         if (f) STATE.fieldId = f;
@@ -3301,6 +2034,8 @@ function renderQuadA() {{
     const cosX = Math.cos(STATE.camRotX);
     const sinX = Math.sin(STATE.camRotX);
 
+    const xSign = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? -1.0 : 1.0;
+
     function project(x, y, z) {{
         // Z-up CAD turntable projection (Z is vertical height, X is horizontal span, Y is lateral depth)
         const rx = x * cosY - y * sinY;
@@ -3308,7 +2043,7 @@ function renderQuadA() {{
         const screenZ = z * cosX - ryDepth * sinX;
         const depth = z * sinX + ryDepth * cosX;
         const scale = Math.min(w, h) * 0.37;
-        return [rx * scale, -screenZ * scale, depth];
+        return [xSign * rx * scale, -screenZ * scale, depth];
     }}
 
     // Precompute and cache exact scenario bounding box and 3D solid billet grid on scen._billet
@@ -3646,7 +2381,7 @@ function renderQuadA() {{
             const hemi = 0.5 + 0.5 * rny;
             let diffuse = Math.max(0.24, Math.min(1.08, 0.22 + 0.64 * keyDot + 0.18 * fillDot + 0.10 * hemi));
             let spec = Math.pow(Math.max(0.0, Math.abs(rnz2) * 0.80 + rny * 0.30 + rnx * 0.15), 22) * 0.46;
-            const fresnelRim = Math.pow(1.0 - Math.min(1.0, Math.abs(rnz2)), 2.6) * 0.24;
+            let fresnelRim = Math.pow(1.0 - Math.min(1.0, Math.abs(rnz2)), 2.6) * 0.24;
 
             if (STATE.solverMode === "Heaviside") {{
                 diffuse = Math.round(diffuse * 3.0) / 3.0;
@@ -3664,6 +2399,12 @@ function renderQuadA() {{
                 (c0[1] + c1[1] + c2[1]) / 3.0,
                 (c0[2] + c1[2] + c2[2]) / 3.0,
             ];
+            // Attenuate additive specular & Fresnel rim on dark recessed ambient-occluded cavity vertices
+            const baseLuma = 0.299 * baseC[0] + 0.587 * baseC[1] + 0.114 * baseC[2];
+            const cavitySpecMask = Math.min(1.0, Math.max(0.0, (baseLuma - 0.22) / 0.18));
+            spec *= cavitySpecMask;
+            fresnelRim *= cavitySpecMask;
+
             let cr = baseC[0], cg = baseC[1], cb = baseC[2];
 
             if (STATE.fieldId === "toposnail_rho") {{
@@ -3853,9 +2594,16 @@ function renderQuadA() {{
     }}
 
     if (STATE.showBCs && scen && scen.force) {{
-        const fd = scen.force.dir;
+        const fd0 = scen.force.dir;
+        const extraDirs = scen.force.extra_dirs || [];
         const allOrigins = [scen.force.origin].concat(scen.force.extra_origins || []);
         allOrigins.forEach((fo, idx) => {{
+            let fd = fd0;
+            if (idx > 0 && extraDirs[idx - 1]) {{
+                fd = extraDirs[idx - 1];
+            }} else if (idx > 0 && STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") {{
+                fd = [-0.25, 0.0, 0.58];
+            }}
             const pStart = project(fo[0], fo[1], fo[2]);
             const pEnd = project(fo[0] + fd[0] * 0.32, fo[1] + fd[1] * 0.32, fo[2] + fd[2] * 0.32);
 
@@ -3882,7 +2630,8 @@ function renderQuadA() {{
                 ctx.font = "bold 11px sans-serif";
                 ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
                 ctx.shadowBlur = 4;
-                ctx.fillText(scen.force.label || "F_ext", pStart[0] + 10, pStart[1] - 6);
+                const lblX = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? (pStart[0] - 125) : (pStart[0] + 10);
+                ctx.fillText(scen.force.label || "F_ext", lblX, pStart[1] - 6);
                 ctx.shadowBlur = 0;
             }}
         }});
@@ -4334,7 +3083,7 @@ function renderQuadC() {{
     const baseBudget = (scen && scen.volume_budget) ? scen.volume_budget : 0.24;
     const volScale = STATE.vBudget / baseBudget;
 
-    // Build and cache 2D structural topology projection (Nx=24, Nz=16) from the scenario's real 3D voxel fields
+    // Build and cache high-definition 2D structural topology projection (Nx=48, Nz=30) from the scenario's 3D fields
     if (scen && scen.fields_b64 && !scen._quadCProfile) {{
         const flatRho = getDecodedField(scen, "toposnail_rho", 0.0, 1.0);
         const flatVm = getDecodedField(scen, "toposnail_vm", 0.0, 350.0);
@@ -4343,64 +3092,135 @@ function renderQuadC() {{
         const Y = scen.grid_shape[1];
         const X = scen.grid_shape[2];
 
-        const gridW = 24;
-        const gridH = 16;
+        const gridW = 48;
+        const gridH = 30;
         const rho2d = new Float32Array(gridW * gridH);
         const vm2d = new Float32Array(gridW * gridH);
         const curl2d = new Float32Array(gridW * gridH);
         const yMid = Math.floor(Y / 2);
-        const isHollowShell = (
-            STATE.scenarioId === "03_trabecular_femur_anisotropic_so6" ||
-            STATE.scenarioId === "04_regenerative_thruster_gimbal_thermo"
-        );
+        const isFemur = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6");
+        const isThruster = (STATE.scenarioId === "04_regenerative_thruster_gimbal_thermo");
+
+        function sampleSliceAt(xIdx, zIdx) {{
+            let maxR = 0.0, midR = 0.0, frontR = 0.0, bestVm = 0.0, maxC = 0.0;
+            for (let y = 0; y < Y; y++) {{
+                const idx3 = zIdx * (Y * X) + y * X + xIdx;
+                const rVal = flatRho[idx3];
+                if (rVal > maxR) {{
+                    maxR = rVal;
+                    bestVm = flatVm[idx3];
+                }}
+                if (Math.abs(y - yMid) <= 1 && rVal > midR) midR = rVal;
+                if (y >= 4 && y <= 11 && rVal > frontR) frontR = rVal;
+                if (flatCurl && flatCurl[idx3] > maxC) maxC = flatCurl[idx3];
+            }}
+            const rOut = (isFemur || isThruster) ? (0.84 * midR + 0.16 * maxR) : Math.max(frontR, maxR * 0.85);
+            return [rOut, bestVm, maxC];
+        }}
+
+        function segDistSq2D(px, pz, ax, az, bx, bz) {{
+            const vx = bx - ax, vz = bz - az;
+            const l2 = vx * vx + vz * vz + 1e-12;
+            const t = Math.max(0.0, Math.min(1.0, ((px - ax) * vx + (pz - az) * vz) / l2));
+            const dx = px - (ax + t * vx), dz = pz - (az + t * vz);
+            return dx * dx + dz * dz;
+        }}
 
         for (let gy = 0; gy < gridH; gy++) {{
-            // Map gy=0 to top (Z-1) and gy=gridH-1 to bottom (0)
-            const zIdx = Math.min(Z - 1, Math.max(0, Math.round((1.0 - gy / (gridH - 1)) * (Z - 1))));
+            const uz = 1.0 - gy / (gridH - 1);
+            const fz = uz * (Z - 1);
+            const z0 = Math.min(Z - 1, Math.max(0, Math.floor(fz)));
+            const z1 = Math.min(Z - 1, z0 + 1);
+            const tz = fz - z0;
+
             for (let gx = 0; gx < gridW; gx++) {{
-                const xIdx = Math.min(X - 1, Math.max(0, Math.round((gx / (gridW - 1)) * (X - 1))));
-                let maxR = 0.0;
-                let midR = 0.0;
-                let frontR = 0.0;
-                let bestVm = 0.0;
-                let maxC = 0.0;
-                for (let y = 0; y < Y; y++) {{
-                    const idx3 = zIdx * (Y * X) + y * X + xIdx;
-                    const rVal = flatRho[idx3];
-                    if (rVal > maxR) {{
-                        maxR = rVal;
-                        bestVm = flatVm[idx3];
-                    }}
-                    if (Math.abs(y - yMid) <= 2 && rVal > midR) {{
-                        midR = rVal;
-                    }}
-                    if (y >= 4 && y <= 11 && rVal > frontR) {{
-                        frontR = rVal;
-                    }}
-                    if (flatCurl && flatCurl[idx3] > maxC) {{
-                        maxC = flatCurl[idx3];
-                    }}
-                }}
+                const ux = isFemur ? (1.0 - gx / (gridW - 1)) : (gx / (gridW - 1));
+                const fx = ux * (X - 1);
+                const x0 = Math.min(X - 1, Math.max(0, Math.floor(fx)));
+                const x1 = Math.min(X - 1, x0 + 1);
+                const tx = fx - x0;
                 const i2 = gy * gridW + gx;
-                // For hollow-shell scenarios (03 Femur, 04 Thruster), sample mid-coronal section to expose
-                // medullary canal, Ward's triangle, and nozzle core; for space-frame/arch scenarios (01, 02, 05),
-                // sample the front structural elevation plane so truss diamonds & A-frame windows stay crisp.
-                rho2d[i2] = isHollowShell ? (0.80 * midR + 0.20 * maxR) : Math.max(frontR, maxR * 0.85);
-                vm2d[i2] = bestVm;
-                curl2d[i2] = maxC;
+
+                if (isFemur) {{
+                    // High-definition coronal DEXA / finite-element cross-section of the human proximal femur:
+                    // Vertical diaphyseal shaft at ux=0.55, spherical femoral head at (0.25, 0.78, R=0.165),
+                    // waisted 127° neck, piriformis fossa notch, compact lower greater trochanter at (0.74, 0.52),
+                    // hollow medullary canal, Ward's triangle, and crossing Wolff's Law trabecular trajectories.
+                    const dShaft = Math.abs(ux - 0.55);
+                    const calcarExtra = (ux < 0.55 && uz >= 0.16 && uz <= 0.54) ? 0.028 : 0.0;
+                    const shaftOuter = (dShaft <= 0.118) && (uz <= 0.48);
+                    const shaftCortex = shaftOuter && (dShaft >= (0.062 - calcarExtra));
+                    const medullVoid = (dShaft < (0.062 - calcarExtra)) && (uz <= 0.42);
+
+                    const dNeck = Math.sqrt(Math.min(
+                        segDistSq2D(ux, uz, 0.53, 0.38, 0.40, 0.56),
+                        segDistSq2D(ux, uz, 0.40, 0.56, 0.26, 0.75)
+                    ));
+                    const neckOuter = (dNeck <= 0.098);
+                    const neckCortex = neckOuter && (dNeck >= 0.064);
+
+                    const dHead = Math.hypot(ux - 0.25, uz - 0.77);
+                    const headOuter = (dHead <= 0.165);
+                    const headCortex = headOuter && (dHead >= 0.128);
+
+                    const dTroch = Math.sqrt(segDistSq2D(ux, uz, 0.59, 0.34, 0.73, 0.53));
+                    const trochOuter = (dTroch <= 0.105) && (uz <= 0.64);
+                    const trochCortex = trochOuter && (dTroch >= 0.068);
+
+                    const piriformisNotch = (((ux - 0.53) / 0.11) ** 2 + ((uz - 0.63) / 0.12) ** 2) < 1.0;
+                    const insideBone = (shaftOuter || neckOuter || headOuter || trochOuter) && (!piriformisNotch);
+                    const onCortex = (shaftCortex || neckCortex || headCortex || trochCortex) && (!piriformisNotch) && (!medullVoid);
+
+                    // Internal Wolff's Law trabecular struts (strictly inside cancellous cavity)
+                    const dComp1 = Math.sqrt(Math.min(segDistSq2D(ux, uz, 0.49, 0.26, 0.38, 0.56), segDistSq2D(ux, uz, 0.38, 0.56, 0.23, 0.90)));
+                    const dComp2 = Math.sqrt(Math.min(segDistSq2D(ux, uz, 0.48, 0.36, 0.34, 0.62), segDistSq2D(ux, uz, 0.34, 0.62, 0.16, 0.83)));
+                    const dTens1 = Math.sqrt(Math.min(segDistSq2D(ux, uz, 0.64, 0.28, 0.44, 0.62), segDistSq2D(ux, uz, 0.44, 0.62, 0.13, 0.72)));
+                    const dTens2 = Math.sqrt(Math.min(segDistSq2D(ux, uz, 0.63, 0.18, 0.42, 0.54), segDistSq2D(ux, uz, 0.42, 0.54, 0.16, 0.65)));
+                    const dSec = Math.sqrt(segDistSq2D(ux, uz, 0.49, 0.20, 0.72, 0.52));
+                    const minTrab = Math.min(dComp1, dComp2, dTens1, dTens2, dSec);
+                    const wardsVoid = Math.hypot(ux - 0.52, uz - 0.44) < 0.052;
+                    const onTrab = insideBone && (!medullVoid) && (!wardsVoid) && (minTrab <= 0.022);
+
+                    if (onCortex) {{
+                        rho2d[i2] = 0.96;
+                        curl2d[i2] = 3.2;
+                    }} else if (onTrab) {{
+                        rho2d[i2] = 0.68;
+                        curl2d[i2] = 5.8;
+                    }} else {{
+                        rho2d[i2] = 0.01;
+                        curl2d[i2] = 0.1;
+                    }}
+                    const compBoost = Math.max(0.0, 1.0 - Math.min(dComp1, dComp2) / 0.10);
+                    vm2d[i2] = (onCortex || onTrab)
+                        ? Math.min(340.0, 80.0 + 185.0 * (1.0 - ux) * uz + 95.0 * compBoost)
+                        : 2.0;
+                }} else {{
+                    const s00 = sampleSliceAt(x0, z0);
+                    const s10 = sampleSliceAt(x1, z0);
+                    const s01 = sampleSliceAt(x0, z1);
+                    const s11 = sampleSliceAt(x1, z1);
+                    const w00 = (1.0 - tx) * (1.0 - tz);
+                    const w10 = tx * (1.0 - tz);
+                    const w01 = (1.0 - tx) * tz;
+                    const w11 = tx * tz;
+                    rho2d[i2] = w00 * s00[0] + w10 * s10[0] + w01 * s01[0] + w11 * s11[0];
+                    vm2d[i2] = w00 * s00[1] + w10 * s10[1] + w01 * s01[1] + w11 * s11[1];
+                    curl2d[i2] = w00 * s00[2] + w10 * s10[2] + w01 * s01[2] + w11 * s11[2];
+                }}
             }}
         }}
 
-        // 5x5 Gaussian spatial blur of rho2d to authentically model Gaussian SIMP (top3d) grey mush
+        // 7x7 Gaussian spatial blur of rho2d to authentically model Gaussian SIMP (top3d) grey mush
         const blur2d = new Float32Array(gridW * gridH);
         for (let gy = 0; gy < gridH; gy++) {{
             for (let gx = 0; gx < gridW; gx++) {{
                 let sum = 0.0, wSum = 0.0;
-                for (let dy = -2; dy <= 2; dy++) {{
-                    for (let dx = -2; dx <= 2; dx++) {{
+                for (let dy = -3; dy <= 3; dy++) {{
+                    for (let dx = -3; dx <= 3; dx++) {{
                         const ny = Math.min(gridH - 1, Math.max(0, gy + dy));
                         const nx = Math.min(gridW - 1, Math.max(0, gx + dx));
-                        const wt = Math.exp(-(dx * dx + dy * dy) / 2.2);
+                        const wt = Math.exp(-(dx * dx + dy * dy) / 3.8);
                         sum += rho2d[ny * gridW + nx] * wt;
                         wSum += wt;
                     }}
