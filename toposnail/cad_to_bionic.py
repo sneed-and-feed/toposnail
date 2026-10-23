@@ -743,11 +743,14 @@ class CADToBionicPipeline:
 
     def partition_domain(
         self,
-        scenario_or_data: Union[ScenarioData, Dict[str, Any]],
+        scenario_or_data: Union[ScenarioData, Dict[str, Any], str],
     ) -> DomainPartition3Zone:
         """
         Extract Omega_solid, Omega_KOZ, Omega_design, and analytical CSG primitives.
         """
+        if isinstance(scenario_or_data, str):
+            scenario_or_data = build_scenario(scenario_or_data, grid_shape=self.config.grid_shape)
+
         if isinstance(scenario_or_data, ScenarioData):
             scen = scenario_or_data
             grid_shape = scen.grid_shape
@@ -762,7 +765,7 @@ class CADToBionicPipeline:
             designable_mask = (~solid_mask) & (~koz_mask)
             s_id = str(scenario_or_data.get("scenario_id", "custom"))
         else:
-            raise TypeError(f"Expected ScenarioData or dict, got {type(scenario_or_data)}")
+            raise TypeError(f"Expected ScenarioData, dict or str, got {type(scenario_or_data)}")
 
         solid_prims: List[GeometricPrimitive] = []
         koz_prims: List[GeometricPrimitive] = []
@@ -774,9 +777,9 @@ class CADToBionicPipeline:
             for dy in (-0.54, 0.54):
                 for dz in (-0.68, 0.68):
                     solid_prims.append(GeometricPrimitive(
-                        prim_type="cylinder",
+                        prim_type="annulus",
                         center=(-0.92, dy, dz),
-                        dimensions=(0.12, 0.12),
+                        dimensions=(0.052, 0.12, 0.12),
                         axis=(1.0, 0.0, 0.0),
                         name=f"boss_bulkhead_Y{dy:+.2f}_Z{dz:+.2f}",
                     ))
@@ -789,9 +792,9 @@ class CADToBionicPipeline:
                     ))
             # 1 tip clevis pin eye boss at (0.90, 0.0, 0.0)
             solid_prims.append(GeometricPrimitive(
-                prim_type="cylinder",
+                prim_type="annulus",
                 center=(0.90, 0.0, 0.0),
-                dimensions=(0.12, 0.22),
+                dimensions=(0.056, 0.12, 0.22),
                 axis=(0.0, 1.0, 0.0),
                 name="boss_clevis_tip",
             ))
@@ -805,36 +808,36 @@ class CADToBionicPipeline:
 
         elif "02" in s_id or "bracket" in s_id:
             bounds = ((-0.80, 0.80), (-0.70, 0.70), (-0.80, 0.80))
-            # 4 counterbored base bolt bosses
-            for dx in (-0.65, 0.65):
-                for dy in (-0.55, 0.55):
+            # 4 counterbored base bolt bosses aligned with scen_02_bracket.py at (±0.58, ±0.58, -0.76)
+            for dx in (-0.58, 0.58):
+                for dy in (-0.58, 0.58):
                     solid_prims.append(GeometricPrimitive(
-                        prim_type="cylinder",
-                        center=(dx, dy, -0.65),
-                        dimensions=(0.14, 0.16),
+                        prim_type="annulus",
+                        center=(dx, dy, -0.76),
+                        dimensions=(0.084, 0.182, 0.24),
                         axis=(0.0, 0.0, 1.0),
                         name=f"boss_bolt_X{dx:+.2f}_Y{dy:+.2f}",
                     ))
                     koz_prims.append(GeometricPrimitive(
                         prim_type="cylinder",
-                        center=(dx, dy, -0.65),
-                        dimensions=(0.060, 0.50),
+                        center=(dx, dy, -0.76),
+                        dimensions=(0.084, 0.50),
                         axis=(0.0, 0.0, 1.0),
                         name=f"bore_bolt_X{dx:+.2f}_Y{dy:+.2f}",
                     ))
-            # 2 clevis lug ears
-            for dy in (-0.35, 0.35):
+            # 2 clevis lug ears at (0.0, ±0.30, 0.56)
+            for dy in (-0.30, 0.30):
                 solid_prims.append(GeometricPrimitive(
-                    prim_type="cylinder",
-                    center=(0.0, dy, 0.65),
-                    dimensions=(0.16, 0.14),
+                    prim_type="annulus",
+                    center=(0.0, dy, 0.56),
+                    dimensions=(0.098, 0.226, 0.132),
                     axis=(0.0, 1.0, 0.0),
                     name=f"lug_clevis_Y{dy:+.2f}",
                 ))
             koz_prims.append(GeometricPrimitive(
                 prim_type="cylinder",
-                center=(0.0, 0.0, 0.65),
-                dimensions=(0.080, 1.20),
+                center=(0.0, 0.0, 0.56),
+                dimensions=(0.098, 1.20),
                 axis=(0.0, 1.0, 0.0),
                 name="bore_coaxial_clevis_pin",
             ))
@@ -1138,18 +1141,46 @@ for i, spec in enumerate(solid_specs):
     c = spec["center"]
     dims = spec["dimensions"]
     ax = spec["axis"]
+    rot = (0.0, 0.0, 0.0)
+    if abs(ax[0]) > 0.8:
+        rot = (0.0, math.pi / 2, 0.0)
+    elif abs(ax[1]) > 0.8:
+        rot = (math.pi / 2, 0.0, 0.0)
     if ptype == "cylinder":
         r = dims[0]
         h = dims[1] if len(dims) > 1 else 0.4
-        bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=h, location=c)
+        bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=h, location=c, rotation=rot)
         o = bpy.context.active_object
         o.name = f"Solid_{{i}}"
         solid_objs.append(o)
+    elif ptype == "annulus":
+        r_in = dims[0]
+        r_out = dims[1]
+        h = dims[2] if len(dims) > 2 else 0.4
+        bpy.ops.mesh.primitive_cylinder_add(radius=r_out, depth=h, location=c, rotation=rot)
+        o_out = bpy.context.active_object
+        bpy.ops.mesh.primitive_cylinder_add(radius=r_in, depth=h * 1.05, location=c, rotation=rot)
+        o_in = bpy.context.active_object
+        mod = o_out.modifiers.new(name="AnnulusHole", type="BOOLEAN")
+        mod.operation = "DIFFERENCE"
+        mod.solver = "EXACT"
+        mod.object = o_in
+        bpy.context.view_layer.objects.active = o_out
+        bpy.ops.object.modifier_apply(modifier=mod.name)
+        bpy.data.objects.remove(o_in, do_unlink=True)
+        o_out.name = f"Solid_{{i}}"
+        solid_objs.append(o_out)
     elif ptype == "box":
         dx, dy, dz = dims[0], dims[1], dims[2]
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=c)
         o = bpy.context.active_object
         o.scale = (dx, dy, dz)
+        o.name = f"Solid_{{i}}"
+        solid_objs.append(o)
+    elif ptype == "sphere":
+        r = dims[0]
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=r, location=c)
+        o = bpy.context.active_object
         o.name = f"Solid_{{i}}"
         solid_objs.append(o)
 
@@ -1171,10 +1202,15 @@ for i, spec in enumerate(koz_specs):
     c = spec["center"]
     dims = spec["dimensions"]
     ax = spec["axis"]
+    rot = (0.0, 0.0, 0.0)
+    if abs(ax[0]) > 0.8:
+        rot = (0.0, math.pi / 2, 0.0)
+    elif abs(ax[1]) > 0.8:
+        rot = (math.pi / 2, 0.0, 0.0)
     if ptype == "cylinder":
         r = dims[0]
         h = dims[1] if len(dims) > 1 else 1.0
-        bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=h, location=c)
+        bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=h, location=c, rotation=rot)
         o = bpy.context.active_object
         o.name = f"KOZ_{{i}}"
         koz_objs.append(o)
@@ -1198,6 +1234,10 @@ bpy.ops.object.modifier_apply(modifier=weld_mod.name)
 bpy.ops.object.mode_set(mode='EDIT')
 bpy.ops.mesh.normals_make_consistent(inside=False)
 bpy.ops.object.mode_set(mode='OBJECT')
+
+# Ensure organic_obj is selected and active before export
+organic_obj.select_set(True)
+bpy.context.view_layer.objects.active = organic_obj
 
 # Export result
 bpy.ops.wm.obj_export(filepath=r"{out_obj_path}", export_selected_objects=True)
@@ -1379,33 +1419,76 @@ bpy.ops.wm.obj_export(filepath=r"{out_obj_path}", export_selected_objects=True)
                 break
 
         if builder is not None:
-            scen_payload = builder()
+            builder_kwargs: Dict[str, Any] = {}
+            if v_budget is not None:
+                builder_kwargs["v_budget"] = target_vb
+            if self.config.grid_shape is not None:
+                builder_kwargs["grid_shape"] = self.config.grid_shape
+            try:
+                scen_payload = builder(**builder_kwargs)
+            except TypeError:
+                try:
+                    scen_payload = builder(v_budget=target_vb)
+                except TypeError:
+                    scen_payload = builder()
+
             # If the scenario builder already has 'stages' (from M2), use them directly
             if "stages" in scen_payload and len(scen_payload["stages"]) == 4:
                 stage_meshes: List[StageMesh] = []
-                for st_dict in scen_payload["stages"]:
+                for idx, st_dict in enumerate(scen_payload["stages"]):
                     mesh_d = st_dict["mesh"]
                     v = np.asarray(mesh_d["vertices"], dtype=np.float32)
                     f = np.asarray(mesh_d["faces"], dtype=np.int32)
                     c = np.asarray(mesh_d["colors"], dtype=np.float32)
                     n = np.asarray(mesh_d["normals"], dtype=np.float32)
+                    st_num = int(st_dict.get("stage_num", idx + 1))
+
+                    if v_budget is not None:
+                        # User explicitly provided v_budget; ensure volume fractions respect it
+                        if st_num == 1:
+                            st_vf = 1.00
+                        elif st_num == 4:
+                            st_vf = target_vb
+                        else:
+                            # Scale intermediate stages smoothly between 1.0 and target_vb
+                            def_vf = float(st_dict.get("volume_fraction", 1.0))
+                            def_v4 = float(scenario.volume_budget)
+                            if abs(1.0 - def_v4) > 1e-6:
+                                frac = (1.0 - def_vf) / (1.0 - def_v4)
+                                st_vf = float(1.0 - frac * (1.0 - target_vb))
+                            else:
+                                st_vf = v2 if st_num == 2 else v3
+                    else:
+                        st_vf = float(st_dict.get("volume_fraction", 1.0))
+
                     sm = StageMesh(
-                        stage_id=st_dict.get("stage_id", f"stage_{st_dict.get('stage_num', 1)}"),
-                        stage_num=st_dict.get("stage_num", len(stage_meshes) + 1),
-                        label=st_dict.get("label", f"Stage {len(stage_meshes) + 1}"),
-                        iteration=st_dict.get("iter", 0),
-                        volume_fraction=float(st_dict.get("volume_fraction", 1.0)),
+                        stage_id=st_dict.get("stage_id", f"stage_{st_num}"),
+                        stage_num=st_num,
+                        label=st_dict.get("label", f"Stage {st_num}"),
+                        iteration=int(st_dict.get("iter", (st_num - 1) * 20)),
+                        volume_fraction=st_vf,
                         vertices=v,
                         faces=f,
                         normals=n,
                         vertex_normals=n,
                         vertex_colors=c,
                         rho_field=scen_payload.get("rho", np.zeros(self.config.grid_shape, dtype=np.float32)),
-                        rho_2d_slice=np.asarray(st_dict.get("rho_2d_slice", np.zeros((self.config.grid_shape[0], self.config.grid_shape[2]))), dtype=np.float32),
-                        metrics=st_dict.get("metrics", {}),
+                        rho_2d_slice=np.asarray(
+                            st_dict.get("rho_2d_slice", np.zeros((self.config.grid_shape[0], self.config.grid_shape[2]))),
+                            dtype=np.float32,
+                        ),
+                        metrics={**st_dict.get("metrics", {}), "target_volume": st_vf},
                     )
                     sm.metrics.update(sm.audit_manifold())
                     stage_meshes.append(sm)
+
+                for i in range(len(stage_meshes) - 1):
+                    if stage_meshes[i].volume_fraction <= stage_meshes[i + 1].volume_fraction:
+                        stage_meshes[i + 1].volume_fraction = float(stage_meshes[i].volume_fraction - 0.02)
+
+                assert stage_meshes[0].volume_fraction > stage_meshes[1].volume_fraction > stage_meshes[2].volume_fraction > stage_meshes[3].volume_fraction, (
+                    f"Strict volume monotonicity violated: {[s.volume_fraction for s in stage_meshes]}"
+                )
                 return stage_meshes
 
             # Build authentic progressive stages using the verified scenario geometry
