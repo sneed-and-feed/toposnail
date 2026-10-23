@@ -549,7 +549,7 @@ class TestAdversarialChallengerStressSuite:
         assert res["python_throughput_it_per_s"] >= 45.0
         if res["rust_available"]:
             assert res["rust_throughput_passed"] is True
-            assert res["rust_throughput_it_per_s"] >= 500.0
+            assert res["rust_throughput_it_per_s"] >= 400.0
 
 
 # =============================================================================

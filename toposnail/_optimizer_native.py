@@ -331,6 +331,15 @@ def _bind_function_signatures(lib: ctypes.CDLL) -> None:
 
 
 _NATIVE_LIB: Optional[ctypes.CDLL] = load_native_library()
+if _NATIVE_LIB is not None:
+    _NATIVE_LIB.toposnail_step_iter.restype = ctypes.c_float
+    _NATIVE_LIB.toposnail_step_iter.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_float,
+        ctypes.c_float,
+        ctypes.c_float,
+        ctypes.c_float,
+    ]
 
 
 def is_available() -> bool:
@@ -679,9 +688,11 @@ class NativeTopoOptimizerArenaWrapper:
         self.gz, self.gy, self.gx = grid_shape
         self.total_voxels = self.gz * self.gy * self.gx
         self._arena_ptr: Optional[int] = None
+        self._step_iter_fn = None
 
         if is_available():
             self._arena_ptr = _NATIVE_LIB.toposnail_arena_new()
+            self._step_iter_fn = _NATIVE_LIB.toposnail_step_iter
             if self._arena_ptr:
                 _NATIVE_LIB.toposnail_arena_reset(
                     self._arena_ptr,
@@ -698,6 +709,7 @@ class NativeTopoOptimizerArenaWrapper:
         if self._arena_ptr and is_available():
             _NATIVE_LIB.toposnail_arena_free(self._arena_ptr)
             self._arena_ptr = None
+            self._step_iter_fn = None
 
     def reset(self, grid_shape: Optional[Tuple[int, int, int]] = None, init_vol: float = 0.25):
         if grid_shape:
@@ -706,6 +718,7 @@ class NativeTopoOptimizerArenaWrapper:
             self.total_voxels = self.gz * self.gy * self.gx
 
         if self._arena_ptr and is_available():
+            self._step_iter_fn = _NATIVE_LIB.toposnail_step_iter
             _NATIVE_LIB.toposnail_arena_reset(
                 self._arena_ptr,
                 self.gz,
@@ -725,7 +738,15 @@ class NativeTopoOptimizerArenaWrapper:
         dt: float = 1.0,
     ) -> float:
         """Executes a single optimization iteration in place with zero heap allocations."""
-        if self._arena_ptr and is_available():
+        if self._arena_ptr and self._step_iter_fn is not None:
+            return float(self._step_iter_fn(
+                self._arena_ptr,
+                vol_target,
+                simp_penalty,
+                filter_radius,
+                dt,
+            ))
+        elif self._arena_ptr and is_available():
             return float(_NATIVE_LIB.toposnail_step_iter(
                 self._arena_ptr,
                 vol_target,
