@@ -261,6 +261,15 @@ class BlindCADMeshData(dict):
     def __getattr__(self, name: str) -> Any:
         if name in self:
             return self[name]
+        if name == "face_normals" and "normals" in self:
+            return self["normals"]
+        if name == "part_id" and "file_name" in self:
+            return Path(str(self["file_name"])).stem
+        if name == "bounds" and "vertices" in self and len(self["vertices"]) > 0:
+            v = np.asarray(self["vertices"], dtype=np.float64)
+            vmin = np.min(v, axis=0)
+            vmax = np.max(v, axis=0)
+            return ((float(vmin[0]), float(vmax[0])), (float(vmin[1]), float(vmax[1])), (float(vmin[2]), float(vmax[2])))
         raise AttributeError(f"'BlindCADMeshData' object has no attribute '{name}'")
 
 
@@ -906,16 +915,16 @@ def build_blind_cad_part_mesh(
         # upper horizontal payload clevis cylinder (Z = +0.56), with zero waist pinch and zero step creases!
         def _eval_tri_pyramid_forging(u: float, v: float, w: float) -> Tuple[float, float, float]:
             # Base triangular footprint at Z = -0.765 embedded deep in all 3 tripod boss collars while clearing all 3 Z-bores
-            x_b = (1.0 - v) * (-0.438) + v * (+0.424)
+            x_b = (1.0 - v) * (-0.438) + v * (+0.412)
             y_span_b = 0.405 * (1.0 - v) + 0.160 * v
             y_b = (2.0 * w - 1.0) * y_span_b
 
-            # Top clevis collar footprint at Z = +0.465 (embedded across the full axial shoulders of the Y-clevis)
+            # Top clevis collar footprint at Z = +0.415 (strictly outside 0.88*r_inner = 0.1364 and inside r_outer = 0.285)
             x_t = (1.0 - v) * (-0.215) + v * (+0.215)
             y_span_t = 0.268 * (1.0 - v) + 0.215 * v
             y_t = (2.0 * w - 1.0) * y_span_t
 
-            z_val = -0.765 * (1.0 - u) + (+0.465) * u
+            z_val = -0.765 * (1.0 - u) + (+0.415) * u
             x_val = (1.0 - u) * x_b + u * x_t
             y_val = (1.0 - u) * y_b + u * y_t
             return (x_val, y_val, z_val)
@@ -1157,16 +1166,160 @@ def load_blind_cad_mesh(file_path: Union[str, Path]) -> BlindCADMeshData:
 # 3. Zero-Reference Automatic Geometric Feature Recognizer
 # =============================================================================
 
+def _estimate_so3_principal_datum_frame(
+    vertices: np.ndarray,
+    faces: np.ndarray,
+) -> np.ndarray:
+    """
+    Estimate the principal orthogonal datum frame `Q in SO(3)` of a CAD mesh from
+    area-weighted planar datum face clusters (boss annular end-caps, flange faces)
+    and normal Procrustes refinement. Preserves `I_3` when the mesh is already
+    aligned with the canonical coordinate axes.
+    """
+    verts = np.asarray(vertices, dtype=np.float64)
+    f_arr = np.asarray(faces, dtype=np.int64)
+    if len(verts) == 0 or len(f_arr) == 0:
+        return np.eye(3, dtype=np.float64)
+
+    v0 = verts[f_arr[:, 0]]
+    v1 = verts[f_arr[:, 1]]
+    v2 = verts[f_arr[:, 2]]
+    cross = np.cross(v1 - v0, v2 - v0)
+    weights = np.linalg.norm(cross, axis=1)
+    valid = weights > 1e-10
+    if not np.any(valid):
+        return np.eye(3, dtype=np.float64)
+
+    weights = weights[valid]
+    normals = cross[valid] / weights[:, None]
+    total_w = float(np.sum(weights))
+
+    # Fast check: if >= 12% of triangle area is already aligned with canonical axes, preserve I_3
+    axis_align = np.max(np.abs(normals), axis=1)
+    if float(np.sum(weights[axis_align > 0.998])) >= 0.12 * total_w:
+        return np.eye(3, dtype=np.float64)
+
+    # Fold normals to canonical hemisphere (first significant component > 0)
+    n_canon = normals.copy()
+    for i in range(len(n_canon)):
+        nx, ny, nz = n_canon[i]
+        if abs(nz) > 1e-4:
+            if nz < 0.0:
+                n_canon[i] = -n_canon[i]
+        elif abs(ny) > 1e-4:
+            if ny < 0.0:
+                n_canon[i] = -n_canon[i]
+        elif nx < 0.0:
+            n_canon[i] = -n_canon[i]
+
+    # Quantize canonical normals to cluster co-planar datum faces (e.g. boss end-caps)
+    quant = np.round(n_canon * 100.0).astype(np.int32)
+    uniq_q, inv_idx = np.unique(quant, axis=0, return_inverse=True)
+    cluster_w = np.bincount(inv_idx, weights=weights)
+    order = np.argsort(cluster_w)[::-1]
+
+    candidates = []
+    for idx in order[: min(len(order), 40)]:
+        mask = inv_idx == idx
+        d = np.sum(n_canon[mask] * weights[mask, None], axis=0)
+        norm_d = float(np.linalg.norm(d))
+        if norm_d > 1e-12:
+            candidates.append((float(cluster_w[idx]), d / norm_d))
+
+    if not candidates:
+        return np.eye(3, dtype=np.float64)
+
+    # Primary datum axis u1 from dominant planar normal cluster
+    u1 = candidates[0][1]
+    dots1 = np.sum(normals * u1[None, :], axis=1)
+    mask1 = np.abs(dots1) > 0.995
+    if np.any(mask1):
+        signs1 = np.where(dots1[mask1] >= 0.0, 1.0, -1.0)
+        u1_ref = np.sum(normals[mask1] * (weights[mask1] * signs1)[:, None], axis=0)
+        if np.linalg.norm(u1_ref) > 1e-12:
+            u1 = u1_ref / np.linalg.norm(u1_ref)
+
+    # Secondary datum axis u2 orthogonal to u1
+    u2 = None
+    for _, cand_d in candidates[1:]:
+        if abs(float(np.dot(cand_d, u1))) < 0.06:
+            u2_proj = cand_d - float(np.dot(cand_d, u1)) * u1
+            if np.linalg.norm(u2_proj) > 1e-8:
+                u2 = u2_proj / np.linalg.norm(u2_proj)
+                dots2 = np.sum(normals * u2[None, :], axis=1)
+                mask2 = np.abs(dots2) > 0.995
+                if np.any(mask2):
+                    signs2 = np.where(dots2[mask2] >= 0.0, 1.0, -1.0)
+                    u2_ref = np.sum(normals[mask2] * (weights[mask2] * signs2)[:, None], axis=0)
+                    u2_ref = u2_ref - float(np.dot(u2_ref, u1)) * u1
+                    if np.linalg.norm(u2_ref) > 1e-12:
+                        u2 = u2_ref / np.linalg.norm(u2_ref)
+                break
+
+    if u2 is None:
+        # Fallback: maximize L4 normal alignment in the plane orthogonal to u1
+        arbitrary = np.array([1.0, 0.0, 0.0]) if abs(u1[0]) < 0.9 else np.array([0.0, 1.0, 0.0])
+        b1 = arbitrary - float(np.dot(arbitrary, u1)) * u1
+        b1 /= np.linalg.norm(b1)
+        b2 = np.cross(u1, b1)
+        p1 = normals @ b1
+        p2 = normals @ b2
+        thetas = np.linspace(0.0, 0.5 * np.pi, 180, endpoint=False)
+        best_theta = 0.0
+        best_score = -1.0
+        for th in thetas:
+            c, s = float(np.cos(th)), float(np.sin(th))
+            a1 = c * p1 + s * p2
+            a2 = -s * p1 + c * p2
+            score = float(np.sum(weights * (a1**4 + a2**4)))
+            if score > best_score:
+                best_score = score
+                best_theta = th
+        u2 = float(np.cos(best_theta)) * b1 + float(np.sin(best_theta)) * b2
+
+    u3 = np.cross(u1, u2)
+    u3 /= max(float(np.linalg.norm(u3)), 1e-12)
+    Q = np.column_stack([u1, u2, u3])
+
+    # Orthogonal Procrustes refinement on axis-aligned datum facets
+    for _ in range(2):
+        M = Q.copy()
+        for j in range(3):
+            uj = Q[:, j]
+            dots = normals @ uj
+            mask = np.abs(dots) > 0.992
+            if np.any(mask):
+                signs = np.where(dots[mask] >= 0.0, 1.0, -1.0)
+                mj = np.sum(normals[mask] * (weights[mask] * signs)[:, None], axis=0)
+                if np.linalg.norm(mj) > 1e-12:
+                    M[:, j] = mj / np.linalg.norm(mj)
+        U, _, Vt = np.linalg.svd(M)
+        Q = U @ Vt
+        if np.linalg.det(Q) < 0.0:
+            U[:, -1] *= -1.0
+            Q = U @ Vt
+
+    return Q
+
+
 def _normalize_vertices_to_box(
     vertices: np.ndarray,
     target_half_span: float = 0.92,
+    faces: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """
-    Isotropically normalize mesh vertices into `[-target_half_span, +target_half_span]^3`.
+    Align principal CAD datum axes in `SO(3)` (if `faces` is provided and the mesh
+    is rotated off-axis) and isotropically normalize mesh vertices into
+    `[-target_half_span, +target_half_span]^3`.
     """
     verts = np.asarray(vertices, dtype=np.float32)
     if len(verts) == 0:
         return verts.copy(), np.zeros(3, dtype=np.float32), 1.0
+
+    if faces is not None and len(faces) > 0:
+        Q = _estimate_so3_principal_datum_frame(verts, faces)
+        if not np.allclose(Q, np.eye(3), atol=1e-4):
+            verts = (verts.astype(np.float64) @ Q).astype(np.float32)
 
     vmin = np.min(verts, axis=0)
     vmax = np.max(verts, axis=0)
@@ -1745,7 +1898,9 @@ def recognize_blind_cad_features(
     # -------------------------------------------------------------------------
     # Step A: Normalize vertices into [-0.92, 0.92]^3 & Voxelize Raw CAD Stock
     # -------------------------------------------------------------------------
-    verts_norm, norm_center, norm_scale = _normalize_vertices_to_box(verts_in, target_half_span=0.92)
+    verts_norm, norm_center, norm_scale = _normalize_vertices_to_box(
+        verts_in, target_half_span=0.92, faces=faces_in
+    )
     face_normals = compute_face_normals(verts_norm, faces_in)
     vertex_normals = compute_vertex_normals(verts_norm, faces_in)
 

@@ -1129,6 +1129,8 @@ class TestStudioOrbitAndStageControls:
         - STATE.quadBRotZ -= dx * 0.01; (natural azimuth rotation in Quad B)
         - ArrowLeft/Right keys rotate consistently.
         """
+        from toposnail.studio import generate_studio_html
+
         studio_path = Path("studio/toposnail_portable_studio.html")
         html = studio_path.read_text(encoding="utf-8") if studio_path.exists() else generate_studio_html()
 
@@ -1149,6 +1151,8 @@ class TestStudioOrbitAndStageControls:
         - Functions: renderQuadALineup, setStageView
         - URL query parameter handling: stage=lineup or #lineup
         """
+        from toposnail.studio import generate_studio_html
+
         studio_path = Path("studio/toposnail_portable_studio.html")
         html = studio_path.read_text(encoding="utf-8") if studio_path.exists() else generate_studio_html()
 

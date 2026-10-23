@@ -162,6 +162,34 @@ endsolid unseen_part
             part = feat.to_partition()
             assert part.validate_partition() is True
 
+    def test_cold_so3_rotated_and_mm_scaled_stl_ingestion(self, blind_corpus_manifest, tmp_path):
+        """
+        Verify that an unseen binary .STL rotated by an arbitrary 3D rotation matrix R in SO(3),
+        scaled to millimeter units (85x), and translated off-origin is automatically aligned in SO(3),
+        normalized, feature-recognized, and passes all 8/8 reference-free intrinsic laws.
+        """
+        src_mesh = load_blind_cad_file(blind_corpus_manifest[1]["stl_path"])  # twin-clevis bellcrank
+        # Build non-trivial 3D Euler rotation matrix R in SO(3) (33 deg X, -27 deg Y, 41 deg Z)
+        ax, ay, az = np.deg2rad(33.0), np.deg2rad(-27.0), np.deg2rad(41.0)
+        Rx = np.array([[1.0, 0.0, 0.0], [0.0, np.cos(ax), -np.sin(ax)], [0.0, np.sin(ax), np.cos(ax)]])
+        Ry = np.array([[np.cos(ay), 0.0, np.sin(ay)], [0.0, 1.0, 0.0], [-np.sin(ay), 0.0, np.cos(ay)]])
+        Rz = np.array([[np.cos(az), -np.sin(az), 0.0], [np.sin(az), np.cos(az), 0.0], [0.0, 0.0, 1.0]])
+        R_so3 = Rz @ Ry @ Rx
+        assert np.isclose(np.linalg.det(R_so3), 1.0)
+
+        verts_mm = (src_mesh.vertices.astype(np.float64) @ R_so3.T) * 85.0 + np.array([120.0, -75.0, 210.0])
+        anon_stl = tmp_path / "arbitrary_rotated_mm_part.stl"
+        export_binary_stl(verts_mm.astype(np.float32), src_mesh.faces, file_path=anon_stl)
+
+        res_rot = run_blind_cad_part_benchmark(
+            anon_stl, grid_shape=(24, 18, 18), v_budget=0.25, max_iters=14, export_dir=tmp_path / "rot_stages"
+        )
+        assert len(res_rot.features.bores) == 3
+        assert len(res_rot.features.bosses) == 3
+        assert res_rot.features.to_partition().validate_partition() is True
+        assert res_rot.intrinsic_audit["all_passed"] is True, f"Rotated mm STL failed laws: {res_rot.intrinsic_audit['laws']}"
+        assert res_rot.intrinsic_audit["gates_passed"] == 8
+
 
 class TestReferenceFree8IntrinsicLaws:
     """Verify all 8 Reference-Free Intrinsic Physical, Geometric & Topological Laws across all 5 blind CAD parts."""
@@ -184,13 +212,16 @@ class TestReferenceFree8IntrinsicLaws:
             assert law1["eta_simp_uniform"] > 5.0
 
     def test_law_2_bore_clearance_survival_100_percent(self, corpus_results):
-        """Law 2: 100.0% bore clearance survival (0 intruding voxels or triangles across Stages 2, 3, 4)."""
+        """Law 2: 100.0% bore clearance survival (0 intruding voxels or triangles across all 4 stages)."""
         for res in corpus_results:
             law2 = res.intrinsic_audit["laws"]["2_bore_clearance_survival_pct"]
             assert law2["passed"] is True
             assert law2["bore_clearance_survival_pct"] == 100.0
             assert law2["intruding_voxels_total"] == 0
             assert law2["intruding_triangles_total"] == 0
+            for st_key in ("stage_1", "stage_2", "stage_3", "stage_4"):
+                assert law2["intruding_voxels_by_stage"][st_key] == 0
+                assert law2["intruding_triangles_by_stage"][st_key] == 0
 
     def test_law_3_boss_datum_retention_99_percent(self, corpus_results):
         """Law 3: Mounting boss collar retention >= 99.0% and 0.000 datum erosion."""
@@ -223,7 +254,9 @@ class TestReferenceFree8IntrinsicLaws:
             assert law6["passed"] is True
             assert law6["is_monotonic"] is True
             vols = law6["stage_volume_fractions"]
+            div_vols = law6["stage_divergence_volumes"]
             assert vols[0] > vols[1] > vols[2] > vols[3]
+            assert div_vols[0] > div_vols[1] > div_vols[2] > div_vols[3]
             assert law6["stage4_volume_error"] <= 0.015
 
     def test_law_7_intrinsic_voxel_quality(self, corpus_results):

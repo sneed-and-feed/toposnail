@@ -404,98 +404,6 @@ def _fallback_load_blind_cad_mesh(file_path: Union[str, Path]) -> BlindCADLoaded
     )
 
 
-# Canonical 5-part Blind CAD Corpus Specifications (for fallback generation & feature verification)
-DEFAULT_BLIND_CORPUS_SPECS: Dict[str, Dict[str, Any]] = {
-    "blind_01_bellcrank_pivot_lever": {
-        "title": "01 Bellcrank Pivot Lever Stock",
-        "bounds": ((-0.92, 0.92), (-0.62, 0.62), (-0.72, 0.72)),
-        "v_budget": 0.25,
-        "bores": [
-            {"bore_id": "bore_anchor_upper", "center": (-0.86, -0.42, 0.48), "axis": (1.0, 0.0, 0.0), "radius": 0.060, "length": 0.30, "role": "anchor_bore"},
-            {"bore_id": "bore_anchor_lower", "center": (-0.86, 0.42, -0.48), "axis": (1.0, 0.0, 0.0), "radius": 0.060, "length": 0.30, "role": "anchor_bore"},
-            {"bore_id": "bore_load_clevis", "center": (0.86, 0.0, 0.0), "axis": (0.0, 1.0, 0.0), "radius": 0.065, "length": 0.30, "role": "load_pin_bore"},
-        ],
-        "bosses": [
-            {"boss_id": "boss_anchor_upper", "center": (-0.86, -0.42, 0.48), "axis": (1.0, 0.0, 0.0), "r_inner": 0.060, "r_outer": 0.130, "length": 0.12, "role": "support_boss"},
-            {"boss_id": "boss_anchor_lower", "center": (-0.86, 0.42, -0.48), "axis": (1.0, 0.0, 0.0), "r_inner": 0.060, "r_outer": 0.130, "length": 0.12, "role": "support_boss"},
-            {"boss_id": "boss_load_clevis", "center": (0.86, 0.0, 0.0), "axis": (0.0, 1.0, 0.0), "r_inner": 0.065, "r_outer": 0.140, "length": 0.18, "role": "load_boss"},
-        ],
-    },
-    "blind_02_pillow_block_bearing_housing": {
-        "title": "02 Pillow-Block Bearing Housing",
-        "bounds": ((-0.82, 0.82), (-0.68, 0.68), (-0.78, 0.78)),
-        "v_budget": 0.25,
-        "bores": [
-            {"bore_id": "bore_bolt_fl", "center": (-0.56, -0.48, -0.74), "axis": (0.0, 0.0, 1.0), "radius": 0.068, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_bolt_fr", "center": (0.56, -0.48, -0.74), "axis": (0.0, 0.0, 1.0), "radius": 0.068, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_bolt_bl", "center": (-0.56, 0.48, -0.74), "axis": (0.0, 0.0, 1.0), "radius": 0.068, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_bolt_br", "center": (0.56, 0.48, -0.74), "axis": (0.0, 0.0, 1.0), "radius": 0.068, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_journal_shaft", "center": (0.0, 0.0, 0.72), "axis": (0.0, 1.0, 0.0), "radius": 0.088, "length": 0.32, "role": "load_pin_bore"},
-        ],
-        "bosses": [
-            {"boss_id": "boss_bolt_fl", "center": (-0.56, -0.48, -0.74), "axis": (0.0, 0.0, 1.0), "r_inner": 0.068, "r_outer": 0.145, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_bolt_fr", "center": (0.56, -0.48, -0.74), "axis": (0.0, 0.0, 1.0), "r_inner": 0.068, "r_outer": 0.145, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_bolt_bl", "center": (-0.56, 0.48, -0.74), "axis": (0.0, 0.0, 1.0), "r_inner": 0.068, "r_outer": 0.145, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_bolt_br", "center": (0.56, 0.48, -0.74), "axis": (0.0, 0.0, 1.0), "r_inner": 0.068, "r_outer": 0.145, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_journal_collar", "center": (0.0, 0.0, 0.72), "axis": (0.0, 1.0, 0.0), "r_inner": 0.088, "r_outer": 0.175, "length": 0.20, "role": "load_boss"},
-        ],
-    },
-    "blind_03_clevis_fork_yoke_mount": {
-        "title": "03 Clevis Fork Yoke Mount",
-        "bounds": ((-0.75, 0.75), (-0.65, 0.65), (-0.88, 0.88)),
-        "v_budget": 0.25,
-        "bores": [
-            {"bore_id": "bore_base_left", "center": (-0.46, 0.0, -0.82), "axis": (0.0, 0.0, 1.0), "radius": 0.066, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_base_right", "center": (0.46, 0.0, -0.82), "axis": (0.0, 0.0, 1.0), "radius": 0.066, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_clevis_ear_neg", "center": (0.0, -0.34, 0.82), "axis": (0.0, 1.0, 0.0), "radius": 0.072, "length": 0.24, "role": "load_pin_bore"},
-            {"bore_id": "bore_clevis_ear_pos", "center": (0.0, 0.34, 0.82), "axis": (0.0, 1.0, 0.0), "radius": 0.072, "length": 0.24, "role": "load_pin_bore"},
-        ],
-        "bosses": [
-            {"boss_id": "boss_base_left", "center": (-0.46, 0.0, -0.82), "axis": (0.0, 0.0, 1.0), "r_inner": 0.066, "r_outer": 0.145, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_base_right", "center": (0.46, 0.0, -0.82), "axis": (0.0, 0.0, 1.0), "r_inner": 0.066, "r_outer": 0.145, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_clevis_ear_neg", "center": (0.0, -0.34, 0.82), "axis": (0.0, 1.0, 0.0), "r_inner": 0.072, "r_outer": 0.150, "length": 0.14, "role": "load_boss"},
-            {"boss_id": "boss_clevis_ear_pos", "center": (0.0, 0.34, 0.82), "axis": (0.0, 1.0, 0.0), "r_inner": 0.072, "r_outer": 0.150, "length": 0.14, "role": "load_boss"},
-        ],
-    },
-    "blind_04_tri_flange_servo_bulkhead": {
-        "title": "04 Tri-Flange Servo Bulkhead",
-        "bounds": ((-0.80, 0.80), (-0.80, 0.80), (-0.85, 0.85)),
-        "v_budget": 0.25,
-        "bores": [
-            {"bore_id": "bore_flange_1", "center": (0.58, 0.0, -0.78), "axis": (0.0, 0.0, 1.0), "radius": 0.064, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_flange_2", "center": (-0.50, 0.50, -0.78), "axis": (0.0, 0.0, 1.0), "radius": 0.064, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_flange_3", "center": (-0.50, -0.50, -0.78), "axis": (0.0, 0.0, 1.0), "radius": 0.064, "length": 0.28, "role": "anchor_bore"},
-            {"bore_id": "bore_servo_spindle", "center": (0.0, 0.0, 0.78), "axis": (0.0, 0.0, 1.0), "radius": 0.095, "length": 0.28, "role": "load_pin_bore"},
-        ],
-        "bosses": [
-            {"boss_id": "boss_flange_1", "center": (0.58, 0.0, -0.78), "axis": (0.0, 0.0, 1.0), "r_inner": 0.064, "r_outer": 0.140, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_flange_2", "center": (-0.50, 0.50, -0.78), "axis": (0.0, 0.0, 1.0), "r_inner": 0.064, "r_outer": 0.140, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_flange_3", "center": (-0.50, -0.50, -0.78), "axis": (0.0, 0.0, 1.0), "r_inner": 0.064, "r_outer": 0.140, "length": 0.14, "role": "support_boss"},
-            {"boss_id": "boss_servo_spindle", "center": (0.0, 0.0, 0.78), "axis": (0.0, 0.0, 1.0), "r_inner": 0.095, "r_outer": 0.195, "length": 0.16, "role": "load_boss"},
-        ],
-    },
-    "blind_05_portal_gantry_bridge_block": {
-        "title": "05 Portal Gantry Bridge Block",
-        "bounds": ((-0.96, 0.96), (-0.54, 0.54), (-0.66, 0.66)),
-        "v_budget": 0.25,
-        "bores": [
-            {"bore_id": "bore_pier_fl", "center": (-0.76, -0.34, -0.60), "axis": (0.0, 0.0, 1.0), "radius": 0.058, "length": 0.26, "role": "anchor_bore"},
-            {"bore_id": "bore_pier_fr", "center": (0.76, -0.34, -0.60), "axis": (0.0, 0.0, 1.0), "radius": 0.058, "length": 0.26, "role": "anchor_bore"},
-            {"bore_id": "bore_pier_bl", "center": (-0.76, 0.34, -0.60), "axis": (0.0, 0.0, 1.0), "radius": 0.058, "length": 0.26, "role": "anchor_bore"},
-            {"bore_id": "bore_pier_br", "center": (0.76, 0.34, -0.60), "axis": (0.0, 0.0, 1.0), "radius": 0.058, "length": 0.26, "role": "anchor_bore"},
-            {"bore_id": "bore_crown_pin", "center": (0.0, 0.0, 0.60), "axis": (0.0, 1.0, 0.0), "radius": 0.068, "length": 0.28, "role": "load_pin_bore"},
-        ],
-        "bosses": [
-            {"boss_id": "boss_pier_fl", "center": (-0.76, -0.34, -0.60), "axis": (0.0, 0.0, 1.0), "r_inner": 0.058, "r_outer": 0.130, "length": 0.12, "role": "support_boss"},
-            {"boss_id": "boss_pier_fr", "center": (0.76, -0.34, -0.60), "axis": (0.0, 0.0, 1.0), "r_inner": 0.058, "r_outer": 0.130, "length": 0.12, "role": "support_boss"},
-            {"boss_id": "boss_pier_bl", "center": (-0.76, 0.34, -0.60), "axis": (0.0, 0.0, 1.0), "r_inner": 0.058, "r_outer": 0.130, "length": 0.12, "role": "support_boss"},
-            {"boss_id": "boss_pier_br", "center": (0.76, 0.34, -0.60), "axis": (0.0, 0.0, 1.0), "r_inner": 0.058, "r_outer": 0.130, "length": 0.12, "role": "support_boss"},
-            {"boss_id": "boss_crown_pin", "center": (0.0, 0.0, 0.60), "axis": (0.0, 1.0, 0.0), "r_inner": 0.068, "r_outer": 0.145, "length": 0.16, "role": "load_boss"},
-        ],
-    },
-}
-
-
 def _build_stitched_fenestrated_box_hull(
     verts: List[List[float]],
     faces: List[List[int]],
@@ -680,143 +588,36 @@ def _build_stitched_fenestrated_box_hull(
         normals[idx][2] /= nl
 
 
-def _build_watertight_cad_stock_mesh(
-    bounds: Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
-    bosses: Sequence[DetectedBoss],
-    bores: Sequence[DetectedBore],
-    stress_field: Optional[np.ndarray] = None,
-    taper_x: float = 0.0,
-    waist_y: float = 0.0,
-    fenestration_rings: int = 0,
-    n_hull: int = 24,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """
-    Build a 100% watertight 2-manifold mesh (boundary_edges == 0, non_manifold_edges == 0,
-    degenerate_faces == 0, min_dot > 0.05) representing the CAD stock or progressive stage
-    with preserved annular mounting bosses and unobstructed keep-out bores.
-    """
-    verts: List[List[float]] = []
-    faces: List[List[int]] = []
-    colors: List[List[float]] = []
-    normals: List[List[float]] = []
-
-    (xmin, xmax), (ymin, ymax), (zmin, zmax) = bounds
-
-    # 1. Main structural hull inset inside the perimeter mounting boss flanges so it never
-    #    intrudes into any cylindrical bore clearance (bore_clearance_survival_pct == 100.0%).
-    num_tunnels = max(1, len(bores)) + int(fenestration_rings) * 2
-    _build_stitched_fenestrated_box_hull(
-        verts, faces, colors, normals,
-        x0=xmin + 0.16, x1=xmax - 0.16,
-        y0=ymin + 0.10, y1=ymax - 0.10,
-        z0=zmin + 0.16, z1=zmax - 0.16,
-        stress_field=stress_field,
-        bounds=bounds,
-        n=n_hull,
-        taper_x=taper_x,
-        waist_y=waist_y,
-        num_tunnels=num_tunnels,
-    )
-
-    # 2. Add precision machined annular mounting bosses (each is a genus-1 watertight torus)
-    for b_idx, boss in enumerate(bosses):
-        s_out = 0.72 if taper_x == 0.0 else (0.55 if boss.role == "support_boss" else 0.82)
-        s_bore = 0.92 if boss.role == "load_boss" else 0.78
-        _add_annular_boss(
-            verts, faces, colors, normals,
-            center=boss.center,
-            axis=boss.axis,
-            r_inner=max(0.025, float(boss.r_inner) * 1.04),
-            r_outer=max(float(boss.r_inner) * 1.38, float(boss.r_outer)),
-            length=max(0.08, float(boss.length)),
-            stress_outer=s_out,
-            stress_bore=s_bore,
-            n_sides=24,
-        )
-
-    v_arr = np.asarray(verts, dtype=np.float32)
-    f_arr = np.asarray(faces, dtype=np.int32)
-    c_arr = np.asarray(colors, dtype=np.float32)
-    vn_unit = np.asarray(normals, dtype=np.float32)
-
-    # Compute exact outward face normals
-    v0 = v_arr[f_arr[:, 0]].astype(np.float64)
-    v1 = v_arr[f_arr[:, 1]].astype(np.float64)
-    v2 = v_arr[f_arr[:, 2]].astype(np.float64)
-    fn_raw = np.cross(v1 - v0, v2 - v0)
-    areas = 0.5 * np.linalg.norm(fn_raw, axis=1)
-    valid = areas > 1e-12
-    fn_unit = np.zeros_like(fn_raw, dtype=np.float32)
-    fn_unit[valid] = (fn_raw[valid] / (2.0 * areas[valid, None])).astype(np.float32)
-
-    return v_arr, f_arr, fn_unit, vn_unit, c_arr
-
-
 def _fallback_generate_blind_cad_corpus(
     output_dir: Union[str, Path] = "results/blind_cad_inputs",
 ) -> List[Dict[str, Any]]:
     """
     Generate the 5-part unseen blind CAD corpus (.STL and .OBJ files) on disk,
-    delegating to `toposnail.blind_cad_corpus.generate_blind_cad_corpus` when available.
+    delegating to `toposnail.blind_cad_corpus.generate_blind_cad_corpus`.
     """
     out_path = Path(output_dir)
     out_path.mkdir(parents=True, exist_ok=True)
-    try:
-        from toposnail.blind_cad_corpus import (
-            BLIND_CAD_CORPUS_SPECS,
-            BLIND_CAD_PART_NAMES,
-            generate_blind_cad_corpus as _gen_corpus,
-        )
-        raw_manifest = _gen_corpus(out_path)
-        manifest_list: List[Dict[str, Any]] = []
-        for pid in BLIND_CAD_PART_NAMES:
-            if pid in raw_manifest:
-                item = raw_manifest[pid]
-                spec = BLIND_CAD_CORPUS_SPECS.get(pid, {})
-                manifest_list.append({
-                    "part_id": pid,
-                    "title": str(item.get("title", pid)),
-                    "stl_path": str(Path(item["stl_path"]).resolve()),
-                    "obj_path": str(Path(item["obj_path"]).resolve()),
-                    "v_budget": float(spec.get("v_budget", 0.25)),
-                    "num_bores": int(spec.get("expected_bores", 3)),
-                    "num_bosses": int(spec.get("expected_bores", 3)),
-                })
-        if len(manifest_list) == 5:
-            return manifest_list
-    except Exception:
-        pass
-
-    manifest: List[Dict[str, Any]] = []
-    for part_id, spec in DEFAULT_BLIND_CORPUS_SPECS.items():
-        bounds = spec["bounds"]
-        bores = [DetectedBore(**b) for b in spec["bores"]]
-        bosses = [DetectedBoss(**b) for b in spec["bosses"]]
-        v_arr, f_arr, fn_arr, vn_arr, c_arr = _build_watertight_cad_stock_mesh(
-            bounds=bounds,
-            bosses=bosses,
-            bores=bores,
-            stress_field=None,
-            taper_x=0.0,
-            waist_y=0.0,
-            fenestration_rings=0,
-            n_hull=24,
-        )
-        stl_path = out_path / f"{part_id}.stl"
-        obj_path = out_path / f"{part_id}.obj"
-        export_binary_stl(v_arr, f_arr, file_path=stl_path)
-        export_obj_mesh(v_arr, f_arr, vertex_colors=c_arr, file_path=obj_path)
-        manifest.append({
-            "part_id": part_id,
-            "title": spec["title"],
-            "stl_path": str(stl_path.resolve()),
-            "obj_path": str(obj_path.resolve()),
-            "v_budget": float(spec["v_budget"]),
-            "num_bores": len(bores),
-            "num_bosses": len(bosses),
-        })
-
-    return manifest
+    from toposnail.blind_cad_corpus import (
+        BLIND_CAD_CORPUS_SPECS,
+        BLIND_CAD_PART_NAMES,
+        generate_blind_cad_corpus as _gen_corpus,
+    )
+    raw_manifest = _gen_corpus(out_path)
+    manifest_list: List[Dict[str, Any]] = []
+    for pid in BLIND_CAD_PART_NAMES:
+        if pid in raw_manifest:
+            item = raw_manifest[pid]
+            spec = BLIND_CAD_CORPUS_SPECS.get(pid, {})
+            manifest_list.append({
+                "part_id": pid,
+                "title": str(item.get("title", pid)),
+                "stl_path": str(Path(item["stl_path"]).resolve()),
+                "obj_path": str(Path(item["obj_path"]).resolve()),
+                "v_budget": float(spec.get("v_budget", 0.25)),
+                "num_bores": int(spec.get("expected_bores", 3)),
+                "num_bosses": int(spec.get("expected_bores", 3)),
+            })
+    return manifest_list
 
 
 def _fallback_recognize_blind_cad_features(
@@ -837,20 +638,10 @@ def _fallback_recognize_blind_cad_features(
     bounds = mesh.bounds
     (xmin, xmax), (ymin, ymax), (zmin, zmax) = bounds
 
-    # Check if part matches a known blind corpus signature or extract purely geometrically from mesh
-    matched_spec = None
-    for spec_id, spec in DEFAULT_BLIND_CORPUS_SPECS.items():
-        if spec_id in mesh.part_id or mesh.part_id in spec_id:
-            matched_spec = spec
-            break
-
     bores: List[DetectedBore] = []
     bosses: List[DetectedBoss] = []
 
-    if matched_spec is not None:
-        bores = [DetectedBore(**b) for b in matched_spec["bores"]]
-        bosses = [DetectedBoss(**b) for b in matched_spec["bosses"]]
-    else:
+    if True:
         # Purely geometric concave-normal / bounding-extent bore & boss detector for arbitrary unseen CAD files
         verts = mesh.vertices
         vn = mesh.vertex_normals
@@ -2595,7 +2386,12 @@ def _extract_progressive_blind_cad_stage_mesh(
     # Stage 1: Preserve authentic cold-loaded .STL/.OBJ CAD stock mesh when 2-manifold
     # -------------------------------------------------------------------------
     if st_num == 1 and len(mesh.vertices) > 0 and len(mesh.faces) > 0:
-        v_s1 = np.asarray(mesh.vertices, dtype=np.float64).copy()
+        v_src = (
+            features.vertices_norm
+            if (features.vertices_norm is not None and len(features.vertices_norm) == len(mesh.vertices))
+            else mesh.vertices
+        )
+        v_s1 = np.asarray(v_src, dtype=np.float64).copy()
         f_s1 = np.asarray(mesh.faces, dtype=np.int32).copy()
         vn_s1 = compute_vertex_normals(v_s1, f_s1)
         aud_s1 = audit_mesh_2manifold(v_s1, f_s1, vn_s1)
@@ -3518,8 +3314,7 @@ def evaluate_bore_clearance_survival(
         # 1. Voxel check on Omega_KOZ
         v_intr = int(np.sum(st.rho_field[features.koz_mask] >= 0.50))
         intruding_voxels_per_stage[f"stage_{st.stage_num}"] = v_intr
-        if st.stage_num in (2, 3, 4):
-            total_intruding_voxels += v_intr
+        total_intruding_voxels += v_intr
 
         # 2. Triangle centroid / vertex cylindrical ray check across all detected bores
         verts = np.asarray(st.vertices, dtype=np.float64)
@@ -3540,10 +3335,9 @@ def evaluate_bore_clearance_survival(
             t_intr += int(np.sum(inside))
 
         intruding_triangles_per_stage[f"stage_{st.stage_num}"] = t_intr
-        if st.stage_num in (2, 3, 4):
-            total_intruding_triangles += t_intr
+        total_intruding_triangles += t_intr
 
-    koz_count = max(1, int(np.sum(features.koz_mask)) * 3)
+    koz_count = max(1, int(np.sum(features.koz_mask)) * 4)
     survival_pct = max(0.0, 100.0 * (1.0 - float(total_intruding_voxels + total_intruding_triangles) / float(koz_count)))
     passed = bool(survival_pct == 100.0 and total_intruding_voxels == 0 and total_intruding_triangles == 0)
 
@@ -3657,14 +3451,16 @@ def evaluate_strict_4stage_volume_monotonicity(
 ) -> Dict[str, Any]:
     """
     Law 6: `strict_4stage_volume_monotonicity` (V_S1 > V_S2 > V_S3 > V_S4).
-    Verifies monotonic mass removal across Stages 1 -> 2 -> 3 -> 4 and relative Stage 4
+    Verifies monotonic mass removal across Stages 1 -> 2 -> 3 -> 4 for both voxel
+    volume fractions and closed-mesh divergence-theorem volumes, plus relative Stage 4
     target volume accuracy |V_S4 / V_S1 - V_target| <= 0.015.
     """
     vols = [float(s.volume_fraction) for s in stages]
     div_vols = [float(s.metrics.get("divergence_volume", compute_mesh_divergence_volume(s.vertices, s.faces))) for s in stages]
 
     v_s1, v_s2, v_s3, v_s4 = vols[0], vols[1], vols[2], vols[3]
-    is_monotonic = bool(v_s1 > v_s2 > v_s3 > v_s4)
+    dv_s1, dv_s2, dv_s3, dv_s4 = div_vols[0], div_vols[1], div_vols[2], div_vols[3]
+    is_monotonic = bool((v_s1 > v_s2 > v_s3 > v_s4) and (dv_s1 > dv_s2 > dv_s3 > dv_s4))
     rel_s4 = v_s4 / max(1e-8, v_s1)
     vol_error = abs(rel_s4 - float(v_target))
     passed = bool(is_monotonic and vol_error <= 0.015)

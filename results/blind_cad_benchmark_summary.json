@@ -2,7 +2,7 @@
   "benchmark_suite": "TopoSnail Reference-Free Blind CAD Ingestion & Intrinsic Physics/Manifold Benchmark",
   "reference_free": true,
   "zero_example_model_used": true,
-  "timestamp": "2026-10-23T23:22:57Z",
+  "timestamp": "2026-10-23T23:51:26Z",
   "grid_shape": [
     32,
     24,
@@ -13,7 +13,7 @@
   "toposnail_parts_passed_8_of_8": 5,
   "toposnail_pass_rate_pct": 100.0,
   "all_passed": true,
-  "elapsed_sec": 39.364,
+  "elapsed_sec": 42.895,
   "solver_aggregates": {
     "TopoSnail": {
       "solver": "TopoSnail",
@@ -29,10 +29,10 @@
     "UnfilteredSIMP": {
       "solver": "UnfilteredSIMP",
       "num_parts": 5,
-      "mean_eta_stiff": 2.9458,
+      "mean_eta_stiff": 2.9459,
       "mean_crispness_pct": 56.58,
       "mean_checkerboard_pct": 14.8,
-      "total_trapped_beta2": 13394,
+      "total_trapped_beta2": 13396,
       "all_watertight_2manifold": false,
       "mean_gates_passed": 6.0,
       "all_parts_passed_8_of_8": false
@@ -65,7 +65,7 @@
       "part_id": "blind_01_asymmetric_l_bracket",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_01_asymmetric_l_bracket.stl",
       "file_format": "STL",
-      "elapsed_sec": 7.885,
+      "elapsed_sec": 8.744,
       "input_mesh_stats": {
         "vertices": 3708,
         "faces": 7424,
@@ -425,7 +425,7 @@
       "part_id": "blind_02_three_ear_bellcrank",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_02_three_ear_bellcrank.stl",
       "file_format": "STL",
-      "elapsed_sec": 7.959,
+      "elapsed_sec": 8.703,
       "input_mesh_stats": {
         "vertices": 2326,
         "faces": 4660,
@@ -785,7 +785,7 @@
       "part_id": "blind_03_flanged_torque_arm",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_03_flanged_torque_arm.stl",
       "file_format": "STL",
-      "elapsed_sec": 7.576,
+      "elapsed_sec": 8.183,
       "input_mesh_stats": {
         "vertices": 3240,
         "faces": 6488,
@@ -967,7 +967,7 @@
               0.25
             ],
             "stage_divergence_volumes": [
-              0.326869,
+              0.316438,
               0.188889,
               0.15593,
               0.151728
@@ -999,10 +999,10 @@
                 "boundary_edges": 0,
                 "non_manifold_edges": 0,
                 "degenerate_faces": 0,
-                "min_area": 1.8931721545175646e-06,
-                "min_dot": 0.3347574258953565,
+                "min_area": 1.8526808480770764e-06,
+                "min_dot": 0.33475772695134554,
                 "is_manifold_2d": true,
-                "divergence_volume": 0.326869,
+                "divergence_volume": 0.316438,
                 "stl_bytes": 324484,
                 "stl_binary_valid": true,
                 "passed": true
@@ -1145,7 +1145,7 @@
       "part_id": "blind_04_twin_bore_pillow_block",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_04_twin_bore_pillow_block.stl",
       "file_format": "STL",
-      "elapsed_sec": 7.696,
+      "elapsed_sec": 8.41,
       "input_mesh_stats": {
         "vertices": 2438,
         "faces": 4884,
@@ -1505,11 +1505,11 @@
       "part_id": "blind_05_tri_mount_bulkhead_yoke",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_05_tri_mount_bulkhead_yoke.stl",
       "file_format": "STL",
-      "elapsed_sec": 8.248,
+      "elapsed_sec": 8.854,
       "input_mesh_stats": {
         "vertices": 2934,
         "faces": 5880,
-        "divergence_volume": 0.649258,
+        "divergence_volume": 0.628469,
         "genus_beta1": 4
       },
       "recognized_features": {
@@ -1519,9 +1519,9 @@
           {
             "bore_id": "bore_0_Y",
             "center": [
+              -0.0001,
               0.0,
-              0.0,
-              0.56
+              0.5606
             ],
             "axis": [
               0.0,
@@ -1535,9 +1535,9 @@
           {
             "bore_id": "bore_1_Z",
             "center": [
-              -0.2802,
+              -0.28,
               -0.4849,
-              -0.5842
+              -0.5915
             ],
             "axis": [
               0.0,
@@ -1545,15 +1545,15 @@
               1.0
             ],
             "radius": 0.1196,
-            "length": 0.35839999999999994,
+            "length": 0.3438,
             "role": "anchor_bore"
           },
           {
             "bore_id": "bore_2_Z",
             "center": [
-              -0.2802,
+              -0.28,
               0.4849,
-              -0.5842
+              -0.5915
             ],
             "axis": [
               0.0,
@@ -1561,7 +1561,7 @@
               1.0
             ],
             "radius": 0.1196,
-            "length": 0.35839999999999994,
+            "length": 0.3438,
             "role": "anchor_bore"
           },
           {
@@ -1585,9 +1585,9 @@
           {
             "boss_id": "boss_0_Y",
             "center": [
+              -0.0001,
               0.0,
-              0.0,
-              0.56
+              0.5606
             ],
             "axis": [
               0.0,
@@ -1602,9 +1602,9 @@
           {
             "boss_id": "boss_1_Z",
             "center": [
-              -0.2802,
+              -0.28,
               -0.4849,
-              -0.5842
+              -0.5915
             ],
             "axis": [
               0.0,
@@ -1613,15 +1613,15 @@
             ],
             "r_inner": 0.1196,
             "r_outer": 0.1734,
-            "length": 0.35839999999999994,
+            "length": 0.3438,
             "role": "support_boss"
           },
           {
             "boss_id": "boss_2_Z",
             "center": [
-              -0.2802,
+              -0.28,
               0.4849,
-              -0.5842
+              -0.5915
             ],
             "axis": [
               0.0,
@@ -1630,7 +1630,7 @@
             ],
             "r_inner": 0.1196,
             "r_outer": 0.1734,
-            "length": 0.35839999999999994,
+            "length": 0.3438,
             "role": "support_boss"
           },
           {
@@ -1685,7 +1685,7 @@
               "stage_4": 0
             },
             "intruding_triangles_by_stage": {
-              "stage_1": 115,
+              "stage_1": 0,
               "stage_2": 0,
               "stage_3": 0,
               "stage_4": 0
@@ -1720,10 +1720,10 @@
               0.2499
             ],
             "stage_divergence_volumes": [
-              0.649258,
-              0.395867,
-              0.272885,
-              0.240154
+              0.628469,
+              0.392565,
+              0.271113,
+              0.238237
             ],
             "v_target": 0.25,
             "v_s4_over_v_s1": 0.2499,
@@ -1753,9 +1753,9 @@
                 "non_manifold_edges": 0,
                 "degenerate_faces": 0,
                 "min_area": 1.8931620777621201e-06,
-                "min_dot": 0.512065050573176,
+                "min_dot": 0.5233735253707735,
                 "is_manifold_2d": true,
-                "divergence_volume": 0.649258,
+                "divergence_volume": 0.628469,
                 "stl_bytes": 294084,
                 "stl_binary_valid": true,
                 "passed": true
@@ -1772,7 +1772,7 @@
                 "min_area": 4.999871254796062e-07,
                 "min_dot": 0.738834117602772,
                 "is_manifold_2d": true,
-                "divergence_volume": 0.395867,
+                "divergence_volume": 0.392565,
                 "stl_bytes": 886084,
                 "stl_binary_valid": true,
                 "passed": true
@@ -1789,7 +1789,7 @@
                 "min_area": 3.673292692241148e-07,
                 "min_dot": 0.738834117602772,
                 "is_manifold_2d": true,
-                "divergence_volume": 0.272885,
+                "divergence_volume": 0.271113,
                 "stl_bytes": 1333084,
                 "stl_binary_valid": true,
                 "passed": true
@@ -1804,9 +1804,9 @@
                 "non_manifold_edges": 0,
                 "degenerate_faces": 0,
                 "min_area": 2.8123717021877326e-07,
-                "min_dot": 0.7163997353980279,
+                "min_dot": 0.7162876059594687,
                 "is_manifold_2d": true,
-                "divergence_volume": 0.240154,
+                "divergence_volume": 0.238237,
                 "stl_bytes": 2023084,
                 "stl_binary_valid": true,
                 "passed": true
@@ -1837,14 +1837,14 @@
         },
         "UnfilteredSIMP": {
           "solver": "UnfilteredSIMP",
-          "eta_stiff": 2.8864,
+          "eta_stiff": 2.8866,
           "bore_clearance_survival_pct": 100.0,
           "boss_datum_retention_pct": 100.0,
           "beta_0": 1,
           "load_to_support_connected": true,
           "r_eq": 0.00239,
           "volume_monotonic": true,
-          "trapped_beta2_cavities": 3270,
+          "trapped_beta2_cavities": 3272,
           "checkerboard_pct": 14.8,
           "crispness_pct": 56.27,
           "is_watertight_2manifold": false,
@@ -1856,7 +1856,7 @@
         },
         "GaussianFilteredSIMP": {
           "solver": "GaussianFilteredSIMP",
-          "eta_stiff": 3.6343,
+          "eta_stiff": 3.6345,
           "bore_clearance_survival_pct": 100.0,
           "boss_datum_retention_pct": 100.0,
           "beta_0": 1,

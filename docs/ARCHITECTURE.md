@@ -289,8 +289,8 @@ V_{\mathrm{S1}} > V_{\mathrm{S2}} > V_{\mathrm{S3}} > V_{\mathrm{S4}}
 
 `toposnail/blind_cad_corpus.py` and `toposnail/blind_cad_benchmark.py` extend the 4-stage pipeline to arbitrary cold-loaded binary `.STL` and `.OBJ` mechanical brackets with zero metadata or filename hints:
 
-1. **Vectorized 3-Axis Ray-Parity Voxelizer & Sub-Voxel SDF Extraction**:
-   Cold-loaded triangle meshes are voxelized via majority-voted $(X, Y, Z)$ ray-casting parity (`_voxelize_mesh_single_axis`) and Euclidean distance transforms (`scipy.ndimage.distance_transform_edt`) to construct a smooth Stage 1 Signed Distance Field $\phi_{\mathrm{S1}}(\mathbf x)$ while keeping the core hexahedral EBE solver strictly inside the $< 1.50\text{ MB}$ `TopoStateArena` (`chunk_z = 16` L2/L3 SRAM cache-resident $Z$-slabs).
+1. **SO(3) Principal Datum Alignment, Vectorized 3-Axis Ray-Parity Voxelizer & Sub-Voxel SDF Extraction**:
+   Cold-loaded triangle meshes at arbitrary scale or 3D orientation are aligned to their principal orthogonal datum frame in $\mathrm{SO}(3)$ (`_estimate_so3_principal_datum_frame`), normalized into $[-0.92, 0.92]^3$, and voxelized via majority-voted $(X, Y, Z)$ ray-casting parity (`_voxelize_mesh_single_axis`) and Euclidean distance transforms (`scipy.ndimage.distance_transform_edt`) to construct a smooth Stage 1 Signed Distance Field $\phi_{\mathrm{S1}}(\mathbf x)$ while keeping the core hexahedral EBE solver strictly inside the $< 1.50\text{ MB}$ `TopoStateArena` (`chunk_z = 16` L2/L3 SRAM cache-resident $Z$-slabs).
 2. **Intrinsic Cylindrical Bore & Coaxial Boss Recognition**:
    Surface face normals are clustered radially with two-pass IRLS modal barrel radius refinement to identify cylindrical through-bores ($\Omega_{\mathrm{KOZ}}$) and coaxial mounting boss collars (`Omega_solid`), automatically partitioning anchors vs. loaded lugs by spatial moment arms.
 3. **Geodesic Boss-Graph & Analytical 2-Manifold Bionic Sculpting**:
