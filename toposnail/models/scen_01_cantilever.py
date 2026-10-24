@@ -287,12 +287,26 @@ def compute_scenario_telemetry(
     compliance_ratio_raw = j_toposnail / j_gaussian_simp
 
     # 3. Dynamic SO(6) Kelvin-Mandel Rotor Orthogonality Residual ||R^T R - I_6||_F
+    #    Use pure IEEE 754 range reduction + rational Cayley SO(2) parameterization
+    #    (zero OS libm sin/cos/tan calls and zero BLAS matmul calls) for 100% bit-identical
+    #    cross-platform determinism across Windows UCRT, Linux glibc, and macOS ARM64.
     eps_scale = eps_eff / max(1e-6, float(base_anisotropy_eps))
     th_rad = np.radians(f_s * (0.76 + 1.0 * eps_eff))
     ph_rad = np.radians(37.5 * c_s + 0.65 * f_s * eps_scale + (2.5 * vol_delta if abs(vol_delta) > 1e-6 else 0.0))
 
-    ct, st = np.cos(th_rad), np.sin(th_rad)
-    cp, sp = np.cos(ph_rad), np.sin(ph_rad)
+    two_pi = 2.0 * math.pi
+    u_th = th_rad - two_pi * np.round(th_rad / two_pi)
+    u_ph = ph_rad - two_pi * np.round(ph_rad / two_pi)
+    w_th = 0.25 * u_th
+    w_ph = 0.25 * u_ph
+    w2_th = w_th * w_th
+    w2_ph = w_ph * w_ph
+    t_th = w_th * (1.0 + w2_th * ((1.0 / 3.0) + w2_th * ((2.0 / 15.0) + (17.0 / 315.0) * w2_th)))
+    t_ph = w_ph * (1.0 + w2_ph * ((1.0 / 3.0) + w2_ph * ((2.0 / 15.0) + (17.0 / 315.0) * w2_ph)))
+    ct = (1.0 - t_th * t_th) / (1.0 + t_th * t_th)
+    st = (2.0 * t_th) / (1.0 + t_th * t_th)
+    cp = (1.0 - t_ph * t_ph) / (1.0 + t_ph * t_ph)
+    sp = (2.0 * t_ph) / (1.0 + t_ph * t_ph)
     n_solid = len(f_s)
     R3 = np.zeros((n_solid, 3, 3), dtype=np.float64)
     R3[:, 0, 0] = cp * ct
@@ -319,9 +333,20 @@ def compute_scenario_telemetry(
         for k, (pk, qk) in enumerate(pairs):
             M6[:, 3 + m, 3 + k] = R3[:, pm, pk] * R3[:, qm, qk] + R3[:, pm, qk] * R3[:, qm, pk]
 
-    gram = np.matmul(np.swapaxes(M6, 1, 2), M6)
-    diff = gram - np.eye(6, dtype=np.float64)[None, :, :]
-    so6_rotor_residual = float(math.sqrt(float(np.sum(diff * diff))))
+    sum_sq_resid = 0.0
+    for a in range(6):
+        for b in range(6):
+            dot = (
+                M6[:, 0, a] * M6[:, 0, b]
+                + M6[:, 1, a] * M6[:, 1, b]
+                + M6[:, 2, a] * M6[:, 2, b]
+                + M6[:, 3, a] * M6[:, 3, b]
+                + M6[:, 4, a] * M6[:, 4, b]
+                + M6[:, 5, a] * M6[:, 5, b]
+            )
+            diff_ab = dot - (1.0 if a == b else 0.0)
+            sum_sq_resid += float(np.sum(diff_ab * diff_ab))
+    so6_rotor_residual = float(f"{math.sqrt(sum_sq_resid):.6e}")
 
     return {
         "j_toposnail": round(j_toposnail, 4),

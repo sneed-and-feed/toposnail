@@ -129,6 +129,23 @@ def _segment_dist_sq(
     return dx * dx + dy * dy + dz * dz
 
 
+def _clean_round(val: float, ndigits: int = 3) -> float:
+    """Round float to ndigits and normalize -0.0 to +0.0 for cross-OS JSON determinism."""
+    r = round(float(val), ndigits)
+    return 0.0 if r == 0.0 else r
+
+
+def _sanitize_neg_zero(obj: Any) -> Any:
+    """Recursively normalize -0.0 to +0.0 across nested dicts and lists."""
+    if isinstance(obj, float):
+        return 0.0 if obj == 0.0 else obj
+    if isinstance(obj, list):
+        return [_sanitize_neg_zero(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _sanitize_neg_zero(v) for k, v in obj.items()}
+    return obj
+
+
 def _encode_field_b64(arr: np.ndarray, min_v: float, max_v: float) -> str:
     """Quantize 3D numpy array to uint8 and return base64 string."""
     norm = np.clip((arr.astype(np.float32) - min_v) / (max_v - min_v + 1e-8) * 255.0, 0, 255).astype(np.uint8)
@@ -212,17 +229,17 @@ def _generate_synthetic_scenario_data(
                 "iter": int(s.get("iter", 0)),
                 "volume_fraction": float(s.get("volume_fraction", 1.0)),
                 "mesh": {
-                    "vertices": [[round(float(c), 3) for c in v] for v in sm.get("vertices", [])],
+                    "vertices": [[_clean_round(c, 3) for c in v] for v in sm.get("vertices", [])],
                     "faces": sm.get("faces", []),
-                    "colors": [[round(float(c), 3) for c in clr] for clr in sm.get("colors", [])],
-                    "normals": [[round(float(c), 3) for c in n] for n in sm.get("normals", [])],
+                    "colors": [[_clean_round(c, 3) for c in clr] for clr in sm.get("colors", [])],
+                    "normals": [[_clean_round(c, 3) for c in n] for n in sm.get("normals", [])],
                 },
-                "rho_2d_slice": s.get("rho_2d_slice", []),
+                "rho_2d_slice": _sanitize_neg_zero(s.get("rho_2d_slice", [])),
             })
     else:
         formatted_stages = _synthesize_python_stages(scenario_id, data)
 
-    return {
+    return _sanitize_neg_zero({
         "scenario_id": scenario_id,
         "name": SCENARIO_DESCRIPTIONS.get(scenario_id, data.get("name", scenario_id)),
         "grid_shape": list(data.get("grid_shape", list(grid_shape))),
@@ -231,10 +248,10 @@ def _generate_synthetic_scenario_data(
         "thermal_delta_t": float(data.get("thermal_delta_t", 0.0)),
         "fields_b64": data.get("fields_b64", {}),
         "mesh": {
-            "vertices": [[round(float(c), 3) for c in v] for v in verts],
+            "vertices": [[_clean_round(c, 3) for c in v] for v in verts],
             "faces": faces,
-            "colors": [[round(float(c), 3) for c in clr] for clr in colors],
-            "normals": [[round(float(c), 3) for c in n] for n in normals],
+            "colors": [[_clean_round(c, 3) for c in clr] for clr in colors],
+            "normals": [[_clean_round(c, 3) for c in n] for n in normals],
         },
         "stages": formatted_stages,
         "supports": data.get("supports", []),
@@ -242,7 +259,7 @@ def _generate_synthetic_scenario_data(
         "baselines": data.get("baselines", _generate_synthetic_baselines(scenario_id)),
         "telemetry": data.get("telemetry", {}),
         "theorems": data.get("theorems", FORMAL_THEOREMS),
-    }
+    })
 
 
 def _synthesize_python_stages(scenario_id: str, data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1581,8 +1598,17 @@ function computeScenarioTelemetry(scen, vBudget, anisotropyEps, thermalDeltaT) {
         const thRad = (fDeg * (0.76 + 1.0 * anisotropyEps)) * (Math.PI / 180.0);
         const phShift = (Math.abs(volDelta) > 1e-6) ? (2.5 * volDelta) : 0.0;
         const phRad = (37.5 * c + 0.65 * fDeg * epsScale + phShift) * (Math.PI / 180.0);
-        const ct = Math.cos(thRad), st = Math.sin(thRad);
-        const cp = Math.cos(phRad), sp = Math.sin(phRad);
+        const twoPi = 2.0 * Math.PI;
+        const uTh = thRad - twoPi * Math.round(thRad / twoPi);
+        const uPh = phRad - twoPi * Math.round(phRad / twoPi);
+        const wTh = 0.25 * uTh, wPh = 0.25 * uPh;
+        const w2Th = wTh * wTh, w2Ph = wPh * wPh;
+        const tTh = wTh * (1.0 + w2Th * ((1.0 / 3.0) + w2Th * ((2.0 / 15.0) + (17.0 / 315.0) * w2Th)));
+        const tPh = wPh * (1.0 + w2Ph * ((1.0 / 3.0) + w2Ph * ((2.0 / 15.0) + (17.0 / 315.0) * w2Ph)));
+        const ct = (1.0 - tTh * tTh) / (1.0 + tTh * tTh);
+        const st = (2.0 * tTh) / (1.0 + tTh * tTh);
+        const cp = (1.0 - tPh * tPh) / (1.0 + tPh * tPh);
+        const sp = (2.0 * tPh) / (1.0 + tPh * tPh);
 
         R3[0][0] = cp * ct; R3[0][1] = -sp; R3[0][2] = cp * st;
         R3[1][0] = sp * ct; R3[1][1] = cp;  R3[1][2] = sp * st;
@@ -1628,7 +1654,7 @@ function computeScenarioTelemetry(scen, vBudget, anisotropyEps, thermalDeltaT) {
     const compRatioRaw = jTopo / jSimp;
     const compRatio = Math.round(compRatioRaw * 1000.0) / 1000.0;
     const compDeltaPct = Math.round((compRatioRaw - 1.0) * 1000.0) / 10.0;
-    const so6Resid = Math.sqrt(sumSqResid);
+    const so6Resid = Number(Math.sqrt(sumSqResid).toExponential(6));
 
     return {{
         j_toposnail: Math.round(jTopo * 10000.0) / 10000.0,
