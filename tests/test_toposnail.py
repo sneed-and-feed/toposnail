@@ -1174,7 +1174,14 @@ class TestStudioOrbitAndStageControls:
             'url.searchParams.get("stage")',
             "function getQuadATopSafeY(",
             "const badgeY = getQuadATopSafeY(canvas, dpr);",
+            "function normalizeStageKey(",
+            "function syncStageIterationState(",
+            "const gizmoLeftX =",
+            "const sceneTopY =",
+            'const barB = document.getElementById("cadViewBarB");',
         ]:
             assert token in html, f"Missing stage control token in studio HTML: {token}"
+
+
 
 

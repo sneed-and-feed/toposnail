@@ -1004,13 +1004,59 @@ table.benchmark-table tr.active {{
         padding: 1.5px 3px;
     }}
     #cadViewBarA .cad-btn {{
-        padding: 1px 2.2px;
-        font-size: 7.5px;
-        letter-spacing: -0.4px;
+        padding: 1px 2.1px;
+        font-size: 7.4px;
+        letter-spacing: -0.35px;
     }}
     #cadViewBarA .cad-sep {{
         margin: 0 0.5px;
         height: 10px;
+    }}
+}}
+@media (max-width: 1360px) {{
+    header {{
+        padding: 6px 10px;
+    }}
+    .logo-group {{
+        gap: 8px;
+    }}
+    .controls-header {{
+        gap: 6px;
+    }}
+    select, button {{
+        padding: 5px 8px;
+        font-size: 11px;
+    }}
+    .toolbar {{
+        padding: 4px 10px;
+        gap: 10px;
+        font-size: 11px;
+    }}
+    .tool-slider {{
+        gap: 5px;
+    }}
+    .tool-slider input[type="range"] {{
+        width: 64px;
+    }}
+    .tool-val {{
+        min-width: 28px;
+    }}
+}}
+@media (max-width: 1180px) {{
+    #cadViewBarA {{
+        left: 4px;
+        right: 4px;
+        gap: 0.5px;
+        padding: 1px 2px;
+    }}
+    #cadViewBarA .cad-btn {{
+        padding: 1px 1.4px;
+        font-size: 6.6px;
+        letter-spacing: -0.45px;
+    }}
+    #cadViewBarA .cad-sep {{
+        margin: 0;
+        height: 9px;
     }}
 }}
 .cad-view-bar .cad-sep {{
@@ -1376,6 +1422,32 @@ function decodeBase64Field(b64, minVal, maxVal) {{
     return floats;
 }}
 
+function normalizeStageKey(stageKey) {{
+    const raw = String(stageKey || "").trim().toUpperCase();
+    if (raw === "LINEUP" || raw === "1-4" || raw === "ALL") return "LINEUP";
+    if (raw === "S1" || raw.includes("STAGE_1") || raw === "1") return "S1";
+    if (raw === "S2" || raw.includes("STAGE_2") || raw === "2") return "S2";
+    if (raw === "S3" || raw.includes("STAGE_3") || raw === "3") return "S3";
+    if (raw === "S4" || raw.includes("STAGE_4") || raw === "4") return "S4";
+    return "S4";
+}}
+
+function syncStageIterationState(normKey) {{
+    if (normKey === "S1") {{
+        STATE.erosionIter = 0;
+        STATE.erosionProgress = 0.0;
+    }} else if (normKey === "S2") {{
+        STATE.erosionIter = 20;
+        STATE.erosionProgress = 20.0 / 60.0;
+    }} else if (normKey === "S3") {{
+        STATE.erosionIter = 40;
+        STATE.erosionProgress = 40.0 / 60.0;
+    }} else if (normKey === "S4" || normKey === "LINEUP") {{
+        STATE.erosionIter = 60;
+        STATE.erosionProgress = 1.0;
+    }}
+}}
+
 function parseUrlParams() {{
     try {{
         const url = new URL(window.location.href);
@@ -1386,10 +1458,10 @@ function parseUrlParams() {{
                 STATE.scenarioId = sc;
             }} else if (/^\\d+$/.test(sc)) {{
                 const idx = parseInt(sc, 10);
-                if (idx >= 0 && idx < scenKeys.length) {{
-                    STATE.scenarioId = scenKeys[idx];
-                }} else if (idx >= 1 && idx <= scenKeys.length) {{
+                if (idx >= 1 && idx <= scenKeys.length) {{
                     STATE.scenarioId = scenKeys[idx - 1];
+                }} else if (idx >= 0 && idx < scenKeys.length) {{
+                    STATE.scenarioId = scenKeys[idx];
                 }}
             }} else {{
                 const found = scenKeys.find(k => k.toLowerCase().includes(sc.toLowerCase()));
@@ -1408,11 +1480,8 @@ function parseUrlParams() {{
         if (c === "1" || c === "true") STATE.sectionClip = true;
         const st = url.searchParams.get("stage") || (window.location.hash.includes("lineup") ? "lineup" : null);
         if (st) {{
-            if (st.toLowerCase() === "lineup" || st === "1-4" || st === "all") {{
-                STATE.activeStage = "LINEUP";
-            }} else if (["s1", "s2", "s3", "s4"].includes(st.toLowerCase())) {{
-                STATE.activeStage = st.toUpperCase();
-            }}
+            STATE.activeStage = normalizeStageKey(st);
+            syncStageIterationState(STATE.activeStage);
         }}
     }} catch (e) {{}}
 }}
@@ -1615,20 +1684,9 @@ function zoomQuadB(factor) {{
 }}
 
 function setStageView(stageKey) {{
-    STATE.activeStage = stageKey;
-    if (stageKey === "S1") {{
-        STATE.erosionIter = 0;
-        STATE.erosionProgress = 0.0;
-    }} else if (stageKey === "S2") {{
-        STATE.erosionIter = 20;
-        STATE.erosionProgress = 20.0 / 60.0;
-    }} else if (stageKey === "S3") {{
-        STATE.erosionIter = 40;
-        STATE.erosionProgress = 40.0 / 60.0;
-    }} else if (stageKey === "S4") {{
-        STATE.erosionIter = 60;
-        STATE.erosionProgress = 1.0;
-    }}
+    const normKey = normalizeStageKey(stageKey);
+    STATE.activeStage = normKey;
+    syncStageIterationState(normKey);
     updateCadToolbarState();
     updateUIValues();
     safeReplaceState();
@@ -2789,9 +2847,15 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
     const badgeY = getQuadATopSafeY(canvas, dpr);
     const badgeH = 20 * dpr;
     const bayTopClearY = badgeY + badgeH + 6 * dpr;
-    const bayBotClearY = h - 42 * dpr;
+    const bayBotClearY = h - 46 * dpr;
     const availBayH = Math.max(80 * dpr, bayBotClearY - bayTopClearY);
     const scale = Math.min(bayW * 0.38, availBayH * 0.41, h * 0.30) * STATE.camZoom;
+
+    const gizmoR = 18 * dpr;
+    const gizmoOuterR = gizmoR + 6 * dpr;
+    const gizmoCx = w - (gizmoOuterR + 6 * dpr);
+    const gizmoCy = h - (gizmoOuterR + 6 * dpr);
+    const gizmoLeftX = gizmoCx - gizmoOuterR - 4 * dpr;
 
     // 3-Point Studio Lighting in camera space
     const lx = 0.42, ly = 0.62, lz = 0.66;
@@ -2935,14 +2999,25 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
             ctx.stroke();
         }}
 
-        // Top Pill Badge for this bay (dynamically placed below #cadViewBarA)
+        // Top Pill Badge for this bay (dynamically placed below #cadViewBarA and scaled to fit bayW)
         const volPct = Math.round(stage.volume_fraction * 100);
-        const shortTitles = ["S1: FRESH CAD", "S2: COARSE HULL", "S3: FENESTRATED", "S4: BIONIC HYBRID"];
-        const badgeText = `${{shortTitles[b] || `STAGE ${{b + 1}}`}} (${{volPct}}%)`;
-        ctx.font = `bold ${{Math.round(9.0 * dpr)}}px monospace`;
-        const tw = ctx.measureText(badgeText).width;
-        const badgeW = Math.min(bayW - 8 * dpr, tw + 14 * dpr);
+        const fullTitles = ["S1: FRESH CAD", "S2: COARSE HULL", "S3: FENESTRATED", "S4: BIONIC HYBRID"];
+        const compactTitles = ["S1: CAD", "S2: HULL", "S3: SHELL", "S4: BIONIC"];
+        const useCompactBadge = (bayW < 120 * dpr);
+        const titleArr = useCompactBadge ? compactTitles : fullTitles;
+        const badgeText = `${{titleArr[b] || `STAGE ${{b + 1}}`}} (${{volPct}}%)`;
+        const maxBadgeW = Math.max(44 * dpr, bayW - 6 * dpr);
+        let badgeFontPx = 9.0 * dpr;
+        ctx.font = `bold ${{Math.round(badgeFontPx)}}px monospace`;
+        let tw = ctx.measureText(badgeText).width;
+        if (tw + 12 * dpr > maxBadgeW) {{
+            badgeFontPx = Math.max(6.5 * dpr, badgeFontPx * ((maxBadgeW - 10 * dpr) / Math.max(1, tw)));
+            ctx.font = `bold ${{ badgeFontPx.toFixed(1) }}px monospace`;
+            tw = ctx.measureText(badgeText).width;
+        }}
+        const badgeW = Math.min(maxBadgeW, tw + 12 * dpr);
         const badgeX = bayCenterX - badgeW * 0.5;
+        const textDrawW = Math.min(tw, badgeW - 6 * dpr);
 
         ctx.fillStyle = "rgba(11, 15, 25, 0.88)";
         const isS4 = (b === 3) || Boolean(stage.stage_id && stage.stage_id.includes("4"));
@@ -2958,35 +3033,39 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
         ctx.stroke();
 
         ctx.fillStyle = isS4 ? "#4ade80" : "#38bdf8";
-        ctx.fillText(badgeText, bayCenterX - tw * 0.5, badgeY + 13.5 * dpr);
+        ctx.fillText(badgeText, bayCenterX - textDrawW * 0.5, badgeY + 13.5 * dpr, badgeW - 6 * dpr);
 
-        // Bottom Volume Fraction & Iteration Subtitle
+        // Bottom Volume Fraction & Iteration Subtitle (kept clear of bottom-right gizmo in Bay 4)
         const subText = `V = ${{volPct}}% | Iter ${{stage.iter}}`;
         ctx.font = `${{Math.round(8.5 * dpr)}}px monospace`;
         const subTw = ctx.measureText(subText).width;
+        const subMaxRight = (b === 3) ? Math.min(bayX0 + bayW - 4 * dpr, gizmoLeftX) : (bayX0 + bayW - 4 * dpr);
+        const subX = Math.max(bayX0 + 4 * dpr, Math.min(bayCenterX - subTw * 0.5, subMaxRight - subTw));
+        const subAvailW = Math.max(24 * dpr, subMaxRight - subX);
         ctx.fillStyle = "rgba(148, 163, 184, 0.85)";
-        ctx.fillText(subText, bayCenterX - subTw * 0.5, h - 16 * dpr);
+        ctx.fillText(subText, subX, h - 12 * dpr, subAvailW);
     }}
 
-    // Bottom-Center Hint
+    // Bottom-Center Hint (positioned inside gizmo-safe span [8*dpr, gizmoLeftX])
     ctx.fillStyle = "rgba(148, 163, 184, 0.75)";
-    ctx.font = `${{Math.round(9.0 * dpr)}}px monospace`;
-    const lineupHint = "Click any bay to isolate stage | Drag to orbit all bays | Keys: 8 (S1), F2 (S2), F3 (S3), F4 (S4), 9 (Lineup)";
-    const lhw = ctx.measureText(lineupHint).width;
-    if (w > lhw + 20 * dpr) {{
-        ctx.fillText(lineupHint, (w - lhw) * 0.5, h - 34 * dpr);
+    ctx.font = `${{Math.round(8.8 * dpr)}}px monospace`;
+    const fullLineupHint = "Click any bay to isolate stage | Drag to orbit all bays | Keys: 8 (S1), F2 (S2), F3 (S3), F4 (S4), 9 (Lineup)";
+    const shortLineupHint = "Click any bay to isolate stage | Drag to orbit all bays | Keys: 8, F2-F4, 9";
+    const hintSafeW = gizmoLeftX - 10 * dpr;
+    const fullHw = ctx.measureText(fullLineupHint).width;
+    const shortHw = ctx.measureText(shortLineupHint).width;
+    if (hintSafeW >= fullHw) {{
+        ctx.fillText(fullLineupHint, Math.max(8 * dpr, (hintSafeW - fullHw) * 0.5), h - 30 * dpr);
+    }} else if (hintSafeW >= shortHw) {{
+        ctx.fillText(shortLineupHint, Math.max(8 * dpr, (hintSafeW - shortHw) * 0.5), h - 30 * dpr);
     }}
 
-    // Bottom-Right Interactive 3D Orientation Triad Gizmo
-    const gizmoCx = w - 42 * dpr;
-    const gizmoCy = h - 42 * dpr;
-    const gizmoR = 26 * dpr;
-
-    ctx.fillStyle = "rgba(15, 23, 42, 0.80)";
+    // Bottom-Right Compact Interactive 3D Orientation Triad Gizmo
+    ctx.fillStyle = "rgba(15, 23, 42, 0.84)";
     ctx.strokeStyle = "rgba(148, 163, 184, 0.30)";
     ctx.lineWidth = 1.0;
     ctx.beginPath();
-    ctx.arc(gizmoCx, gizmoCy, gizmoR + 8 * dpr, 0, Math.PI * 2);
+    ctx.arc(gizmoCx, gizmoCy, gizmoOuterR, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
@@ -3015,22 +3094,22 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
     axes.forEach(ax => {{
         if (ax.positive) {{
             ctx.strokeStyle = ax.color;
-            ctx.lineWidth = 2.0 * dpr;
+            ctx.lineWidth = 1.8 * dpr;
             ctx.beginPath();
             ctx.moveTo(gizmoCx, gizmoCy);
             ctx.lineTo(ax.sx, ax.sy);
             ctx.stroke();
         }}
-        const ballR = (ax.positive ? 7.0 : 5.0) * dpr;
+        const ballR = (ax.positive ? 5.6 : 4.0) * dpr;
         ctx.fillStyle = ax.color;
         ctx.beginPath();
         ctx.arc(ax.sx, ax.sy, ballR, 0, Math.PI * 2);
         ctx.fill();
         if (ax.positive) {{
             ctx.fillStyle = "#ffffff";
-            ctx.font = `bold ${{Math.round(8.5 * dpr)}}px sans-serif`;
+            ctx.font = `bold ${{Math.round(7.5 * dpr)}}px sans-serif`;
             const tw = ctx.measureText(ax.label).width;
-            ctx.fillText(ax.label, ax.sx - tw * 0.5, ax.sy + 3 * dpr);
+            ctx.fillText(ax.label, ax.sx - tw * 0.5, ax.sy + 2.6 * dpr);
         }}
         STATE.axisGizmoHits.push({{ x: ax.sx, y: ax.sy, r: ballR + 3 * dpr, preset: ax.preset }});
     }});
@@ -3070,9 +3149,12 @@ function renderQuadA() {{
     const stages = getScenarioStages(scen);
     let activeStageObj = null;
     if (stages && stages.length > 0) {{
-        activeStageObj = stages.find(s => s.stage_id === STATE.activeStage) || stages[stages.length - 1];
+        const stageIndexMap = {{ S1: 0, S2: 1, S3: 2, S4: 3 }};
+        const stIdx = (STATE.activeStage in stageIndexMap) ? stageIndexMap[STATE.activeStage] : (stages.length - 1);
+        activeStageObj = stages[stIdx] || stages.find(s => normalizeStageKey(s.stage_id) === STATE.activeStage) || stages[stages.length - 1];
     }}
-    const isSingleMeshStage = (STATE.activeStage === "S2" || STATE.activeStage === "S3" || STATE.activeStage === "S4");
+    const hasStageMesh = Boolean(activeStageObj && activeStageObj.mesh && activeStageObj.mesh.faces && activeStageObj.mesh.faces.length > 0);
+    const isSingleMeshStage = hasStageMesh && (STATE.activeStage === "S1" || STATE.activeStage === "S2" || STATE.activeStage === "S3" || STATE.activeStage === "S4");
     const progress = Math.max(0.0, Math.min(1.0, STATE.erosionIter / STATE.maxErosionIters));
     STATE.erosionProgress = progress;
     const baseBudget = (scen && scen.volume_budget) ? scen.volume_budget : 0.24;
@@ -3081,10 +3163,14 @@ function renderQuadA() {{
     const thermalNorm = (STATE.thermalDeltaT - 350.0) / 1150.0;
     const anisoNorm = (STATE.anisotropyEps - 0.24) / 0.24;
     const topSafeY = getQuadATopSafeY(canvas, dpr);
-    const extraTopShift = Math.max(0, (topSafeY - 34 * dpr) * 0.45);
+    const sceneTopY = topSafeY + 26 * dpr;
+    const sceneBotY = h - 42 * dpr;
+    const availSceneH = Math.max(120 * dpr, sceneBotY - sceneTopY);
+    const availSceneW = Math.max(160 * dpr, w - 48 * dpr);
+    const sceneCenterY = (sceneTopY + sceneBotY) * 0.5 + 4 * dpr;
 
     ctx.save();
-    ctx.translate(w / 2 + STATE.camPanX * dpr, h / 2 - 2 * dpr + extraTopShift + STATE.camPanY * dpr);
+    ctx.translate(w / 2 + STATE.camPanX * dpr, sceneCenterY + STATE.camPanY * dpr);
     ctx.scale(STATE.camZoom, STATE.camZoom);
 
     const cosY = Math.cos(STATE.camRotY);
@@ -3100,7 +3186,7 @@ function renderQuadA() {{
         const ryDepth = x * sinY + y * cosY;
         const screenZ = z * cosX - ryDepth * sinX;
         const depth = z * sinX + ryDepth * cosX;
-        const scale = Math.min(w, h) * 0.37;
+        const scale = Math.min(availSceneW * 0.34, availSceneH * 0.40);
         return [xSign * rx * scale, -screenZ * scale, depth];
     }}
 
@@ -3696,8 +3782,15 @@ function renderQuadA() {{
                 ctx.font = "bold 11px sans-serif";
                 ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
                 ctx.shadowBlur = 4;
-                const lblX = pStart[0] + 10;
-                const lblY = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? (pStart[1] + 24) : (pStart[1] - 6);
+                const lblX = Math.max(pStart[0], pEnd[0]) + 10;
+                let rawLblY = pStart[1] - 6;
+                if (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") {{
+                    rawLblY = Math.max(pStart[1], pEnd[1]) + 8;
+                }} else if (STATE.scenarioId === "02_aerospace_jet_bracket") {{
+                    rawLblY = pStart[1] + 14;
+                }}
+                const minLocalY = ((topSafeY + 38 * dpr) - (sceneCenterY + STATE.camPanY * dpr)) / Math.max(0.35, STATE.camZoom);
+                const lblY = Math.max(minLocalY, rawLblY);
                 ctx.fillText(scen.force.label || "F_ext", lblX, lblY);
                 ctx.shadowBlur = 0;
             }}
@@ -3920,9 +4013,24 @@ function renderQuadB() {{
     const ySlice = Math.min(Y - 1, Math.max(0, STATE.sliceY));
     const xSlice = Math.min(X - 1, Math.max(0, STATE.sliceX));
 
+    const barB = document.getElementById("cadViewBarB");
+    let maxQbHeaderW = w - 210 * dpr;
+    if (barB && rect && rect.width > 0) {{
+        const barBRect = barB.getBoundingClientRect();
+        if (barBRect && barBRect.width > 0) {{
+            maxQbHeaderW = Math.max(120 * dpr, (barBRect.left - rect.left - 24) * dpr);
+        }}
+    }}
+    const qbHeaderText = `Chair-Cut (Z=${{zSlice}}, Y=${{ySlice}}, X=${{xSlice}}) | Iter ${{Math.round(STATE.erosionIter)}}/60 | SO(6) Eps=${{STATE.anisotropyEps.toFixed(2)}}`;
     ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
-    ctx.font = `bold ${{Math.round(11 * dpr)}}px monospace`;
-    ctx.fillText(`Chair-Cut (Z=${{zSlice}}, Y=${{ySlice}}, X=${{xSlice}}) | Iter ${{Math.round(STATE.erosionIter)}}/60 | SO(6) Eps=${{STATE.anisotropyEps.toFixed(2)}}`, 16 * dpr, 20 * dpr);
+    let qbFontPx = 11 * dpr;
+    ctx.font = `bold ${{Math.round(qbFontPx)}}px monospace`;
+    const qbTw = ctx.measureText(qbHeaderText).width;
+    if (qbTw > maxQbHeaderW) {{
+        qbFontPx = Math.max(7.5 * dpr, qbFontPx * (maxQbHeaderW / Math.max(1, qbTw)));
+        ctx.font = `bold ${{qbFontPx.toFixed(1)}}px monospace`;
+    }}
+    ctx.fillText(qbHeaderText, 16 * dpr, 20 * dpr, maxQbHeaderW);
 
     ctx.save();
     ctx.translate(w / 2, h / 2 + 15 * dpr);
@@ -4126,18 +4234,19 @@ function renderQuadB() {{
                     ctx.stroke();
 
                     if (ringPositions.length === 1) {{
+                        const lbl = "Shielded Beltrami-Morse Strut [Thm 2.5]";
+                        ctx.font = "bold 10px monospace";
+                        const tw = ctx.measureText(lbl).width;
+                        const maxLocalRight = (w * 0.5) / Math.max(0.5, STATE.quadBZoom) - 8 * dpr;
+                        const lx = Math.min(pRing[0] + 40, maxLocalRight - (tw + 6));
+                        const ly = pRing[1] - 15;
+
                         ctx.strokeStyle = "rgba(250, 204, 21, 0.8)";
                         ctx.lineWidth = 1.0;
                         ctx.beginPath();
                         ctx.moveTo(pRing[0] + 15, pRing[1]);
-                        ctx.lineTo(pRing[0] + 36, pRing[1] - 18);
+                        ctx.lineTo(Math.max(pRing[0] + 18, lx - 4), ly - 3);
                         ctx.stroke();
-
-                        const lbl = "Shielded Beltrami-Morse Strut [Thm 2.5]";
-                        ctx.font = "bold 10px monospace";
-                        const tw = ctx.measureText(lbl).width;
-                        const lx = pRing[0] + 40;
-                        const ly = pRing[1] - 15;
 
                         ctx.fillStyle = "rgba(11, 16, 27, 0.90)";
                         ctx.strokeStyle = "rgba(250, 204, 21, 0.6)";
