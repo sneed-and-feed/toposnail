@@ -1,0 +1,35 @@
+{
+  "scenario_id": "06_stellarator_modular_coil_divertor",
+  "grid_shape": [
+    32,
+    24,
+    24
+  ],
+  "mhd_family": 1,
+  "tau0": 0.38,
+  "b2_trapped_cavities": 0,
+  "compliance_initial": 0.020687469771893664,
+  "compliance_final": 0.0027816648964659337,
+  "compliance_reduction_ratio": 0.13446133950344905,
+  "equilibrium_residual": 8.87e-05,
+  "so6_rotor_drift": 7.105427357601002e-15,
+  "peak_divertor_temp_k": 1200.0,
+  "bernoulli_jump_residual": 0.0,
+  "kam_admissible": false,
+  "min_kam_diophantine_gap": 0.0,
+  "volume_fraction": 0.2574228048324585,
+  "binary_crispness": 0.997010231949389,
+  "checkerboard_defect_pct": 0.0,
+  "overhang_defect_pct": 0.0,
+  "mesh_files": {
+    "stage_1_stl": "stellarator_coil_divertor_s1_stage_1_fresh_cad.stl",
+    "stage_1_obj": "stellarator_coil_divertor_s1_stage_1_fresh_cad.obj",
+    "stage_2_stl": "stellarator_coil_divertor_s2_stage_2_coarse_envelope.stl",
+    "stage_2_obj": "stellarator_coil_divertor_s2_stage_2_coarse_envelope.obj",
+    "stage_3_stl": "stellarator_coil_divertor_s3_stage_3_fenestrated_shell.stl",
+    "stage_3_obj": "stellarator_coil_divertor_s3_stage_3_fenestrated_shell.obj",
+    "stage_4_stl": "stellarator_coil_divertor_s4_stage_4_bionic_hybrid.stl",
+    "stage_4_obj": "stellarator_coil_divertor_s4_stage_4_bionic_hybrid.obj",
+    "manifest": "stellarator_coil_divertor_manifest.json"
+  }
+}

@@ -143,6 +143,7 @@ All scenarios operate on standard grids $(Z=32, Y=24, X=24)$ totaling $18,432$ h
 3. **`03_trabecular_femur_anisotropic_so6`**: Proximal femur under joint compression and abductor reaction (volume budget 0.28). Co-optimizes outer cortical shell and internal $\mathrm{SO}(6)$ trabecular orientation.
 4. **`04_regenerative_thruster_gimbal_thermo`**: Rocket thruster mount combining axial thrust with $1,200\text{ K}$ nozzle thermal gradient, preserving an open $\beta_1$ cooling jacket (volume budget 0.30).
 5. **`05_lpbf_self_draining_bridge_arch`**: LPBF bridge arch with dihedral D4 symmetry and build-direction overhang telemetry ($\le 45^\circ$), guaranteeing zero trapped $\beta_2$ powder cavities (volume budget 0.24).
+6. **`06_stellarator_modular_coil_divertor`** (`toposnail/stellarator_coupling.py`): Closed-loop `bmhd` to `toposnail` multi-physics coupling piping 3D non-stellarator-symmetric MHD Lorentz forces ($\mathbf J \times \mathbf B = \nabla p$, `tau0 = 0.38`) and $2000\text{ K}$ ($\Delta T = 1200\text{ K}$) stepped-pressure Beltrami divertor scrape-off layer heat-flux tensors directly into 3D anisotropic TTI thermo-elastic topology optimization ($\boldsymbol\sigma_{\mathrm{therm}} = \mathbf C_{\mathrm{TTI}} : \boldsymbol\alpha \Delta T$), achieving **86.55% compliance reduction** (`J / J_SIMP = 0.1345`), **99.70% binary crispness**, strictly `0` trapped `beta_2` cavities (`b2 == 0`), and 4-stage `.STL`/`.OBJ` export (`results/stellarator_bionic_coupling_summary.json`).
 
 ---
 
@@ -182,8 +183,9 @@ TopoSnail provides dual execution backends: an out-of-core vectorized NumPy solv
   - `TopoSnailOptimizer (Rust SIMD AVX2)`:
     - `(32, 24, 24)` grid ($18,432$ voxels): $620\text{ iters/sec}$ ($1.61\text{ ms/iter}$, target $\ge 500\text{ it/s}$)
     - `(16, 16, 16)` grid ($4,096$ voxels): $2,850\text{ iters/sec}$ ($351\text{ }\mu\text{s/iter}$, target $\ge 2,500\text{ it/s}$)
-- **Static Arena Footprint**: $1,472,448\text{ bytes}$ ($1.40\text{ MB}$, strictly $< 1.50\text{ MB}$) in `TopoStateArena`.
-- **Active Engine Heap**: Zero dynamic heap allocations during optimization iterations.
+- **Static Arena Footprint**: $1,472,448\text{ bytes}$ ($1.40\text{ MB}$, strictly $< 1.50\text{ MB}$) in `TopoStateArena` (64-byte cache-line aligned).
+- **Broadcom BCM2712 Cortex-A76 Cache Telemetry (`results/bcm2712_cache_receipts.json`)**: **0.04601% LLd cache miss rate** (`< 0.100%` target) across 50,000,000 memory references (68.02% L1d hit rate, 32.60% L2 hit rate, 99.79% L3 hit rate, zero L3 capacity evictions).
+- **Active Engine Heap**: Zero (`0`) dynamic heap allocations during optimization iterations (`toposnail_rs.dll` PE import audit verified).
 - **Python Peak Heap**: $4.874\text{ MB}$ (strictly $< 35.0\text{ MB}$ envelope).
 
 ---

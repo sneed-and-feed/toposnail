@@ -505,7 +505,23 @@ fn exact_sphere_norm_ulp_polish(v: &mut [f32; CASCADE_DIM], target_sq: f32) {
 pub unsafe extern "C" fn toposnail_arena_new() -> *mut TopoStateArena {
     #[cfg(feature = "std")]
     {
-        std::boxed::Box::into_raw(std::boxed::Box::new(TopoStateArena::new_const()))
+        let layout = std::alloc::Layout::new::<TopoStateArena>();
+        let ptr = std::alloc::alloc_zeroed(layout) as *mut TopoStateArena;
+        if !ptr.is_null() {
+            (*ptr).grid_z = MAX_GRID_Z as u32;
+            (*ptr).grid_y = MAX_GRID_Y as u32;
+            (*ptr).grid_x = MAX_GRID_X as u32;
+            (*ptr).total_voxels = TOTAL_VOXELS as u32;
+            (*ptr).total_nodes = TOTAL_NODES as u32;
+            (*ptr).vol_fraction = 0.25f32;
+            for x in (*ptr).rho.iter_mut() {
+                *x = 0.25f32;
+            }
+            for x in (*ptr).cascade_registers.iter_mut() {
+                *x = 0.35355339f32;
+            }
+        }
+        ptr
     }
     #[cfg(not(feature = "std"))]
     {
@@ -519,7 +535,7 @@ pub unsafe extern "C" fn toposnail_arena_free(arena: *mut TopoStateArena) {
     #[cfg(feature = "std")]
     {
         if !arena.is_null() {
-            drop(std::boxed::Box::from_raw(arena));
+            std::alloc::dealloc(arena as *mut u8, std::alloc::Layout::new::<TopoStateArena>());
         }
     }
     #[cfg(not(feature = "std"))]

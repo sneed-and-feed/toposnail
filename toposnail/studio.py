@@ -654,6 +654,8 @@ def generate_studio_html(scenario_catalog: Optional[Dict[str, Any]] = None) -> s
     """
     if scenario_catalog is None:
         scenario_catalog = build_scenario_catalog()
+        from toposnail.stellarator_coupling import build_scen_06_data
+        scenario_catalog["06_stellarator_modular_coil_divertor"] = build_scen_06_data()
 
     scenarios_json = json.dumps(scenario_catalog)
     fields_json = json.dumps(TOPOSNAIL_FIELDS)
@@ -1131,6 +1133,7 @@ table.benchmark-table tr.active {{
             <option value="03_trabecular_femur_anisotropic_so6">03 Trabecular Femur Anisotropic SO(6)</option>
             <option value="04_regenerative_thruster_gimbal_thermo">04 Regenerative Thruster Gimbal Thermo</option>
             <option value="05_lpbf_self_draining_bridge_arch">05 LPBF Self-Draining Bridge Arch</option>
+            <option value="06_stellarator_modular_coil_divertor">06 Stellarator Modular Coil & Divertor Manifold</option>
         </select>
         <select id="selectField" onchange="onFieldChange()">
             <option value="toposnail_vm">von Mises Stress (MPa)</option>
@@ -1389,7 +1392,9 @@ let animationFrameId = null;
 let turntableFrameId = null;
 
 function getDefaultCameraForScenario(scenId) {{
-    if (scenId === "05_lpbf_self_draining_bridge_arch") {{
+    if (scenId === "06_stellarator_modular_coil_divertor") {{
+        return {{ rotX: 0.32, rotY: -0.40, zoom: 1.05 }};
+    }} else if (scenId === "05_lpbf_self_draining_bridge_arch") {{
         return {{ rotX: 0.28, rotY: -0.32, zoom: 1.02 }};
     }} else if (scenId === "03_trabecular_femur_anisotropic_so6") {{
         return {{ rotX: 0.14, rotY: 0.16, zoom: 1.08 }};
