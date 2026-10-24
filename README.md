@@ -221,6 +221,20 @@ Open `studio/toposnail_portable_studio.html` directly in any web browser (`file:
 
 ---
 
-## 8. License
+## 8. Citation
+
+```bibtex
+@software{toposnail_2026,
+  author       = {Cohen, Noah},
+  title        = {toposnail: Beltrami-Triad 3D Anisotropic Topology, Michell Truss and Rust SIMD Optimizer},
+  year         = {2026},
+  version      = {0.2.0},
+  url          = {https://github.com/sneed-and-feed/toposnail}
+}
+```
+
+---
+
+## 9. License
 
 This project is dedicated to the public domain under the Creative Commons CC0 1.0 Universal Public Domain Dedication. See [LICENSE](LICENSE) for details.
