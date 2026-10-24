@@ -213,6 +213,7 @@ class TestFormalTheorems:
         opt = TopoSnailOptimizer()
         audit = opt.verify_formal_theorems()
         assert audit["all_passed"] is True, f"Formal theorems audit failed: {audit}"
+        assert audit["all_theorems_passed"] is True, f"Formal theorems audit failed: {audit}"
 
     def test_theorem_2_1_and_2_2_skew_symmetry_and_tie_breaking(self):
         """

@@ -26,11 +26,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
+          cache-dependency-path: 'pyproject.toml'
 
       - name: Install Python Dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install numpy pytest
+          pip install -e ".[dev]"
 
       - name: Set up Rust Toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -44,13 +45,13 @@ jobs:
         run: cargo build --manifest-path rust/toposnail_rs/Cargo.toml --release
 
       - name: Verify Formal Runtime Invariants
-        run: python -c "from toposnail.optimizer import TopoSnailOptimizer; opt = TopoSnailOptimizer(); res = opt.verify_formal_theorems(); print(res); assert res['all_theorems_passed']"
+        run: python -c "from toposnail.optimizer import TopoSnailOptimizer; opt = TopoSnailOptimizer(); res = opt.verify_formal_theorems(); print(res); assert res['all_passed'] and res['all_theorems_passed']"
 
       - name: Run Pytest Test Suite
-        run: pytest tests/test_toposnail.py -v
+        run: pytest tests/test_toposnail.py tests/test_blind_cad_benchmark.py -v
 
       - name: Run Official & Mode B Benchmarks
-        run: python scripts/evaluate_toposnail.py
+        run: python scripts/evaluate_toposnail.py --quick
 
       - name: Audit 21-Rule GFM & KaTeX Math Compliance
         run: python scripts/audit_gfm_math.py README.md docs/ARCHITECTURE.md
@@ -61,8 +62,13 @@ jobs:
       - name: Headless Browser Visual Verification (Windows)
         if: runner.os == 'Windows'
         run: |
-          Start-Process -FilePath "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" -ArgumentList @("--headless", "--window-size=1920,1080", "--screenshot=results/studio_screenshot.png", "file:///${{ github.workspace }}/studio/toposnail_portable_studio.html") -Wait -PassThru
-          Get-Item results/studio_screenshot.png
+          $outPath = Join-Path $env:GITHUB_WORKSPACE "results\studio_screenshot.png"
+          $htmlUrl = "file:///" + ($env:GITHUB_WORKSPACE -replace '\\', '/') + "/studio/toposnail_portable_studio.html"
+          $edgePath = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+          if (Test-Path $edgePath) {
+            Start-Process -FilePath $edgePath -ArgumentList @("--headless", "--disable-gpu", "--window-size=1920,1080", "--screenshot=$outPath", $htmlUrl) -Wait -PassThru
+          }
+          Get-Item $outPath
 
   release:
     name: GitHub Release

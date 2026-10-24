@@ -982,6 +982,7 @@ class TopoSnailOptimizer:
 
         return {
             "all_passed": all_passed,
+            "all_theorems_passed": all_passed,
             "thm21": {"passed": thm21_passed, "swap_err": swap_err, "diag_err": diag_err},
             "thm22": {"passed": thm22_passed, "tie_break_err": tie_break_err, "actual_gap": actual_gap},
             "thm23": {"passed": thm23_passed, "ortho_err": ortho_err},

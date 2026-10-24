@@ -46,6 +46,8 @@ def print_banner(text: str) -> None:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(
         description="TopoSnail Mode B 5-Solver Benchmark & Official Community Audit"
     )
