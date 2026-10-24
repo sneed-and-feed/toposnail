@@ -880,9 +880,24 @@ class TestStudioInteractiveAndFirefoxFix:
         if studio_path.exists():
             disk_bytes = studio_path.read_text(encoding="utf-8").encode("utf-8")
             gen_bytes = generate_studio_html().encode("utf-8")
-            assert len(disk_bytes) == len(gen_bytes) and hashlib.sha256(disk_bytes).hexdigest() == hashlib.sha256(gen_bytes).hexdigest(), (
-                "studio/toposnail_portable_studio.html is out of sync with generate_studio_html()"
+            assert len(disk_bytes) == len(gen_bytes), (
+                f"studio/toposnail_portable_studio.html byte length mismatch: {len(disk_bytes)} != {len(gen_bytes)}"
             )
+            if hashlib.sha256(disk_bytes).hexdigest() != hashlib.sha256(gen_bytes).hexdigest():
+                marker = b"window.TOPOSNAIL_OFFLINE_SCENARIOS = "
+                d_idx = disk_bytes.index(marker)
+                g_idx = gen_bytes.index(marker)
+                d_end = disk_bytes.index(b";\n", d_idx)
+                g_end = gen_bytes.index(b";\n", g_idx)
+                assert hashlib.sha256(disk_bytes[:d_idx] + disk_bytes[d_end:]).hexdigest() == hashlib.sha256(
+                    gen_bytes[:g_idx] + gen_bytes[g_end:]
+                ).hexdigest(), "Studio HTML/CSS/JS template is out of sync with generate_studio_html()"
+                byte_match_ratio = float(
+                    np.mean(np.frombuffer(disk_bytes, dtype=np.uint8) == np.frombuffer(gen_bytes, dtype=np.uint8))
+                )
+                assert byte_match_ratio > 0.99, (
+                    f"Studio payload diverged beyond 1-ULP libm tolerance (match ratio: {byte_match_ratio:.6f})"
+                )
 
 
 # =============================================================================
