@@ -1182,6 +1182,76 @@ class TestStudioOrbitAndStageControls:
         ]:
             assert token in html, f"Missing stage control token in studio HTML: {token}"
 
+    def test_dynamic_scenario_telemetry_distinct_across_all_5_scenarios(self):
+        """
+        Regression check ensuring Compliance J / J_SIMP, Crispness 1 - M_nd, and SO(6) Rotor Resid
+        are dynamically computed from each scenario's 3D fields and strictly distinct across all 5 scenarios.
+        """
+        import base64
+        from toposnail.models import compute_scenario_telemetry, build_scen_01_fields
+        from toposnail.studio import SCENARIO_KEYS, build_scenario_catalog, generate_studio_html
 
+        catalog = build_scenario_catalog()
+        assert len(catalog) == 5
 
+        comp_ratios = []
+        crisp_vals = []
+        so6_resids = []
+        j_topos = []
 
+        for sc_id in SCENARIO_KEYS:
+            scen = catalog[sc_id]
+            assert "telemetry" in scen, f"{sc_id}: missing telemetry dict"
+            telem = scen["telemetry"]
+            topo_row = scen["baselines"][0]
+            assert "TopoSnail" in topo_row["solver"]
+
+            # Verify baseline row matches dynamic telemetry
+            assert topo_row["compliance_ratio"] == telem["compliance_ratio"]
+            assert topo_row["binary_crispness"] == telem["binary_crispness"]
+            assert abs(topo_row["so6_rotor_residual"] - telem["so6_rotor_residual"]) < 1e-25
+
+            # Decode base64 rho field and verify 1 - mean(4 * rho * (1 - rho)) matches telemetry
+            raw_bytes = base64.b64decode(scen["fields_b64"]["toposnail_rho"])
+            rho_dec = np.frombuffer(raw_bytes, dtype=np.uint8).astype(np.float64) / 255.0
+            crisp_from_b64 = float((1.0 - np.mean(4.0 * rho_dec * (1.0 - rho_dec))) * 100.0)
+            assert abs(crisp_from_b64 - telem["binary_crispness_exact"]) < 1e-3, (
+                f"{sc_id}: decoded rho crispness {crisp_from_b64} != {telem['binary_crispness_exact']}"
+            )
+            assert round(crisp_from_b64, 1) == telem["binary_crispness"]
+
+            # Physical range checks
+            assert 0.50 <= telem["compliance_ratio"] <= 0.85
+            assert 98.0 <= telem["binary_crispness"] <= 99.9
+            assert 0.0 < telem["so6_rotor_residual"] < 1.14e-13
+
+            comp_ratios.append(telem["compliance_ratio"])
+            crisp_vals.append(telem["binary_crispness"])
+            so6_resids.append(round(telem["so6_rotor_residual"] * 1e16, 2))
+            j_topos.append(telem["j_toposnail"])
+
+        # All 5 scenarios must have strictly distinct telemetry values (no shared hardcoded 0.680 / 99.4% / 5.10e-14)
+        assert len(set(comp_ratios)) == 5, f"Expected 5 distinct compliance ratios, got {comp_ratios}"
+        assert len(set(crisp_vals)) == 5, f"Expected 5 distinct crispness values, got {crisp_vals}"
+        assert len(set(so6_resids)) == 5, f"Expected 5 distinct SO(6) rotor residuals, got {so6_resids}"
+        assert len(set(j_topos)) == 5, f"Expected 5 distinct J_toposnail values, got {j_topos}"
+
+        # Verify parameter sensitivity (v_budget, anisotropy_eps, thermal_delta_t)
+        f01 = build_scen_01_fields(grid_shape=(16, 12, 12), v_budget=0.25, anisotropy_eps=0.24, thermal_delta_t=0.0)
+        t_base = compute_scenario_telemetry(f01, v_budget=0.25, anisotropy_eps=0.24, thermal_delta_t=0.0)
+        t_v_high = compute_scenario_telemetry(f01, v_budget=0.40, anisotropy_eps=0.24, thermal_delta_t=0.0)
+        t_eps_high = compute_scenario_telemetry(f01, v_budget=0.25, anisotropy_eps=0.38, thermal_delta_t=0.0)
+        t_therm_high = compute_scenario_telemetry(f01, v_budget=0.25, anisotropy_eps=0.24, thermal_delta_t=900.0)
+
+        assert t_v_high["j_toposnail"] < t_base["j_toposnail"]
+        assert t_eps_high["compliance_ratio"] != t_base["compliance_ratio"]
+        assert t_eps_high["so6_rotor_residual"] != t_base["so6_rotor_residual"]
+        assert t_therm_high["j_toposnail"] > t_base["j_toposnail"]
+
+        # Verify studio HTML uses computeScenarioTelemetry and has no hardcoded KPI formulas
+        studio_path = Path("studio/toposnail_portable_studio.html")
+        html = studio_path.read_text(encoding="utf-8") if studio_path.exists() else generate_studio_html()
+        assert "function computeScenarioTelemetry(" in html
+        assert "const so6Resid = telem.so6_rotor_residual;" in html
+        assert "(4.82 + 1.15 * STATE.anisotropyEps)" not in html
+        assert "5.474 * activeRow.compliance_ratio" not in html

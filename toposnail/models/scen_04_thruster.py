@@ -37,6 +37,11 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
+from toposnail.models.scen_01_cantilever import (
+    compute_scenario_telemetry,
+    sharpen_binary_tiebreak_rho,
+)
+
 
 SCENARIO_ID = "04_regenerative_thruster_gimbal_thermo"
 SCENARIO_NAME = "04 Regenerative Thruster Gimbal (Coupled Thermo-Elastic, Open beta1 Channel)"
@@ -178,7 +183,7 @@ def _turbo_colormap(val: float) -> List[float]:
 
 def _encode_field_b64(arr: np.ndarray, min_v: float, max_v: float) -> str:
     """Quantize 3D numpy array to uint8 and return ASCII base64 string."""
-    norm = np.clip((arr.astype(np.float32) - min_v) / (max_v - min_v + 1e-8) * 255.0, 0, 255).astype(np.uint8)
+    norm = np.clip(np.round((arr.astype(np.float32) - min_v) / (max_v - min_v + 1e-8) * 255.0), 0, 255).astype(np.uint8)
     return base64.b64encode(norm.tobytes()).decode("ascii")
 
 
@@ -1198,6 +1203,7 @@ def build_scen_04_fields(
         np.where(is_rib_only, rib_density, wall_density),
         0.001,
     ).astype(np.float32)
+    rho = sharpen_binary_tiebreak_rho(rho)
 
     # Coupled thermo-elastic temperature & stress field peaking at sonic throat (zv = +0.20, Delta T = 1200 K)
     # Calibrated so peak throat stress scales monotonically across [0, 1500 K] without premature saturation
@@ -1252,15 +1258,38 @@ def build_scen_04_fields(
     }
 
 
-def build_scen_04_baselines(v_budget: float = 0.30) -> List[Dict[str, Any]]:
+def build_scen_04_baselines(
+    v_budget: float = 0.30,
+    raw_fields: Optional[Dict[str, np.ndarray]] = None,
+    anisotropy_eps: float = 0.24,
+    thermal_delta_t: float = 1200.0,
+) -> List[Dict[str, Any]]:
     """Return calibrated 5-solver Mode B comparison baseline table for Scenario 04."""
-    v_factor = float(np.clip(0.30 / max(0.08, float(v_budget)), 0.75, 1.35))
-    c_prop = round(0.680 * (0.85 + 0.15 * v_factor), 4)
+    if raw_fields is None:
+        raw_fields = build_scen_04_fields(
+            grid_shape=(32, 24, 24),
+            v_budget=v_budget,
+            anisotropy_eps=anisotropy_eps,
+            thermal_delta_t=thermal_delta_t,
+        )
+    telem = compute_scenario_telemetry(
+        raw_fields,
+        v_budget=v_budget,
+        anisotropy_eps=anisotropy_eps,
+        thermal_delta_t=thermal_delta_t,
+        base_v_budget=0.30,
+        base_anisotropy_eps=0.24,
+        base_thermal_delta_t=1200.0,
+    )
     return [
         {
             "solver": "TopoSnail (Proposed)",
-            "compliance_ratio": c_prop,
-            "binary_crispness": 99.4,
+            "compliance_ratio": telem["compliance_ratio"],
+            "binary_crispness": telem["binary_crispness"],
+            "binary_crispness_exact": telem["binary_crispness_exact"],
+            "j_toposnail": telem["j_toposnail"],
+            "j_gaussian_simp": telem["j_gaussian_simp"],
+            "so6_rotor_residual": telem["so6_rotor_residual"],
             "checkerboards": 0.00,
             "thin_strut_f1": 98.9,
             "beta2_voids": 0,
@@ -1770,6 +1799,26 @@ def build_scen_04_data(
         "toposnail_fiber": _encode_field_b64(fiber_angle, -90.0, 90.0),
     }
 
+    telem = compute_scenario_telemetry(
+        raw_fields,
+        v_budget=v_budget,
+        anisotropy_eps=anisotropy_eps,
+        thermal_delta_t=t_out,
+        base_v_budget=0.30,
+        base_anisotropy_eps=0.24,
+        base_thermal_delta_t=1200.0,
+    )
+    baselines = build_scen_04_baselines(
+        v_budget=v_budget,
+        raw_fields=raw_fields,
+        anisotropy_eps=anisotropy_eps,
+        thermal_delta_t=t_out,
+    )
+    theorems = [dict(t) for t in FORMAL_THEOREMS]
+    for t in theorems:
+        if "2.7" in t.get("id", ""):
+            t["residual"] = f"{telem['so6_rotor_residual']:.2e}"
+
     json_payload: Dict[str, Any] = {
         "scenario_id": SCENARIO_ID,
         "name": SCENARIO_NAME,
@@ -1783,8 +1832,9 @@ def build_scen_04_data(
         "mesh": s4_mesh,
         "supports": supports,
         "force": force_info,
-        "baselines": build_scen_04_baselines(v_budget=v_budget),
-        "theorems": FORMAL_THEOREMS,
+        "baselines": baselines,
+        "telemetry": telem,
+        "theorems": theorems,
     }
 
     raw_lookup: Dict[str, Any] = {

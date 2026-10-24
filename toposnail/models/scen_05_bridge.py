@@ -23,6 +23,11 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
+from toposnail.models.scen_01_cantilever import (
+    compute_scenario_telemetry,
+    sharpen_binary_tiebreak_rho,
+)
+
 SCENARIO_ID = "05_lpbf_self_draining_bridge_arch"
 SCENARIO_NAME = "05 LPBF Self-Draining Bridge Arch (Dihedral D4, 0 Trapped beta2 Cavities)"
 SCENARIO_TITLE = "LPBF Self-Draining Maillart / Michell Parabolic Arch Bridge"
@@ -174,7 +179,7 @@ def _segment_dist_sq(
 
 def _encode_field_b64(arr: np.ndarray, min_v: float, max_v: float) -> str:
     """Quantize 3D numpy array to uint8 and return base64 string."""
-    norm = np.clip((arr.astype(np.float32) - min_v) / (max_v - min_v + 1e-8) * 255.0, 0, 255).astype(np.uint8)
+    norm = np.clip(np.round((arr.astype(np.float32) - min_v) / (max_v - min_v + 1e-8) * 255.0), 0, 255).astype(np.uint8)
     return base64.b64encode(norm.tobytes()).decode("ascii")
 
 
@@ -399,8 +404,9 @@ def build_scen_05_fields(
     rho_raw = np.where(window_clear_mask, 0.001, rho_raw)
 
     rho = np.clip(rho_raw, 0.001, 0.98).astype(np.float32)
-    # Enforce exact floating-point D_4 symmetry across X and Y
+    # Enforce exact floating-point D_4 symmetry across X and Y and Theorem 2.2 binary tie-break sharpening
     rho = 0.25 * (rho + rho[:, :, ::-1] + rho[:, ::-1, :] + rho[:, ::-1, ::-1])
+    rho = sharpen_binary_tiebreak_rho(rho)
 
     # Topological beta_2 = 0 self-draining closure pass across all thresholds:
     # Any single isolated sub-voxel void pocket pinched between merging struts is filled
@@ -426,8 +432,9 @@ def build_scen_05_fields(
                         reachable[nz, ny, nx] = True
                         queue.append((nz, ny, nx))
             trapped_mask = is_void & (~reachable)
-            rho = np.where(trapped_mask, max(0.65, th_check + 0.08), rho).astype(np.float32)
+            rho = np.where(trapped_mask, max(0.96, th_check + 0.08), rho).astype(np.float32)
             rho = 0.25 * (rho + rho[:, :, ::-1] + rho[:, ::-1, :] + rho[:, ::-1, ::-1])
+            rho = sharpen_binary_tiebreak_rho(rho)
 
     bridge_solid = rho > 0.30
     t_boost = 1.0 + 0.00018 * float(np.max(thermal_delta_t) if isinstance(thermal_delta_t, np.ndarray) else thermal_delta_t)
@@ -1497,13 +1504,38 @@ def build_scen_05_stages(
     ]
 
 
-def get_scen_05_baselines() -> List[Dict[str, Any]]:
+def get_scen_05_baselines(
+    raw_fields: Optional[Dict[str, np.ndarray]] = None,
+    v_budget: float = 0.24,
+    anisotropy_eps: float = 0.24,
+    thermal_delta_t: float = 0.0,
+) -> List[Dict[str, Any]]:
     """Return calibrated 5-solver Mode B comparison table for Scenario 05."""
+    if raw_fields is None:
+        raw_fields = build_scen_05_fields(
+            grid_shape=(32, 24, 24),
+            v_budget=v_budget,
+            anisotropy_eps=anisotropy_eps,
+            thermal_delta_t=thermal_delta_t,
+        )
+    telem = compute_scenario_telemetry(
+        raw_fields,
+        v_budget=v_budget,
+        anisotropy_eps=anisotropy_eps,
+        thermal_delta_t=thermal_delta_t,
+        base_v_budget=0.24,
+        base_anisotropy_eps=0.24,
+        base_thermal_delta_t=0.0,
+    )
     return [
         {
             "solver": "TopoSnail (Proposed)",
-            "compliance_ratio": 0.680,
-            "binary_crispness": 99.4,
+            "compliance_ratio": telem["compliance_ratio"],
+            "binary_crispness": telem["binary_crispness"],
+            "binary_crispness_exact": telem["binary_crispness_exact"],
+            "j_toposnail": telem["j_toposnail"],
+            "j_gaussian_simp": telem["j_gaussian_simp"],
+            "so6_rotor_residual": telem["so6_rotor_residual"],
             "checkerboards": 0.00,
             "thin_strut_f1": 99.1,
             "beta2_voids": 0,
@@ -1626,6 +1658,27 @@ def build_scen_05_data(
         "toposnail_fiber": _encode_field_b64(fiber_angle, -90.0, 90.0),
     }
 
+    t_scalar = float(np.max(thermal_delta_t)) if isinstance(thermal_delta_t, np.ndarray) else float(thermal_delta_t)
+    telem = compute_scenario_telemetry(
+        raw_fields,
+        v_budget=v_budget,
+        anisotropy_eps=anisotropy_eps,
+        thermal_delta_t=t_scalar,
+        base_v_budget=0.24,
+        base_anisotropy_eps=0.24,
+        base_thermal_delta_t=0.0,
+    )
+    baselines = get_scen_05_baselines(
+        raw_fields=raw_fields,
+        v_budget=v_budget,
+        anisotropy_eps=anisotropy_eps,
+        thermal_delta_t=t_scalar,
+    )
+    theorems = [dict(t) for t in FORMAL_THEOREMS]
+    for t in theorems:
+        if "2.7" in t.get("id", ""):
+            t["residual"] = f"{telem['so6_rotor_residual']:.2e}"
+
     payload: Dict[str, Any] = {
         "scenario_id": SCENARIO_ID,
         "name": SCENARIO_NAME,
@@ -1633,14 +1686,15 @@ def build_scen_05_data(
         "grid_shape": list(grid_shape),
         "volume_budget": float(v_budget),
         "anisotropy_eps": float(anisotropy_eps),
-        "thermal_delta_t": float(np.max(thermal_delta_t)) if isinstance(thermal_delta_t, np.ndarray) else float(thermal_delta_t),
+        "thermal_delta_t": t_scalar,
         "fields_b64": fields_b64,
         "stages": stages,
         "mesh": stages[3]["mesh"],
         "supports": supports,
         "force": force_info,
-        "baselines": get_scen_05_baselines(),
-        "theorems": FORMAL_THEOREMS,
+        "baselines": baselines,
+        "telemetry": telem,
+        "theorems": theorems,
     }
 
     raw_bundle = {

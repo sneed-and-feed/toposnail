@@ -26,6 +26,8 @@ from toposnail.models.scen_01_cantilever import (
     build_scen_01_stage_3_mesh,
     build_scen_01_stage_4_mesh,
     build_scen_01_stages,
+    compute_scenario_telemetry,
+    sharpen_binary_tiebreak_rho,
     verify_scen_01_structural_integrity,
 )
 from toposnail.models.scen_02_bracket import (
@@ -226,4 +228,6 @@ __all__ = [
     "build_scen_05_fields",
     "build_scen_05_baselines",
     "audit_scen_05",
+    "compute_scenario_telemetry",
+    "sharpen_binary_tiebreak_rho",
 ]
