@@ -47,6 +47,9 @@ jobs:
       - name: Verify Formal Runtime Invariants
         run: python -c "from toposnail.optimizer import TopoSnailOptimizer; opt = TopoSnailOptimizer(); res = opt.verify_formal_theorems(); print(res); assert res['all_passed'] and res['all_theorems_passed']"
 
+      - name: Generate Portable WebGL2 Studio HTML
+        run: python toposnail/studio.py
+
       - name: Run Pytest Test Suite
         run: pytest tests/test_toposnail.py tests/test_blind_cad_benchmark.py -v
 
@@ -55,9 +58,6 @@ jobs:
 
       - name: Audit 21-Rule GFM & KaTeX Math Compliance
         run: python scripts/audit_gfm_math.py README.md docs/ARCHITECTURE.md
-
-      - name: Generate Portable WebGL2 Studio HTML
-        run: python toposnail/studio.py
 
       - name: Headless Browser Visual Verification (Windows)
         if: runner.os == 'Windows'
