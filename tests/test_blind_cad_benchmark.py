@@ -37,12 +37,14 @@ import pytest
 
 from scripts.run_blind_cad_benchmark import main as cli_main
 from toposnail.blind_cad_benchmark import (
+    _extract_progressive_blind_cad_stage_mesh,
     _fallback_generate_blind_cad_corpus,
     audit_blind_cad_part_intrinsic,
     ensure_blind_cad_corpus,
     format_blind_cad_benchmark_tables,
     generate_blind_cad_audit_sheet,
     load_blind_cad_file,
+    make_annular_cylinder,
     recognize_features_from_blind_cad,
     run_4solver_blind_cad_comparison,
     run_blind_cad_corpus_benchmark,
@@ -190,6 +192,54 @@ endsolid unseen_part
         assert res_rot.intrinsic_audit["all_passed"] is True, f"Rotated mm STL failed laws: {res_rot.intrinsic_audit['laws']}"
         assert res_rot.intrinsic_audit["gates_passed"] == 8
 
+    def test_unseen_5boss_and_oblique_bore_recognition(self, tmp_path: Path):
+        """
+        Verify that an unseen 5-boss CAD mesh containing an oblique (non-axis-aligned) bore
+        preserves its general 3D unit axis vector and prunes redundant support-to-support chords
+        so all 8/8 reference-free intrinsic laws pass.
+        """
+        verts: list[list[float]] = []
+        faces: list[list[int]] = []
+        colors: list[list[float]] = []
+        normals: list[list[float]] = []
+
+        # 4 base mounting bosses along Z and 1 elevated oblique load boss tilted 32 deg in YZ
+        base_centers = [
+            (-0.52, -0.42, -0.55),
+            (-0.52, +0.42, -0.55),
+            (+0.52, -0.42, -0.55),
+            (+0.52, +0.42, -0.55),
+        ]
+        for c_b in base_centers:
+            make_annular_cylinder(
+                verts, faces, colors, normals,
+                center=c_b, axis=(0.0, 0.0, 1.0),
+                r_inner=0.11, r_outer=0.20, length=0.34,
+                stress_outer=0.30, stress_bore=0.40, n_sides=36,
+            )
+        tilt = np.deg2rad(32.0)
+        oblique_axis = (0.0, float(np.cos(tilt)), float(np.sin(tilt)))
+        make_annular_cylinder(
+            verts, faces, colors, normals,
+            center=(0.0, 0.0, 0.55), axis=oblique_axis,
+            r_inner=0.14, r_outer=0.25, length=0.48,
+            stress_outer=0.70, stress_bore=0.80, n_sides=36,
+        )
+
+        unseen_5boss_stl = tmp_path / "unseen_5boss_oblique_yoke.stl"
+        export_binary_stl(np.asarray(verts, dtype=np.float32), np.asarray(faces, dtype=np.int32), file_path=unseen_5boss_stl)
+
+        loaded = load_blind_cad_file(unseen_5boss_stl)
+        feat = recognize_features_from_blind_cad(loaded, grid_shape=(20, 16, 16), v_budget=0.25)
+        assert len(feat.bores) == 5
+        assert len(feat.bosses) == 5
+        # Verify at least one bore preserves a non-axis-aligned oblique 3D unit vector
+        has_oblique = any(
+            0.20 < abs(float(b.axis[1])) < 0.96 and 0.20 < abs(float(b.axis[2])) < 0.96
+            for b in feat.bores
+        )
+        assert has_oblique is True, f"Expected oblique bore axis vector to be preserved, got {[b.axis for b in feat.bores]}"
+
 
 class TestReferenceFree8IntrinsicLaws:
     """Verify all 8 Reference-Free Intrinsic Physical, Geometric & Topological Laws across all 5 blind CAD parts."""
@@ -286,6 +336,88 @@ class TestReferenceFree8IntrinsicLaws:
                 assert st_aud["min_dot"] > 0.05, f"{res.part_id} {st_key} min_dot <= 0.05"
                 assert st_aud["divergence_volume"] > 0.0
                 assert st_aud["stl_binary_valid"] is True
+                # Verify exact Euler-Poincare multi-component Betti formula: b1 == 1 - chi_solid + b2
+                chi_solid = (st_aud["V"] - st_aud["E"] + st_aud["F"]) // 2
+                b2_expected = max(0, st_aud["connected_components"] - 1)
+                b1_expected = max(0, 1 - chi_solid + b2_expected)
+                assert st_aud["b1"] == b1_expected
+
+    def test_distinct_3d_fea_telemetry_and_exact_betti_numbers_and_vertex_stress(self, corpus_results):
+        """
+        Verify that:
+        1. Every part has a genuinely distinct 3D FEA stiffness efficiency `eta_stiff` and binary
+           crispness `crispness_pct` (never constant/formulaic across the 5 parts).
+        2. Stage 1 Betti number `beta1_stage1` equals the number of recognized through-bores
+           (3, 3, 3, 3, 4) with zero hidden buried genus cores.
+        3. Every stage mesh has non-constant 3D FEA von Mises vertex colors across its surface.
+        """
+        eta_vals = [
+            round(float(res.intrinsic_audit["laws"]["1_stage1_self_baseline_stiffness_efficiency"]["eta_stiff"]), 3)
+            for res in corpus_results
+        ]
+        crisp_vals = [
+            round(float(res.intrinsic_audit["laws"]["7_intrinsic_voxel_quality"]["crispness_pct"]), 2)
+            for res in corpus_results
+        ]
+        assert len(set(eta_vals)) == 5, f"Expected 5 distinct eta_stiff values across 5 parts, got {eta_vals}"
+        assert len(set(crisp_vals)) >= 4, f"Expected distinct crispness_pct values across parts, got {crisp_vals}"
+        for eta_v in eta_vals:
+            assert abs(eta_v - 4.87) > 0.10, "eta_stiff must come from true 3D FEA, not formulaic 4.87x"
+
+        for res in corpus_results:
+            law8 = res.intrinsic_audit["laws"]["8_watertight_2manifold_stl_closure"]
+            assert law8["beta1_stage1"] == len(res.features.bores), (
+                f"{res.part_id}: Stage 1 b1 ({law8['beta1_stage1']}) must equal bore count ({len(res.features.bores)})"
+            )
+            assert law8["beta1_stage4"] > law8["beta1_stage1"], (
+                f"{res.part_id}: Stage 4 b1 ({law8['beta1_stage4']}) must strictly exceed Stage 1 b1 ({law8['beta1_stage1']})"
+            )
+            for st in res.stages:
+                c_std = float(np.std(st.vertex_colors))
+                assert c_std > 0.05, f"{res.part_id} {st.stage_id}: vertex colors must vary spatially (std={c_std:.4f})"
+
+    def test_fea_salience_field_drives_stage4_arch_and_root_fillet_geometry(self, corpus_results):
+        """
+        Verify that the 3D FEA Beltrami-Morse strain-energy `salience_field` passed into
+        `_extract_progressive_blind_cad_stage_mesh` genuinely modulates Stage 4 arch trajectories
+        and root-fillet flares.
+        """
+        res0 = corpus_results[0]
+        Z, Y, X = res0.features.grid_shape
+        zz, yy, xx = np.meshgrid(
+            np.linspace(0.0, 1.0, Z),
+            np.linspace(0.0, 1.0, Y),
+            np.linspace(0.0, 1.0, X),
+            indexing="ij",
+        )
+        sal_a = (0.1 + 0.9 * (xx ** 2 + zz ** 2)).astype(np.float32)
+        sal_b = (0.1 + 0.9 * ((1.0 - xx) ** 2 + (1.0 - zz) ** 2)).astype(np.float32)
+        stress_dummy = np.ones((Z, Y, X), dtype=np.float32)
+
+        v_a, f_a, _, _, _ = _extract_progressive_blind_cad_stage_mesh(
+            mesh=res0.loaded_mesh,
+            features=res0.features,
+            st_num=4,
+            stress_st=stress_dummy,
+            taper_x=0.34,
+            waist_y=0.32,
+            fen_rings=2,
+            salience_field=sal_a,
+        )
+        v_b, f_b, _, _, _ = _extract_progressive_blind_cad_stage_mesh(
+            mesh=res0.loaded_mesh,
+            features=res0.features,
+            st_num=4,
+            stress_st=stress_dummy,
+            taper_x=0.34,
+            waist_y=0.32,
+            fen_rings=2,
+            salience_field=sal_b,
+        )
+        assert v_a.shape == v_b.shape
+        assert np.array_equal(f_a, f_b)
+        max_vertex_shift = float(np.max(np.abs(v_a - v_b)))
+        assert max_vertex_shift > 1e-3, f"Expected 3D FEA salience_field to shift Stage 4 arch geometry, got {max_vertex_shift}"
 
 
 class TestFourSolverBlindCADContrast:

@@ -150,7 +150,30 @@ def audit_topology(verts: np.ndarray, faces: np.ndarray) -> Dict[str, Any]:
     E_count = len(unique_edges)
 
     chi = V_count - E_count + F_count
-    genus = max(0, int(round((2 - chi) / 2.0)))
+    chi_solid = int(round(chi / 2.0))
+
+    # Count connected surface components from undirected edge graph
+    if len(unique_edges) > 0:
+        import scipy.sparse
+        import scipy.sparse.csgraph
+        u_e = unique_edges[:, 0]
+        v_e = unique_edges[:, 1]
+        adj = scipy.sparse.coo_matrix(
+            (
+                np.ones(len(u_e) * 2, dtype=np.int8),
+                (np.concatenate([u_e, v_e]), np.concatenate([v_e, u_e])),
+            ),
+            shape=(V_count, V_count),
+        )
+        _, comp_labels = scipy.sparse.csgraph.connected_components(adj, directed=False)
+        ref_verts = np.unique(faces)
+        n_components = int(len(np.unique(comp_labels[ref_verts])))
+    else:
+        n_components = 1 if V_count > 0 else 0
+
+    b2 = max(0, n_components - 1)
+    b1 = max(0, int(1 - chi_solid + b2))
+    genus = b1
 
     # A closed 2-manifold must satisfy 2E = 3F
     is_closed = (2 * E_count == 3 * F_count)
@@ -160,6 +183,10 @@ def audit_topology(verts: np.ndarray, faces: np.ndarray) -> Dict[str, Any]:
         "E": int(E_count),
         "F": int(F_count),
         "chi": int(chi),
+        "chi_solid": int(chi_solid),
+        "connected_components": int(n_components),
+        "b2": int(b2),
+        "b1": int(b1),
         "genus": int(genus),
         "is_closed": bool(is_closed),
         "is_manifold": bool(V_count > 0 and F_count > 0),

@@ -57,22 +57,22 @@ Every cold-loaded part is audited against **8 intrinsic physical, topological, a
 
 | Gate ID | Intrinsic Physical or Topological Law | Mathematical Criterion | Corpus Pass Rate |
 | :--- | :--- | :--- | :--- |
-| **G1** | **Stage 1 Self-Baseline Stiffness Efficiency** | Specific stiffness gain $\eta_{\mathrm{stiff}} > 1.35\times$ (`4.873x` mean across corpus) | **5/5 (100%)** |
+| **G1** | **Stage 1 Self-Baseline Stiffness Efficiency** | Specific stiffness gain $\eta_{\mathrm{stiff}} > 1.35\times$ (`2.298x` mean across corpus) | **5/5 (100%)** |
 | **G2** | **Fastener Bore Clearance (`Omega_KOZ`)** | `100.0%` unobstructed cylindrical ray and triangle clearance through every detected bore | **5/5 (100%)** |
 | **G3** | **Boss Interface Preservation (`Omega_solid`)** | `100.0%` solid voxel retention (`0.000` datum erosion) across all recognized boss collars | **5/5 (100%)** |
 | **G4** | **Single Load-Bearing Connected Component** | $\beta_0 = 1$ connecting `100%` of support bosses to `100%` of loaded bosses (`0` islands) | **5/5 (100%)** |
-| **G5** | **True Equilibrium Residual Admissibility** | Recomputed equilibrium residual $r_{\mathrm{eq}} \le 5.0\times 10^{-2}$ (`<= 8.11e-5` achieved) | **5/5 (100%)** |
+| **G5** | **True Equilibrium Residual Admissibility** | Recomputed equilibrium residual $r_{\mathrm{eq}} \le 5.0\times 10^{-2}$ (`<= 3.01e-4` achieved) | **5/5 (100%)** |
 | **G6** | **Strict 4-Stage Volume Monotonicity** | $V_{\mathrm{S1}} > V_{\mathrm{S2}} > V_{\mathrm{S3}} > V_{\mathrm{S4}}$ and Stage 4 mass within $\pm 1.5\%$ of `V_budget` | **5/5 (100%)** |
-| **G7** | **Zero Trapped Cavities & LPBF Crispness** | $\beta_2 = 0$ sealed internal cavities, `0.0%` checkerboards, and `99.69%` binary crispness | **5/5 (100%)** |
+| **G7** | **Zero Trapped Cavities & LPBF Crispness** | $\beta_2 = 0$ sealed internal cavities, `0.0%` checkerboards, and `98.6%--99.3%` binary crispness | **5/5 (100%)** |
 | **G8** | **Watertight 2-Manifold STL & Bionic Genus** | `boundary_edges == 0`, `non_manifold_edges == 0`, `min_dot > 0.05`, and $\beta_1(\mathrm{S4}) > \beta_1(\mathrm{S1})$ | **5/5 (100%)** |
 
-| Blind CAD Part ID | Recognized Bores | Stiffness Gain `eta_stiff` | Bore Clearance | Boss Retention | Equilibrium `r_eq` | Topological Genus $\beta_1(\mathrm{S1}\to\mathrm{S4})$ | Intrinsic Gates |
-| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `blind_01_asymmetric_l_bracket` | `3` (`2 X`, `1 Y`) | `4.873x` | `100.0%` | `100.0%` | `7.84e-05` | `3 -> 10` | **8/8 PASS** |
-| `blind_02_three_ear_bellcrank` | `3` (`3 Z`) | `4.873x` | `100.0%` | `100.0%` | `7.91e-05` | `3 -> 10` | **8/8 PASS** |
-| `blind_03_flanged_torque_arm` | `3` (`1 Y`, `2 Z`) | `4.873x` | `100.0%` | `100.0%` | `7.88e-05` | `3 -> 8` | **8/8 PASS** |
-| `blind_04_twin_bore_pillow_block` | `3` (`1 Y`, `2 Z`) | `4.873x` | `100.0%` | `100.0%` | `7.94e-05` | `3 -> 10` | **8/8 PASS** |
-| `blind_05_tri_mount_bulkhead_yoke` | `4` (`1 Y`, `3 Z`) | `4.875x` | `100.0%` | `100.0%` | `8.11e-05` | `4 -> 13` | **8/8 PASS** |
+| Blind CAD Part ID | Recognized Bores | Stiffness Gain `eta_stiff` | Binary Crispness | Bore Clearance | Boss Retention | Equilibrium `r_eq` | Topological Genus $\beta_1(\mathrm{S1}\to\mathrm{S4})$ | Intrinsic Gates |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `blind_01_asymmetric_l_bracket` | `3` (`2 X`, `1 Y`) | `1.935x` | `98.6%` | `100.0%` | `100.0%` | `2.57e-04` | `3 -> 10` | **8/8 PASS** |
+| `blind_02_three_ear_bellcrank` | `3` (`3 Z`) | `2.376x` | `99.0%` | `100.0%` | `100.0%` | `1.43e-04` | `3 -> 9` | **8/8 PASS** |
+| `blind_03_flanged_torque_arm` | `3` (`1 Y`, `2 Z`) | `2.735x` | `98.9%` | `100.0%` | `100.0%` | `9.97e-05` | `3 -> 7` | **8/8 PASS** |
+| `blind_04_twin_bore_pillow_block` | `3` (`1 Y`, `2 Z`) | `2.713x` | `99.3%` | `100.0%` | `100.0%` | `9.76e-05` | `3 -> 9` | **8/8 PASS** |
+| `blind_05_tri_mount_bulkhead_yoke` | `4` (`1 Y`, `3 Z`) | `1.729x` | `98.7%` | `100.0%` | `100.0%` | `3.01e-04` | `4 -> 16` | **8/8 PASS** |
 
 ---
 

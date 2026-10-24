@@ -504,7 +504,27 @@ class StageMesh:
             min_dot = 0.0
 
         chi = len(verts) - n_undir + len(faces)
-        genus = max(0, int(round((2 - chi) / 2.0)))
+        chi_solid = int(round(chi / 2.0))
+
+        if len(edges) > 0 and len(verts) > 0:
+            import scipy.sparse
+            import scipy.sparse.csgraph
+            adj = scipy.sparse.coo_matrix(
+                (
+                    np.ones(len(u_min) * 2, dtype=np.int8),
+                    (np.concatenate([u_min, v_max]), np.concatenate([v_max, u_min])),
+                ),
+                shape=(len(verts), len(verts)),
+            )
+            _, comp_labels = scipy.sparse.csgraph.connected_components(adj, directed=False)
+            ref_verts = np.unique(f64)
+            n_components = int(len(np.unique(comp_labels[ref_verts])))
+        else:
+            n_components = 1 if len(verts) > 0 else 0
+
+        b2 = max(0, n_components - 1)
+        b1 = max(0, int(1 - chi_solid + b2))
+        genus = b1
         is_closed = (boundary_edges == 0 and non_manifold_edges == 0)
 
         return {
@@ -512,6 +532,10 @@ class StageMesh:
             "E": n_undir,
             "F": int(len(faces)),
             "chi": int(chi),
+            "chi_solid": int(chi_solid),
+            "connected_components": int(n_components),
+            "b2": int(b2),
+            "b1": int(b1),
             "genus": int(genus),
             "boundary_edges": int(boundary_edges),
             "non_manifold_edges": int(non_manifold_edges),

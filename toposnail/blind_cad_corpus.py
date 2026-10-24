@@ -621,34 +621,6 @@ def _combine_disjoint_manifold_components(
     return verts, faces
 
 
-def _make_buried_genus_core(
-    center: Tuple[float, float, float],
-    half_extents: Tuple[float, float, float] = (0.012, 0.005, 0.004),
-    num_tunnels: int = 4,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """
-    Build a sub-pixel watertight 2-manifold block (`chi = 2 - 2 * num_tunnels`,
-    `min_normal_dot > 0.50`) buried deep inside the solid interior of a part so the multi-component
-    CAD assembly has exact global Euler characteristic `chi = 2 - 2 * N_bores` (`genus == N_bores`)
-    while keeping 100% of exterior CNC faces unbroken and dimple-free.
-    """
-    cx, cy, cz = float(center[0]), float(center[1]), float(center[2])
-    hx, hy, hz = float(half_extents[0]), float(half_extents[1]), float(half_extents[2])
-    nx = max(6, 2 * int(num_tunnels) + 1)
-    ny = 5
-    nz = 4
-    tunnels = [(2 * k + 1, 2) for k in range(int(num_tunnels))]
-
-    def _eval(u: float, v: float, w: float) -> Tuple[float, float, float]:
-        return (
-            cx + (2.0 * u - 1.0) * hx,
-            cy + (2.0 * v - 1.0) * hy,
-            cz + (2.0 * w - 1.0) * hz,
-        )
-
-    return make_cnc_lofted_brick(_eval, nx=nx, ny=ny, nz=nz, tunnel_quads=tunnels)
-
-
 def build_blind_cad_part_mesh(
     part_name: str,
     extraction_grid: Tuple[int, int, int] = (64, 64, 64),
@@ -748,8 +720,6 @@ def build_blind_cad_part_mesh(
         components.append(make_cnc_lofted_brick(_eval_lower_arm, nx=14, ny=10, nz=6, bevel_blend=0.12))
         components.append(make_cnc_lofted_brick(_make_side_gusset(-1.0), nx=12, ny=8, nz=6, bevel_blend=0.12))
         components.append(make_cnc_lofted_brick(_make_side_gusset(+1.0), nx=12, ny=8, nz=6, bevel_blend=0.12))
-        # M = 4 visible bricks, N_bores = 3 -> num_tunnels = 4 + 3 = 7
-        components.append(_make_buried_genus_core(center=(-0.62, 0.0, -0.25), num_tunnels=7))
 
     elif "02" in pid or "bellcrank" in pid:
         c_piv = (0.0, -0.45, 0.0)
@@ -789,8 +759,6 @@ def build_blind_cad_part_mesh(
             return (x_val, y_val, z_val)
 
         components.append(make_cnc_lofted_brick(_eval_bellcrank_plate, nx=16, ny=14, nz=6, bevel_blend=0.12))
-        # M = 1 visible brick, N_bores = 3 -> num_tunnels = 1 + 3 = 4
-        components.append(_make_buried_genus_core(center=(0.0, 0.08, -0.06), num_tunnels=4))
 
     elif "03" in pid or "torque_arm" in pid:
         components.append(
@@ -845,8 +813,6 @@ def build_blind_cad_part_mesh(
 
         components.append(make_cnc_lofted_brick(_eval_span_rear_mid, nx=14, ny=8, nz=14, bevel_blend=0.10))
         components.append(make_cnc_lofted_brick(_eval_span_mid_front, nx=14, ny=8, nz=14, bevel_blend=0.10))
-        # M = 2 visible bricks, N_bores = 3 -> num_tunnels = 2 + 3 = 5
-        components.append(_make_buried_genus_core(center=(-0.34, 0.04, -0.05), num_tunnels=5))
 
     elif "04" in pid or "pillow_block" in pid:
         components.append(
@@ -889,8 +855,6 @@ def build_blind_cad_part_mesh(
             return (x_val, y_val, z_val)
 
         components.append(make_cnc_lofted_brick(_eval_pillow_housing, nx=18, ny=10, nz=10, bevel_blend=0.10))
-        # M = 1 visible brick, N_bores = 3 -> num_tunnels = 1 + 3 = 4
-        components.append(_make_buried_genus_core(center=(0.0, 0.12, -0.38), num_tunnels=4))
 
     elif "05" in pid or "bulkhead_yoke" in pid:
         r_tripod = 0.56
@@ -930,8 +894,6 @@ def build_blind_cad_part_mesh(
             return (x_val, y_val, z_val)
 
         components.append(make_cnc_lofted_brick(_eval_tri_pyramid_forging, nx=16, ny=12, nz=10, bevel_blend=0.12))
-        # M = 1 visible pyramidal forging block, N_bores = 4 -> num_tunnels = 1 + 4 = 5
-        components.append(_make_buried_genus_core(center=(-0.08, 0.0, -0.55), num_tunnels=5))
 
     else:
         raise ValueError(f"Unknown blind CAD corpus part '{part_name}'")
@@ -1194,9 +1156,9 @@ def _estimate_so3_principal_datum_frame(
     normals = cross[valid] / weights[:, None]
     total_w = float(np.sum(weights))
 
-    # Fast check: if >= 12% of triangle area is already aligned with canonical axes, preserve I_3
+    # Fast check: if >= 8% of triangle area is already aligned with canonical axes, preserve I_3
     axis_align = np.max(np.abs(normals), axis=1)
-    if float(np.sum(weights[axis_align > 0.998])) >= 0.12 * total_w:
+    if float(np.sum(weights[axis_align > 0.998])) >= 0.08 * total_w:
         return np.eye(3, dtype=np.float64)
 
     # Fold normals to canonical hemisphere (first significant component > 0)
