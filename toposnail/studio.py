@@ -978,6 +978,41 @@ table.benchmark-table tr.active {{
     pointer-events: auto;
     flex-wrap: wrap;
 }}
+#cadViewBarA {{
+    top: 4px;
+    left: 6px;
+    right: 6px;
+    gap: 1.5px;
+    row-gap: 2px;
+    padding: 2px 4px;
+    justify-content: flex-start;
+}}
+#cadViewBarA .cad-btn {{
+    padding: 1.5px 3.5px;
+    font-size: 8.5px;
+    letter-spacing: -0.2px;
+    line-height: 1.15;
+    white-space: nowrap;
+}}
+#cadViewBarA .cad-sep {{
+    margin: 0 1px;
+    height: 11px;
+}}
+@media (max-width: 1560px) {{
+    #cadViewBarA {{
+        gap: 1px;
+        padding: 1.5px 3px;
+    }}
+    #cadViewBarA .cad-btn {{
+        padding: 1px 2.2px;
+        font-size: 7.5px;
+        letter-spacing: -0.4px;
+    }}
+    #cadViewBarA .cad-sep {{
+        margin: 0 0.5px;
+        height: 10px;
+    }}
+}}
 .cad-view-bar .cad-sep {{
     width: 1px;
     height: 13px;
@@ -2718,6 +2753,19 @@ function getScenarioStages(scen) {{
     ];
 }}
 
+function getQuadATopSafeY(canvas, dpr) {{
+    const bar = document.getElementById("cadViewBarA");
+    if (!bar) return 34 * dpr;
+    const barRect = bar.getBoundingClientRect();
+    const canvasRect = canvas ? canvas.getBoundingClientRect() : null;
+    if (barRect && canvasRect && barRect.height > 0 && canvasRect.height > 0) {{
+        const bottomCssPx = Math.max(22, barRect.bottom - canvasRect.top);
+        return (bottomCssPx + 7) * dpr;
+    }}
+    const fallbackBottom = (bar.offsetTop || 4) + (bar.offsetHeight || 24);
+    return Math.max(32, fallbackBottom + 7) * dpr;
+}}
+
 function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
     const stages = getScenarioStages(scen);
     if (!stages || stages.length < 4) return;
@@ -2737,7 +2785,13 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
     const cosX = Math.cos(STATE.camRotX);
     const sinX = Math.sin(STATE.camRotX);
     const xSign = (STATE.scenarioId === "03_trabecular_femur_anisotropic_so6") ? -1.0 : 1.0;
-    const scale = Math.min(bayW * 0.38, h * 0.30) * STATE.camZoom;
+
+    const badgeY = getQuadATopSafeY(canvas, dpr);
+    const badgeH = 20 * dpr;
+    const bayTopClearY = badgeY + badgeH + 6 * dpr;
+    const bayBotClearY = h - 42 * dpr;
+    const availBayH = Math.max(80 * dpr, bayBotClearY - bayTopClearY);
+    const scale = Math.min(bayW * 0.38, availBayH * 0.41, h * 0.30) * STATE.camZoom;
 
     // 3-Point Studio Lighting in camera space
     const lx = 0.42, ly = 0.62, lz = 0.66;
@@ -2751,7 +2805,7 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
         const stage = stages[b];
         const bayX0 = b * bayW;
         const bayCenterX = bayX0 + bayW * 0.5;
-        const bayCenterY = h * 0.53 + STATE.camPanY * dpr * 0.2;
+        const bayCenterY = bayTopClearY + availBayH * 0.50 + STATE.camPanY * dpr * 0.2;
 
         function projectBay(x, y, z) {{
             const rx = x * cosY - y * sinY;
@@ -2870,26 +2924,25 @@ function renderQuadALineup(canvas, ctx, scen, w, h, dpr) {{
 
         ctx.restore();
 
-        // Subtle vertical dividing line between bays
+        // Subtle vertical dividing line between bays (starts below #cadViewBarA)
         if (b > 0) {{
+            const divTopY = Math.max(0, badgeY - 4 * dpr);
             ctx.strokeStyle = "rgba(148, 163, 184, 0.22)";
             ctx.lineWidth = 1.0 * dpr;
             ctx.beginPath();
-            ctx.moveTo(bayX0, 0);
+            ctx.moveTo(bayX0, divTopY);
             ctx.lineTo(bayX0, h);
             ctx.stroke();
         }}
 
-        // Top Pill Badge for this bay (placed at badgeY = 38*dpr cleanly below #cadViewBarA)
+        // Top Pill Badge for this bay (dynamically placed below #cadViewBarA)
         const volPct = Math.round(stage.volume_fraction * 100);
         const shortTitles = ["S1: FRESH CAD", "S2: COARSE HULL", "S3: FENESTRATED", "S4: BIONIC HYBRID"];
         const badgeText = `${{shortTitles[b] || `STAGE ${{b + 1}}`}} (${{volPct}}%)`;
         ctx.font = `bold ${{Math.round(9.0 * dpr)}}px monospace`;
         const tw = ctx.measureText(badgeText).width;
         const badgeW = Math.min(bayW - 8 * dpr, tw + 14 * dpr);
-        const badgeH = 20 * dpr;
         const badgeX = bayCenterX - badgeW * 0.5;
-        const badgeY = 38 * dpr;
 
         ctx.fillStyle = "rgba(11, 15, 25, 0.88)";
         const isS4 = (b === 3) || Boolean(stage.stage_id && stage.stage_id.includes("4"));
@@ -3027,9 +3080,11 @@ function renderQuadA() {{
     const strutScale = 1.0 + 0.14 * (volScale - 1.0);
     const thermalNorm = (STATE.thermalDeltaT - 350.0) / 1150.0;
     const anisoNorm = (STATE.anisotropyEps - 0.24) / 0.24;
+    const topSafeY = getQuadATopSafeY(canvas, dpr);
+    const extraTopShift = Math.max(0, (topSafeY - 34 * dpr) * 0.45);
 
     ctx.save();
-    ctx.translate(w / 2 + STATE.camPanX * dpr, h / 2 - 2 * dpr + STATE.camPanY * dpr);
+    ctx.translate(w / 2 + STATE.camPanX * dpr, h / 2 - 2 * dpr + extraTopShift + STATE.camPanY * dpr);
     ctx.scale(STATE.camZoom, STATE.camZoom);
 
     const cosY = Math.cos(STATE.camRotY);
@@ -3651,7 +3706,9 @@ function renderQuadA() {{
 
     ctx.restore();
 
-    // Top-Center Active Stage Pill Badge (placed at badgeY = 38*dpr cleanly below #cadViewBarA)
+    // Top-Center Active Stage Pill Badge (dynamically placed below #cadViewBarA)
+    let singleBadgeLeftX = w;
+    let singleBadgeBottomY = topSafeY;
     if (activeStageObj) {{
         const badgeText = activeStageObj.label || activeStageObj.stage_id;
         ctx.font = `bold ${{Math.round(10.0 * dpr)}}px monospace`;
@@ -3659,7 +3716,9 @@ function renderQuadA() {{
         const badgeW = tw + 20 * dpr;
         const badgeH = 22 * dpr;
         const badgeX = (w - badgeW) * 0.5;
-        const badgeY = 38 * dpr;
+        const badgeY = topSafeY;
+        singleBadgeLeftX = badgeX;
+        singleBadgeBottomY = badgeY + badgeH;
 
         ctx.fillStyle = "rgba(11, 15, 25, 0.85)";
         const isS4 = (STATE.activeStage === "S4") || Boolean(activeStageObj.stage_id && activeStageObj.stage_id.includes("4"));
@@ -3678,20 +3737,24 @@ function renderQuadA() {{
         ctx.fillText(badgeText, badgeX + 10 * dpr, badgeY + 15 * dpr);
     }}
 
-    // --- 1. Top-Left Live Status Overlay (placed below #cadViewBarA so it never collides with toolbar buttons) ---
+    // --- 1. Top-Left Live Status Overlay (placed below #cadViewBarA so it never collides with toolbar buttons or center badge) ---
+    const statusY1 = (singleBadgeLeftX < 195 * dpr)
+        ? (singleBadgeBottomY + 13 * dpr)
+        : Math.max(44 * dpr, topSafeY + 11 * dpr);
+    const statusY2 = statusY1 + 13 * dpr;
     ctx.fillStyle = "rgba(255, 255, 255, 0.90)";
     ctx.font = `bold ${{Math.round(10 * dpr)}}px monospace`;
     const stateLabel = progress < 0.02 ? "SOLID BILLET" : (progress < 1.0 ? "ERODING" : "CONVERGED");
     ctx.fillText(
         `Iter ${{Math.round(STATE.erosionIter)}}/${{STATE.maxErosionIters}} [${{stateLabel}}]`,
-        12 * dpr, 48 * dpr
+        12 * dpr, statusY1
     );
     ctx.fillStyle = "rgba(148, 163, 184, 0.92)";
     ctx.font = `${{Math.round(9.2 * dpr)}}px monospace`;
     const clipTag = STATE.sectionClip ? " | CLIP:ON" : "";
     ctx.fillText(
         `${{STATE.solverMode}} | V=${{Math.round(STATE.vBudget * 100)}}% | ${{(STATE.renderMode || "solid").toUpperCase()}}${{clipTag}}`,
-        12 * dpr, 61 * dpr
+        12 * dpr, statusY2
     );
 
     // --- 2. Bottom-Left Scalar Colorbar Legend ---

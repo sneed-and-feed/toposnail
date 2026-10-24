@@ -1172,6 +1172,8 @@ class TestStudioOrbitAndStageControls:
             'e.key === "F3"',
             'e.key === "F4"',
             'url.searchParams.get("stage")',
+            "function getQuadATopSafeY(",
+            "const badgeY = getQuadATopSafeY(canvas, dpr);",
         ]:
             assert token in html, f"Missing stage control token in studio HTML: {token}"
 
