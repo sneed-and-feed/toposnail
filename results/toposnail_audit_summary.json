@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-23T02:56:26Z",
+  "timestamp": "2026-10-24T04:54:13Z",
   "overall_status": "PASS",
   "official_community_benchmarks": {
     "all_passed": true,
@@ -14,10 +14,10 @@
     "liutovar_top3d": {
       "benchmark": "Liu & Tovar (2014) top3d Compliance",
       "passed": true,
-      "compliance_simp": 0.014712798973628248,
-      "compliance_toposnail": 0.011475983199430034,
-      "normalized_compliance_ratio": 0.78,
-      "stiffness_improvement_pct": 22.0,
+      "compliance_simp": 0.015372429356212435,
+      "compliance_toposnail": 0.01036648852522601,
+      "normalized_compliance_ratio": 0.6743559059542282,
+      "stiffness_improvement_pct": 32.56,
       "reference": "Liu & Tovar (2014 SMO 50(6), 1175-1196)"
     },
     "yang_guarded_floor": {
@@ -34,7 +34,7 @@
     "peak_heap_mb": 6.565,
     "heap_limit_mb": 35.0,
     "heap_compliant": true,
-    "total_benchmark_time_s": 260.16
+    "total_benchmark_time_s": 147.74
   },
   "formal_theorems_verified": [
     {

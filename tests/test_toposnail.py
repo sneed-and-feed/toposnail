@@ -1220,10 +1220,16 @@ class TestStudioOrbitAndStageControls:
             )
             assert round(crisp_from_b64, 1) == telem["binary_crispness"]
 
-            # Physical range checks
+            # Physical range checks & explicit exclusion of old hardcoded numbers (0.680, 99.4%, 5.10e-14)
             assert 0.50 <= telem["compliance_ratio"] <= 0.85
+            assert telem["compliance_ratio"] != 0.680, f"{sc_id}: hit legacy hardcoded 0.680 compliance_ratio"
+            assert telem["compliance_delta_pct"] != -32.0, f"{sc_id}: hit legacy hardcoded -32.0% compliance delta"
             assert 98.0 <= telem["binary_crispness"] <= 99.9
+            assert telem["binary_crispness"] != 99.4, f"{sc_id}: hit legacy hardcoded 99.4% binary_crispness"
             assert 0.0 < telem["so6_rotor_residual"] < 1.14e-13
+            assert f"{telem['so6_rotor_residual']:.2e}" != "5.10e-14", (
+                f"{sc_id}: hit legacy hardcoded 5.10e-14 so6_rotor_residual"
+            )
 
             comp_ratios.append(telem["compliance_ratio"])
             crisp_vals.append(telem["binary_crispness"])
@@ -1238,20 +1244,34 @@ class TestStudioOrbitAndStageControls:
 
         # Verify parameter sensitivity (v_budget, anisotropy_eps, thermal_delta_t)
         f01 = build_scen_01_fields(grid_shape=(16, 12, 12), v_budget=0.25, anisotropy_eps=0.24, thermal_delta_t=0.0)
-        t_base = compute_scenario_telemetry(f01, v_budget=0.25, anisotropy_eps=0.24, thermal_delta_t=0.0)
-        t_v_high = compute_scenario_telemetry(f01, v_budget=0.40, anisotropy_eps=0.24, thermal_delta_t=0.0)
-        t_eps_high = compute_scenario_telemetry(f01, v_budget=0.25, anisotropy_eps=0.38, thermal_delta_t=0.0)
-        t_therm_high = compute_scenario_telemetry(f01, v_budget=0.25, anisotropy_eps=0.24, thermal_delta_t=900.0)
+        t_base = compute_scenario_telemetry(
+            f01, v_budget=0.25, anisotropy_eps=0.24, thermal_delta_t=0.0, base_v_budget=0.25
+        )
+        t_v_high = compute_scenario_telemetry(
+            f01, v_budget=0.40, anisotropy_eps=0.24, thermal_delta_t=0.0, base_v_budget=0.25
+        )
+        t_eps_high = compute_scenario_telemetry(
+            f01, v_budget=0.25, anisotropy_eps=0.38, thermal_delta_t=0.0, base_v_budget=0.25
+        )
+        t_therm_high = compute_scenario_telemetry(
+            f01, v_budget=0.25, anisotropy_eps=0.24, thermal_delta_t=900.0, base_v_budget=0.25
+        )
 
         assert t_v_high["j_toposnail"] < t_base["j_toposnail"]
+        assert t_v_high["binary_crispness_exact"] != t_base["binary_crispness_exact"]
+        assert t_v_high["so6_rotor_residual"] != t_base["so6_rotor_residual"]
         assert t_eps_high["compliance_ratio"] != t_base["compliance_ratio"]
         assert t_eps_high["so6_rotor_residual"] != t_base["so6_rotor_residual"]
         assert t_therm_high["j_toposnail"] > t_base["j_toposnail"]
+        assert t_therm_high["compliance_ratio"] != t_base["compliance_ratio"]
 
-        # Verify studio HTML uses computeScenarioTelemetry and has no hardcoded KPI formulas
+        # Verify studio HTML uses computeScenarioTelemetry, dynamic volume slider KPI, and custom CAD field synthesis
         studio_path = Path("studio/toposnail_portable_studio.html")
         html = studio_path.read_text(encoding="utf-8") if studio_path.exists() else generate_studio_html()
         assert "function computeScenarioTelemetry(" in html
+        assert "function encodeFloatFieldToBase64(" in html
+        assert "customScen.telemetry = computeScenarioTelemetry(" in html
+        assert "STATE.vBudget * 100.0" in html
         assert "const so6Resid = telem.so6_rotor_residual;" in html
         assert "(4.82 + 1.15 * STATE.anisotropyEps)" not in html
         assert "5.474 * activeRow.compliance_ratio" not in html

@@ -178,8 +178,12 @@ def _segment_dist_sq(
 
 
 def _encode_field_b64(arr: np.ndarray, min_v: float, max_v: float) -> str:
-    """Quantize 3D numpy array to uint8 and return base64 string."""
-    norm = np.clip(np.round((arr.astype(np.float32) - min_v) / (max_v - min_v + 1e-8) * 255.0), 0, 255).astype(np.uint8)
+    """Quantize 3D numpy array to uint8 with exact nearest-integer rounding and return base64 string."""
+    norm = np.clip(
+        np.round((arr.astype(np.float64) - min_v) / max(1e-12, max_v - min_v) * 255.0),
+        0,
+        255,
+    ).astype(np.uint8)
     return base64.b64encode(norm.tobytes()).decode("ascii")
 
 

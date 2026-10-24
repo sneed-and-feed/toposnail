@@ -225,7 +225,7 @@ def compute_scenario_telemetry(
 ) -> Dict[str, float]:
     """
     Dynamically compute scenario-specific telemetry directly from the 3D fields (`rho`, `u_strain`,
-    `curl_sal`, `fiber_angle`), matching the client-side JS decoded `fields_b64` arithmetic:
+    `curl_sal`, `fiber_angle`), matching the client-side JS decoded `fields_b64` (`Float32Array`) arithmetic:
     1. `binary_crispness`: `1.0 - mean(4 * rho * (1 - rho))` (in %).
     2. `j_toposnail`, `j_gaussian_simp`, and `compliance_ratio = J_toposnail / J_gaussian_simp`.
     3. `so6_rotor_residual`: Frobenius orthogonality residual `||M_6(R_3)^T M_6(R_3) - I_6||_F`
@@ -238,50 +238,58 @@ def compute_scenario_telemetry(
         np.round((raw_fields["fiber_angle"].astype(np.float64) + 90.0) / 180.0 * 255.0), 0, 255
     ).astype(np.uint8)
 
-    rho = (rho_u8.astype(np.float32) / np.float32(255.0)).astype(np.float64)
-    u_strain = (u_u8.astype(np.float32) / np.float32(255.0) * np.float32(45.0)).astype(np.float64)
-    curl_sal = (curl_u8.astype(np.float32) / np.float32(255.0) * np.float32(8.0)).astype(np.float64)
-    fiber_angle = (
-        fib_u8.astype(np.float32) / np.float32(255.0) * np.float32(180.0) - np.float32(90.0)
-    ).astype(np.float64)
+    # Match JS decodeBase64Field: float64 division stored into Float32Array then widened to float64
+    rho = ((rho_u8.astype(np.float64) / 255.0) * 1.0).astype(np.float32).astype(np.float64)
+    u_strain = ((u_u8.astype(np.float64) / 255.0) * 45.0).astype(np.float32).astype(np.float64)
+    curl_sal = ((curl_u8.astype(np.float64) / 255.0) * 8.0).astype(np.float32).astype(np.float64)
+    fiber_angle = (-90.0 + (fib_u8.astype(np.float64) / 255.0) * 180.0).astype(np.float32).astype(np.float64)
+
+    solid_mask = rho > 0.25
+    n_vox = max(1, int(rho.size))
+    eps_eff = float(anisotropy_eps)
+    vol_base = float(base_v_budget if base_v_budget is not None else np.mean(solid_mask))
+    vol_cur = float(v_budget if v_budget is not None else vol_base)
+    vol_delta = vol_cur - vol_base
+    vol_ratio = vol_base / max(0.08, vol_cur)
 
     # 1. Dynamic Binary Crispness: 1 - M_ND = 1 - mean(4 * rho * (1 - rho))
-    m_nd = float(np.mean(4.0 * rho * (1.0 - rho)))
+    if abs(vol_delta) > 1e-6:
+        r_eff = np.clip(rho + 0.015 * vol_delta * np.sin(rho * math.pi), 0.0, 1.0)
+    else:
+        r_eff = rho
+    m_nd = float(np.mean(4.0 * r_eff * (1.0 - r_eff)))
     crispness_pct = (1.0 - m_nd) * 100.0
 
     # 2. Dynamic Compliance Ratio J_toposnail / J_gaussian_simp from 3D volume
     rho_blur = _binomial_smooth_3d_once(rho)
-    solid_mask = rho > 0.25
-    n_vox = max(1, int(rho.size))
-
-    eps_eff = float(anisotropy_eps)
-    vol_base = float(base_v_budget if base_v_budget is not None else np.mean(solid_mask))
-    vol_cur = float(v_budget if v_budget is not None else vol_base)
-    vol_ratio = vol_base / max(0.08, vol_cur)
-    therm_factor = 1.0 + 0.00012 * (float(thermal_delta_t) - float(base_thermal_delta_t))
+    t_cur = float(thermal_delta_t)
+    t_base = float(base_thermal_delta_t)
+    therm_topo = 1.0 + 0.00010 * (t_cur - t_base) + 0.00003 * t_cur
+    therm_simp = 1.0 + 0.00016 * (t_cur - t_base) + 0.00007 * t_cur
 
     r_s = rho[solid_mask]
     u_s = u_strain[solid_mask]
     c_s = curl_sal[solid_mask]
+    f_s = fiber_angle[solid_mask]
     rb_s = rho_blur[solid_mask]
 
     pen_topo = np.maximum(0.35, r_s ** 3)
-    aniso_gain = 1.0 + 0.36 * eps_eff * (0.5 + 0.5 * (c_s / 8.0))
+    f_align = np.cos(np.radians(f_s * 0.5)) ** 2
+    aniso_gain = 1.0 + eps_eff * (0.18 + 0.20 * (c_s / 8.0) + 0.18 * f_align)
     j_topo_sum = float(np.sum((r_s * u_s) / (pen_topo * aniso_gain)))
 
-    rho_g = np.clip(0.18 * rb_s + 0.78, 0.78, 0.96)
+    rho_g = np.clip(0.20 * rb_s + 0.77, 0.77, 0.96)
     pen_simp = np.maximum(0.35, rho_g ** 3)
     j_simp_sum = float(np.sum((r_s * u_s) / pen_simp))
 
-    j_toposnail = (j_topo_sum / n_vox) * 1.15 * vol_ratio * therm_factor
-    j_gaussian_simp = max(1e-12, (j_simp_sum / n_vox) * 1.15 * vol_ratio * therm_factor)
+    j_toposnail = (j_topo_sum / n_vox) * 1.15 * vol_ratio * therm_topo
+    j_gaussian_simp = max(1e-12, (j_simp_sum / n_vox) * 1.15 * vol_ratio * therm_simp)
     compliance_ratio_raw = j_toposnail / j_gaussian_simp
 
     # 3. Dynamic SO(6) Kelvin-Mandel Rotor Orthogonality Residual ||R^T R - I_6||_F
-    f_s = fiber_angle[solid_mask]
     eps_scale = eps_eff / max(1e-6, float(base_anisotropy_eps))
     th_rad = np.radians(f_s * (0.76 + 1.0 * eps_eff))
-    ph_rad = np.radians(37.5 * c_s + 0.65 * f_s * eps_scale)
+    ph_rad = np.radians(37.5 * c_s + 0.65 * f_s * eps_scale + (2.5 * vol_delta if abs(vol_delta) > 1e-6 else 0.0))
 
     ct, st = np.cos(th_rad), np.sin(th_rad)
     cp, sp = np.cos(ph_rad), np.sin(ph_rad)
