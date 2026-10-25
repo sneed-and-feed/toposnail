@@ -153,7 +153,7 @@ Evaluated across all 5 canonical scenarios at $\text{SNR} = 20\text{ dB}$ under 
 
 | Solver | Compliance Ratio $J / J_{\mathrm{SIMP}}$ | Binary Crispness | Checkerboard Defect | Thin Strut F1 | Trapped β₂ Cavities | Glint Rejection | Equilibrium Residual |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **TopoSnailOptimizer (Ours)** | **0.8410--0.9053** | **98.55--99.44%** | **0.00%** | **98.40%** | **0** | **100.0%** | **8.45e-05** |
+| **TopoSnailOptimizer (Ours)** | **0.6875--0.7683** | **96.24--99.44%** | **0.00%** | **98.40%** | **0** | **100.0%** | **7.62e-05--8.22e-05** |
 | `HeavisideProjectedSIMP` | 0.8429--0.9014 | 99.68--99.72% | 0.00% | 0.07--0.98% | 1 | 52.0% | 4.50e-04 |
 | `GaussianFilteredSIMP` | 1.0000 | 53.55--75.31% | 0.00% | 0.19--0.47% | 0 | 35.0% | 8.12e-04 |
 | `UnfilteredSIMP` | 0.8840--0.9249 | 54.52--60.83% | 3.10--5.46% | 0.07--0.68% | 1,433--2,254 | 0.0% | 2.45e-03 |
