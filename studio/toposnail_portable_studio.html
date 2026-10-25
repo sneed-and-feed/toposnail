@@ -1032,8 +1032,34 @@ function computeScenarioTelemetry(scen, vBudget, anisotropyEps, thermalDeltaT) {
         trBase += cBase6[d][d];
         trRot += cRot6[d][d];
     }
+    let bulkDilatBase = 0.0, bulkDilatRot = 0.0;
+    for (let i = 0; i < 3; i++) {
+        for (let j = 0; j < 3; j++) {
+            bulkDilatBase += cBase6[i][j];
+            bulkDilatRot += cRot6[i][j];
+        }
+    }
+    // O(6) diagonal-block trace invariant on block-diagonal R3 (+) R3 subgroup and Kelvin-Mandel bulk/deviatoric split
+    let trBlockNormBase = 0.0, trBlockShearBase = 0.0;
+    let trBlockNormRot = 0.0, trBlockShearRot = 0.0;
+    for (let i = 0; i < 3; i++) {
+        trBlockNormBase += cBase6[i][i];
+        trBlockShearBase += cBase6[3 + i][3 + i];
+        let accN = 0.0, accS = 0.0;
+        for (let j = 0; j < 3; j++) {
+            for (let k = 0; k < 3; k++) {
+                accN += R3[i][j] * cBase6[j][k] * R3[i][k];
+                accS += R3[i][j] * cBase6[3 + j][3 + k] * R3[i][k];
+            }
+        }
+        trBlockNormRot += accN;
+        trBlockShearRot += accS;
+    }
     const traceConservationResid = Number(Math.abs(trRot - trBase).toExponential(6));
+    const bulkDilatTraceResid = Number(Math.abs(bulkDilatRot - bulkDilatBase).toExponential(6));
+    const o6DiagBlockTraceResid = Number((Math.abs(trBlockNormRot - trBlockNormBase) + Math.abs(trBlockShearRot - trBlockShearBase)).toExponential(6));
 
+    const morseSnap = updateMorseTelemetry();
     const crispExact = Math.max(0.0, Math.min(100.0, (1.0 - mNdSum / N) * 100.0));
     const crispRounded = Math.round(crispExact * 10.0) / 10.0;
 
@@ -1054,6 +1080,10 @@ function computeScenarioTelemetry(scen, vBudget, anisotropyEps, thermalDeltaT) {
         binary_crispness_exact: Math.round(crispExact * 10000.0) / 10000.0,
         so6_rotor_residual: so6Resid,
         trace_conservation_residual: traceConservationResid,
+        bulk_dilatation_trace_residual: bulkDilatTraceResid,
+        o6_diagonal_block_trace_residual: o6DiagBlockTraceResid,
+        cascade_radial_drift: morseSnap.radialDrift,
+        cascade_radial_drift_formatted: morseSnap.radialDrift.toExponential(3),
     };
 }
 
@@ -1177,13 +1207,19 @@ const topoMorseScratch = new Float32Array(256);
 const topoCascadeVec8 = new Float32Array([0.75, 0.5, -0.35, 0.2, -0.1, 0.08, 0.0, 0.0]);
 exactSphereNormUlpPolish(topoCascadeVec8, 1.0);
 let topoSimStepCount = 0;
+let topoLastGlintStep = 0;
 
-function updateMorseTelemetry(sampleVal = 0.0) {
+function updateMorseTelemetry(sampleVal) {
     topoSimStepCount++;
     const hIdx = topoSimStepCount % 256;
-    const cleanSample = Number.isFinite(sampleVal)
+    let sample = (sampleVal !== undefined && Number.isFinite(sampleVal))
         ? sampleVal
         : (Math.sin(topoSimStepCount * 0.08) * 0.8 + Math.cos(topoSimStepCount * 0.02) * 0.3);
+    if (sampleVal === undefined && topoSimStepCount - topoLastGlintStep > 35 && Math.random() < 0.25) {
+        sample += (Math.random() > 0.5 ? 4.5 : -4.5);
+        topoLastGlintStep = topoSimStepCount;
+    }
+    const cleanSample = Number.isFinite(sample) ? sample : 0.0;
     topoMorseHistory[hIdx] = cleanSample;
 
     for (let i = 0; i < 256; i++) {
@@ -1207,9 +1243,13 @@ function updateMorseTelemetry(sampleVal = 0.0) {
     const dPlus = midSample - cleanSample;
     const isMorseCritical = topoSimStepCount >= 2 && (dMinus * dPlus > 0) && (Math.abs(midSample) > madFloor);
 
+    // Evolve active 6D subspace (0..5) of topoCascadeVec8 via skew-symmetric step while preserving [6],[7] === 0.0
+    const v0 = topoCascadeVec8[0], v1 = topoCascadeVec8[1];
+    topoCascadeVec8[0] = Math.fround(v0 - 0.015 * v1);
+    topoCascadeVec8[1] = Math.fround(v1 + 0.015 * v0);
     exactSphereNormUlpPolish(topoCascadeVec8, 1.0);
     const radialDrift = Math.abs(topoSumSqF32(topoCascadeVec8) - 1.0);
-    return { hIdx, midSample, prev2Sample, madFloor, isMorseCritical, radialDrift };
+    return { hIdx, sample: cleanSample, midSample, prev2Sample, madFloor, isMorseCritical, radialDrift };
 }
 
 function normalizeStageKey(stageKey) {
@@ -1562,38 +1602,6 @@ function onSliceChange() {
 
     if (STATE.sectionClip) renderQuadA();
     renderQuadB();
-}
-
-// Discrete 3-point Morse ring-buffer with 1-sample causal deferral
-const morseHistory = new Float32Array(256);
-let simStepCount = 0;
-let lastGlintStep = 0;
-
-function updateMorseTelemetry() {
-    simStepCount++;
-    // Capacity N = 256; safe causal indexing: (hIdx + 255) % 256 for (t - 1), (hIdx + 254) % 256 for (t - 2)
-    const hIdx = simStepCount % 256;
-    let sample = Math.sin(simStepCount * 0.08) * 0.8 + Math.cos(simStepCount * 0.02) * 0.3;
-
-    if (simStepCount - lastGlintStep > 35 && Math.random() < 0.25) {
-        sample += (Math.random() > 0.5 ? 4.5 : -4.5);
-        lastGlintStep = simStepCount;
-    }
-    morseHistory[hIdx] = sample;
-
-    let sumAbs = 0;
-    for (let i = 0; i < 256; i++) sumAbs += Math.abs(morseHistory[i]);
-    const meanAbs = sumAbs / 256;
-    const madFloor = Math.max(0.2, meanAbs * 1.4826);
-
-    // 3-point discrete Morse innovation with 1-sample causal deferral at (t - 1): Delta_- * Delta_+ > 0
-    const midSample = morseHistory[(hIdx + 255) % 256];
-    const prev2Sample = morseHistory[(hIdx + 254) % 256];
-    const dMinus = midSample - prev2Sample;
-    const dPlus = midSample - sample;
-    const isMorseCritical = simStepCount >= 2 && (dMinus * dPlus > 0) && (Math.abs(midSample) > 3.0 * madFloor);
-
-    return { hIdx, sample, midSample, prev2Sample, isMorseCritical };
 }
 
 function updateUIValues() {
