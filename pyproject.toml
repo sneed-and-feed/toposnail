@@ -30,5 +30,6 @@ where = ["."]
 include = ["toposnail*"]
 
 [tool.pytest.ini_options]
+pythonpath = ["."]
 testpaths = ["tests"]
 python_files = ["test_*.py"]

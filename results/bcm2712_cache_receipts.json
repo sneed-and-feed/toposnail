@@ -1,0 +1,103 @@
+{
+  "schema_version": "1.0.0",
+  "verifier": "Broadcom BCM2712 Cortex-A76 Hardware Cache Verifier (scripts/verify_bcm2712_arena.py)",
+  "timestamp_utc": "2026-10-25T18:36:25Z",
+  "hardware_target": "Broadcom BCM2712 (Raspberry Pi 5)",
+  "cpu_core": "ARM Cortex-A76 (ARMv8.2-A)",
+  "bcm2712_cache_geometry": {
+    "hardware_target": "Broadcom BCM2712 (Raspberry Pi 5)",
+    "cpu_core": "ARM Cortex-A76 (ARMv8.2-A)",
+    "clock_mhz": 2400,
+    "line_size_bytes": 64,
+    "l1d": {
+      "size_bytes": 65536,
+      "size_kb": 64,
+      "ways": 4,
+      "sets": 256,
+      "line_size_bytes": 64,
+      "policy": "Pseudo-LRU / Tree-PLRU (4-way)"
+    },
+    "l2": {
+      "size_bytes": 524288,
+      "size_kb": 512,
+      "ways": 8,
+      "sets": 1024,
+      "line_size_bytes": 64,
+      "policy": "Pseudo-LRU (8-way private per core)"
+    },
+    "l3": {
+      "size_bytes": 2097152,
+      "size_mb": 2.0,
+      "ways": 16,
+      "sets": 2048,
+      "line_size_bytes": 64,
+      "policy": "Pseudo-LRU / True LRU (16-way shared LLd)"
+    }
+  },
+  "arenas": {
+    "toposnail": {
+      "arena_struct": "TopoStateArena",
+      "spoke": "toposnail",
+      "description": "3D Anisotropic TTI Topology Optimization, Michell Truss & #![no_std] Rust SIMD Optimizer",
+      "arena_size_bytes": 1472448,
+      "arena_size_kb": 1437.9375,
+      "arena_max_ceiling_bytes": 1572864,
+      "arena_alignment_bytes": 64,
+      "total_references": 50000000,
+      "simulation_wall_time_sec": 2.2428,
+      "throughput_refs_per_sec": 22293271.4,
+      "l1d": {
+        "hits": 7136675,
+        "misses": 42863325,
+        "hit_rate_pct": 14.27
+      },
+      "l2": {
+        "hits": 18536763,
+        "misses": 24326562,
+        "hit_rate_pct": 43.25
+      },
+      "l3": {
+        "hits": 24303555,
+        "misses": 23007,
+        "hit_rate_pct": 99.91
+      },
+      "lld_miss_rate_pct": 0.04601,
+      "target_lld_miss_rate_pct": 0.05,
+      "target_achieved": true,
+      "allocator_static_audit": {
+        "audited": true,
+        "target_binary": "toposnail_rs.dll",
+        "binary_size_bytes": 1558016,
+        "heap_allocators_imported": [],
+        "stepping_symbols_verified": [
+          "toposnail_arena_new",
+          "toposnail_arena_free",
+          "toposnail_arena_reset",
+          "toposnail_get_arena_size_bytes",
+          "compute_spatial_mad_floor_256_c",
+          "so6_rotate_stiffness_f32",
+          "skew_symmetric_triad_operator_f32",
+          "skew_symmetric_triad_cascade_step_f32",
+          "ebe_anisotropic_strain_and_so6_rotor_f32",
+          "so6_rotate_stiffness_f64",
+          "beltrami_morse_checkerboard_shield_f32",
+          "measure_preserving_donor_prune_and_triad_f32",
+          "toposnail_step_iter"
+        ],
+        "stealth_symbols_verified": [],
+        "dynamic_allocations_detected": 0,
+        "status": "PASS"
+      }
+    }
+  },
+  "summary": {
+    "total_arenas_verified": 1,
+    "total_references_simulated": 50000000,
+    "mean_lld_miss_rate_pct": 0.04601,
+    "max_lld_miss_rate_pct": 0.04601,
+    "target_threshold_pct": 0.05,
+    "all_cache_targets_passed": true,
+    "all_allocator_audits_passed": true,
+    "overall_verification_status": "PASS"
+  }
+}

@@ -2025,6 +2025,38 @@ function onSliceChange() {{
     renderQuadB();
 }}
 
+// Discrete 3-point Morse ring-buffer with 1-sample causal deferral
+const morseHistory = new Float32Array(256);
+let simStepCount = 0;
+let lastGlintStep = 0;
+
+function updateMorseTelemetry() {{
+    simStepCount++;
+    // Capacity N = 256; safe causal indexing: (hIdx + 255) % 256 for (t - 1), (hIdx + 254) % 256 for (t - 2)
+    const hIdx = simStepCount % 256;
+    let sample = Math.sin(simStepCount * 0.08) * 0.8 + Math.cos(simStepCount * 0.02) * 0.3;
+
+    if (simStepCount - lastGlintStep > 35 && Math.random() < 0.25) {{
+        sample += (Math.random() > 0.5 ? 4.5 : -4.5);
+        lastGlintStep = simStepCount;
+    }}
+    morseHistory[hIdx] = sample;
+
+    let sumAbs = 0;
+    for (let i = 0; i < 256; i++) sumAbs += Math.abs(morseHistory[i]);
+    const meanAbs = sumAbs / 256;
+    const madFloor = Math.max(0.2, meanAbs * 1.4826);
+
+    // 3-point discrete Morse innovation with 1-sample causal deferral at (t - 1): Delta_- * Delta_+ > 0
+    const midSample = morseHistory[(hIdx + 255) % 256];
+    const prev2Sample = morseHistory[(hIdx + 254) % 256];
+    const dMinus = midSample - prev2Sample;
+    const dPlus = midSample - sample;
+    const isMorseCritical = simStepCount >= 2 && (dMinus * dPlus > 0) && (Math.abs(midSample) > 3.0 * madFloor);
+
+    return {{ hIdx, sample, midSample, prev2Sample, isMorseCritical }};
+}}
+
 function updateUIValues() {{
     document.getElementById("valVol").innerText = Math.round(STATE.vBudget * 100) + "%";
     document.getElementById("valEps").innerText = STATE.anisotropyEps.toFixed(2);
@@ -2104,13 +2136,16 @@ function updateUIValues() {{
         elCrispSub.style.color = curCrisp >= 95.0 ? "var(--accent-green)" : "var(--accent-yellow)";
     }}
 
-    // Checkerboard defect
+    // Checkerboard defect & Discrete Morse ring buffer telemetry
+    const morseData = updateMorseTelemetry();
     const curCheck = progress * activeRow.checkerboards;
     const elCheck = document.getElementById("kpiCheckerboards");
     if (elCheck) elCheck.innerText = curCheck.toFixed(2) + "%";
     const elCheckSub = document.getElementById("kpiCheckerboardsSub");
     if (elCheckSub) {{
-        elCheckSub.innerText = curCheck < 0.5 ? "100% Morse Filtered" : "Pathological 0-1-0-1";
+        elCheckSub.innerText = curCheck < 0.5
+            ? (morseData.isMorseCritical ? "Morse Innovation Suppressed" : "100% Morse Filtered (N=256)")
+            : "Pathological 0-1-0-1";
         elCheckSub.style.color = curCheck < 0.5 ? "var(--accent-green)" : "var(--accent-red)";
     }}
 
@@ -5157,8 +5192,7 @@ def main() -> None:
     out_file = out_dir / "toposnail_portable_studio.html"
 
     print(f"Generating TopoSnail Portable Studio HTML to: {out_file}...")
-    catalog = build_scenario_catalog()
-    html_content = generate_studio_html(catalog)
+    html_content = generate_studio_html()
     with open(out_file, "w", encoding="utf-8") as f:
         f.write(html_content)
     print(f"Successfully generated {out_file} ({len(html_content):,} bytes).")

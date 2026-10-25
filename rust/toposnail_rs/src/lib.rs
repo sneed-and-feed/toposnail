@@ -15,18 +15,22 @@
 //! 5. Shin et al. (2025, arXiv:2502.20343v1) & LimitIRSTD (2024, arXiv:2408.09615v1): Strict < 1.5 MB static SRAM
 //!    arena residency and zero heap allocations during iterative optimization.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(not(any(feature = "std", test)), no_std)]
 #![allow(dead_code)]
 #![allow(unused_unsafe)]
 #![allow(unused_mut)]
 
-#[cfg(not(feature = "std"))]
+#[cfg(all(not(feature = "std"), not(test)))]
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     loop {}
 }
 
-#[cfg(feature = "std")]
+#[cfg(all(not(feature = "std"), not(test), not(windows), not(target_arch = "wasm32")))]
+#[no_mangle]
+pub extern "C" fn rust_eh_personality() {}
+
+#[cfg(any(feature = "std", test))]
 extern crate std;
 
 // --- Dimensions & Constants ---
@@ -185,57 +189,220 @@ impl TopoStateArena {
 // --- IEEE-754 Safe Math Helpers for #![no_std] ---
 
 #[inline(always)]
-fn fast_sqrt(x: f32) -> f32 {
-    #[cfg(feature = "std")]
-    {
-        x.sqrt()
+pub fn abs_f32(x: f32) -> f32 {
+    f32::from_bits(x.to_bits() & 0x7fff_ffff)
+}
+
+#[inline(always)]
+pub fn abs_f64(x: f64) -> f64 {
+    f64::from_bits(x.to_bits() & 0x7fff_ffff_ffff_ffff)
+}
+
+#[inline(always)]
+pub fn fast_sqrt_scalar_f32(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
     }
-    #[cfg(not(feature = "std"))]
+    if !x.is_finite() {
+        return x;
+    }
+    // Scale subnormal inputs into normal IEEE-754 range before bit-halving
+    let (x_norm, scale) = if x < f32::from_bits(0x0080_0000) {
+        (x * 16777216.0f32, 1.0f32 / 4096.0f32)
+    } else {
+        (x, 1.0f32)
+    };
+    let mut guess = f32::from_bits((x_norm.to_bits() >> 1) + 0x1fc0_0000);
+    for _ in 0..4 {
+        guess = 0.5f32 * (guess + x_norm / guess);
+    }
+    guess * scale
+}
+
+#[inline(always)]
+pub fn fast_sqrt_scalar_f64(x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if !x.is_finite() {
+        return x;
+    }
+    let (x_norm, scale) = if x < f64::from_bits(0x0010_0000_0000_0000) {
+        (x * 18014398509481984.0f64, 1.0f64 / 134217728.0f64)
+    } else {
+        (x, 1.0f64)
+    };
+    let mut guess = f64::from_bits((x_norm.to_bits() >> 1) + 0x1ff8_0000_0000_0000);
+    for _ in 0..5 {
+        guess = 0.5f64 * (guess + x_norm / guess);
+    }
+    guess * scale
+}
+
+#[inline(always)]
+pub fn fast_sqrt(x: f32) -> f32 {
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if !x.is_finite() {
+        return x;
+    }
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        use core::arch::x86_64::*;
+        _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x)))
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        use core::arch::aarch64::*;
+        vgetq_lane_f32::<0>(vsqrtq_f32(vdupq_n_f32(x)))
+    }
+    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+    unsafe {
+        use core::arch::wasm32::*;
+        f32x4_extract_lane::<0>(f32x4_sqrt(f32x4_splat(x)))
+    }
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        all(target_arch = "wasm32", target_feature = "simd128")
+    )))]
     {
-        if x <= 0.0 {
-            return 0.0;
-        }
-        let mut guess = x;
-        for _ in 0..10 {
-            guess = 0.5 * (guess + x / guess);
-        }
-        guess
+        fast_sqrt_scalar_f32(x)
     }
 }
 
 #[inline(always)]
-fn fast_cos(x: f32) -> f32 {
-    #[cfg(feature = "std")]
-    {
-        x.cos()
+pub fn fast_sqrt_f64(x: f64) -> f64 {
+    if x <= 0.0 {
+        return 0.0;
     }
-    #[cfg(not(feature = "std"))]
+    if !x.is_finite() {
+        return x;
+    }
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        use core::arch::x86_64::*;
+        _mm_cvtsd_f64(_mm_sqrt_sd(_mm_setzero_pd(), _mm_set_sd(x)))
+    }
+    #[cfg(target_arch = "aarch64")]
+    unsafe {
+        use core::arch::aarch64::*;
+        vgetq_lane_f64::<0>(vsqrtq_f64(vdupq_n_f64(x)))
+    }
+    #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+    unsafe {
+        use core::arch::wasm32::*;
+        f64x2_extract_lane::<0>(f64x2_sqrt(f64x2_splat(x)))
+    }
+    #[cfg(not(any(
+        target_arch = "x86_64",
+        target_arch = "aarch64",
+        all(target_arch = "wasm32", target_feature = "simd128")
+    )))]
     {
-        // Polynomial Taylor approximation for no_std
-        let pi = core::f32::consts::PI;
-        let two_pi = 2.0 * pi;
-        let mut rem = x % two_pi;
-        if rem < 0.0 {
-            rem += two_pi;
-        }
-        if rem > pi {
-            rem = two_pi - rem;
-        }
-        let x2 = rem * rem;
-        1.0 - x2 * (0.5 - x2 * (1.0 / 24.0 - x2 / 720.0))
+        fast_sqrt_scalar_f64(x)
     }
 }
 
 #[inline(always)]
-fn fast_sin(x: f32) -> f32 {
-    #[cfg(feature = "std")]
-    {
-        x.sin()
+pub fn fast_ln(x: f32) -> f32 {
+    if x.is_nan() {
+        return f32::NAN;
     }
-    #[cfg(not(feature = "std"))]
-    {
-        fast_cos(x - core::f32::consts::FRAC_PI_2)
+    if x <= 0.0 {
+        return f32::NEG_INFINITY;
     }
+    if x.is_infinite() {
+        return f32::INFINITY;
+    }
+    let (x_norm, sub_exp) = if x < f32::from_bits(0x0080_0000) {
+        (x * 8388608.0f32, -23i32)
+    } else {
+        (x, 0i32)
+    };
+    let bits = x_norm.to_bits();
+    let mut exp = ((bits >> 23) as i32) - 127 + sub_exp;
+    let mut m = f32::from_bits((bits & 0x007f_ffff) | 0x3f80_0000) as f64;
+    if m > core::f64::consts::SQRT_2 {
+        m *= 0.5;
+        exp += 1;
+    }
+    let y = (m - 1.0) / (m + 1.0);
+    let y2 = y * y;
+    let ln_m = 2.0
+        * y
+        * (1.0
+            + y2 * (1.0 / 3.0
+                + y2 * (1.0 / 5.0
+                    + y2 * (1.0 / 7.0 + y2 * (1.0 / 9.0 + y2 * (1.0 / 11.0))))));
+    ((exp as f64) * core::f64::consts::LN_2 + ln_m) as f32
+}
+
+#[inline(always)]
+pub fn fast_cos(x: f32) -> f32 {
+    if !x.is_finite() {
+        return f32::NAN;
+    }
+    const TWO_PI: f64 = core::f64::consts::TAU;
+    const FRAC_PI_2: f64 = core::f64::consts::FRAC_PI_2;
+    let mut rem = (x as f64) % TWO_PI;
+    if rem < 0.0 {
+        rem += TWO_PI;
+    }
+    let q = (rem / FRAC_PI_2) as i32;
+    let t = rem - (q as f64) * FRAC_PI_2;
+    let t2 = t * t;
+    let s = t
+        * (1.0
+            - t2 * (1.0 / 6.0
+                - t2 * (1.0 / 120.0
+                    - t2 * (1.0 / 5040.0 - t2 * (1.0 / 362880.0 - t2 / 39916800.0)))));
+    let c = 1.0
+        - t2 * (0.5
+            - t2 * (1.0 / 24.0
+                - t2 * (1.0 / 720.0
+                    - t2 * (1.0 / 40320.0 - t2 * (1.0 / 3628800.0 - t2 / 479001600.0)))));
+    let res = match q & 3 {
+        0 => c,
+        1 => -s,
+        2 => -c,
+        _ => s,
+    };
+    res as f32
+}
+
+#[inline(always)]
+pub fn fast_sin(x: f32) -> f32 {
+    if !x.is_finite() {
+        return f32::NAN;
+    }
+    const TWO_PI: f64 = core::f64::consts::TAU;
+    const FRAC_PI_2: f64 = core::f64::consts::FRAC_PI_2;
+    let mut rem = (x as f64) % TWO_PI;
+    if rem < 0.0 {
+        rem += TWO_PI;
+    }
+    let q = (rem / FRAC_PI_2) as i32;
+    let t = rem - (q as f64) * FRAC_PI_2;
+    let t2 = t * t;
+    let s = t
+        * (1.0
+            - t2 * (1.0 / 6.0
+                - t2 * (1.0 / 120.0
+                    - t2 * (1.0 / 5040.0 - t2 * (1.0 / 362880.0 - t2 / 39916800.0)))));
+    let c = 1.0
+        - t2 * (0.5
+            - t2 * (1.0 / 24.0
+                - t2 * (1.0 / 720.0
+                    - t2 * (1.0 / 40320.0 - t2 * (1.0 / 3628800.0 - t2 / 479001600.0)))));
+    let res = match q & 3 {
+        0 => s,
+        1 => c,
+        2 => -s,
+        _ => -c,
+    };
+    res as f32
 }
 
 #[inline(always)]
@@ -359,7 +526,7 @@ pub fn check_so6_orthogonality(m6: &[f32; 36]) -> f32 {
                 sum += m6[k * 6 + i] * m6[k * 6 + j];
             }
             let target = if i == j { 1.0f32 } else { 0.0f32 };
-            let err = (sum - target).abs();
+            let err = abs_f32(sum - target);
             if err > max_err {
                 max_err = err;
             }
@@ -386,8 +553,12 @@ fn sort_256(arr: &mut [f32; 256]) {
     }
 }
 
+/// Computes the spatial MAD floor over 256 strided samples.
+///
+/// # Safety
+/// If non-null, `salience` and `clock_mask` must point to at least `total_voxels` valid elements.
 #[inline]
-pub fn compute_spatial_mad_floor_256(
+pub unsafe fn compute_spatial_mad_floor_256(
     salience: *const f32,
     clock_mask: *const u8,
     total_voxels: usize,
@@ -396,21 +567,21 @@ pub fn compute_spatial_mad_floor_256(
         return 0.0;
     }
     let mut samples = [0.0f32; 256];
-    for idx in 0..256 {
+    for (idx, sample) in samples.iter_mut().enumerate() {
         let p_idx = (idx * 64) % total_voxels;
         let s = if !clock_mask.is_null() && unsafe { *clock_mask.add(p_idx) } != 0 {
             0.0
         } else {
             unsafe { *salience.add(p_idx) }
         };
-        samples[idx] = s;
+        *sample = s;
     }
     sort_256(&mut samples);
     let med_val = 0.5f32 * (samples[127] + samples[128]);
 
     let mut devs = [0.0f32; 256];
-    for idx in 0..256 {
-        devs[idx] = (samples[idx] - med_val).abs();
+    for (dev, &sample) in devs.iter_mut().zip(samples.iter()) {
+        *dev = abs_f32(sample - med_val);
     }
     sort_256(&mut devs);
     let mad_val = 0.5f32 * (devs[127] + devs[128]);
@@ -422,128 +593,188 @@ pub fn compute_spatial_mad_floor_256(
 #[inline(always)]
 fn eval_norm_sq(v: &[f32; CASCADE_DIM]) -> f32 {
     let mut s = 0.0f32;
-    for i in 0..CASCADE_DIM {
-        s += v[i] * v[i];
+    for &x in v {
+        s += x * x;
     }
     s
 }
 
 fn exact_sphere_norm_ulp_polish(v: &mut [f32; CASCADE_DIM], target_sq: f32) {
-    let cur_sq = eval_norm_sq(v);
-    let mut best_err = (cur_sq - target_sq).abs();
+    let mut cur_sq = eval_norm_sq(v);
+    let mut best_err = abs_f32(cur_sq - target_sq);
     if best_err == 0.0 {
         return;
     }
 
-    // Pass 1: Coordinate-wise ULP refinement
+    // Pass 1: Coordinate-wise ULP refinement on non-zero entries first
     for _iter in 0..4 {
+        let mut improved = false;
         for k in 0..CASCADE_DIM {
             let vk = v[k];
+            if abs_f32(vk) <= 1e-12 {
+                continue;
+            }
+            let vk_sq = vk * vk;
             for step in -4..=4 {
                 if step == 0 {
                     continue;
                 }
                 let cand = ulp_add(vk, step);
-                let old_vk = v[k];
-                v[k] = cand;
-                let cand_sq = eval_norm_sq(v);
-                let err = (cand_sq - target_sq).abs();
-                if err < best_err {
-                    best_err = err;
-                    if best_err == 0.0 {
-                        return;
+                let approx_err = abs_f32((cur_sq - vk_sq + cand * cand) - target_sq);
+                if approx_err <= best_err + 1e-6 {
+                    let old_vk = v[k];
+                    v[k] = cand;
+                    let cand_sq = eval_norm_sq(v);
+                    let err = abs_f32(cand_sq - target_sq);
+                    if err < best_err {
+                        best_err = err;
+                        cur_sq = cand_sq;
+                        improved = true;
+                        if best_err == 0.0 {
+                            return;
+                        }
+                    } else {
+                        v[k] = old_vk;
                     }
-                } else {
-                    v[k] = old_vk;
                 }
             }
+        }
+        if !improved {
+            break;
         }
     }
 
     // Pass 2: 2-coordinate ULP refinement
     if best_err > 0.0 {
+        let mut best_pair: Option<(usize, f32, usize, f32)> = None;
         for k1 in 0..CASCADE_DIM {
-            for step1 in -4..=4 {
-                let c1 = ulp_add(v[k1], step1);
-                let old_vk1 = v[k1];
-                v[k1] = c1;
-                for k2 in 0..CASCADE_DIM {
-                    if k1 == k2 {
-                        continue;
-                    }
-                    let other_sq = eval_norm_sq(v) - v[k2] * v[k2];
-                    let res = target_sq - other_sq;
-                    if res >= 0.0 {
-                        let sgn = if v[k2] >= 0.0 { 1.0f32 } else { -1.0f32 };
-                        let base2 = sgn * fast_sqrt(res);
-                        for step2 in -3..=3 {
-                            let c2 = ulp_add(base2, step2);
-                            let old_vk2 = v[k2];
+            let orig_vk1 = v[k1];
+            if abs_f32(orig_vk1) <= 1e-12 {
+                continue;
+            }
+            for k2 in (k1 + 1)..CASCADE_DIM {
+                let orig_vk2 = v[k2];
+                if abs_f32(orig_vk2) <= 1e-12 {
+                    continue;
+                }
+                let base_pair_sq = orig_vk1 * orig_vk1 + orig_vk2 * orig_vk2;
+                for step1 in -4..=4 {
+                    let c1 = ulp_add(orig_vk1, step1);
+                    let c1_sq = c1 * c1;
+                    v[k1] = c1;
+                    for step2 in -4..=4 {
+                        if step1 == 0 && step2 == 0 {
+                            continue;
+                        }
+                        let c2 = ulp_add(orig_vk2, step2);
+                        let approx_err = abs_f32((cur_sq - base_pair_sq + c1_sq + c2 * c2) - target_sq);
+                        if approx_err <= best_err + 1e-6 {
                             v[k2] = c2;
                             let cand_sq = eval_norm_sq(v);
-                            let err = (cand_sq - target_sq).abs();
+                            let err = abs_f32(cand_sq - target_sq);
                             if err < best_err {
                                 best_err = err;
                                 if best_err == 0.0 {
                                     return;
                                 }
-                            } else {
-                                v[k2] = old_vk2;
+                                best_pair = Some((k1, c1, k2, c2));
                             }
                         }
                     }
                 }
-                v[k1] = old_vk1;
+                v[k1] = orig_vk1;
+                v[k2] = orig_vk2;
             }
+        }
+
+        // Pass 2b: Outward analytical residual root polish on non-zero coordinates only (if still > 0)
+        if best_err > 0.0 {
+            let mut best_delta = f32::MAX;
+            'outer: for radius in 0..=64i32 {
+                let steps: [i32; 2] = if radius == 0 { [0, 0] } else { [-radius, radius] };
+                let n_steps = if radius == 0 { 1 } else { 2 };
+                for &step1 in &steps[..n_steps] {
+                    for k1 in 0..CASCADE_DIM {
+                        let orig_vk1 = v[k1];
+                        if abs_f32(orig_vk1) <= 1e-12 {
+                            continue;
+                        }
+                        let c1 = ulp_add(orig_vk1, step1);
+                        v[k1] = c1;
+                        let sq_with_c1 = eval_norm_sq(v);
+                        for k2 in 0..CASCADE_DIM {
+                            if k1 == k2 {
+                                continue;
+                            }
+                            let orig_vk2 = v[k2];
+                            if abs_f32(orig_vk2) <= 1e-12 {
+                                continue;
+                            }
+                            let other_sq = sq_with_c1 - orig_vk2 * orig_vk2;
+                            let res = target_sq - other_sq;
+                            if res >= 0.0 {
+                                let sgn = if orig_vk2 >= 0.0 { 1.0f32 } else { -1.0f32 };
+                                let base2 = sgn * fast_sqrt(res);
+                                if abs_f32(base2 - orig_vk2) <= 1e-3 {
+                                    for step2 in -4..=4 {
+                                        let c2 = ulp_add(base2, step2);
+                                        let delta = abs_f32(c1 - orig_vk1) + abs_f32(c2 - orig_vk2);
+                                        v[k2] = c2;
+                                        let cand_sq = eval_norm_sq(v);
+                                        let err = abs_f32(cand_sq - target_sq);
+                                        if err < best_err || (err == best_err && err == 0.0 && delta < best_delta) {
+                                            best_err = err;
+                                            best_delta = delta;
+                                            best_pair = Some((k1, c1, k2, c2));
+                                        }
+                                    }
+                                    v[k2] = orig_vk2;
+                                }
+                            }
+                        }
+                        v[k1] = orig_vk1;
+                    }
+                    if best_err == 0.0 {
+                        break 'outer;
+                    }
+                }
+            }
+        }
+
+        if let Some((k1, c1, k2, c2)) = best_pair {
+            v[k1] = c1;
+            v[k2] = c2;
         }
     }
 }
 
 // --- Exported C-ABI Functions ---
 
+static mut STATIC_ARENA: TopoStateArena = TopoStateArena::new_const();
+
+/// Allocates and initializes a static `TopoStateArena`.
+///
+/// # Safety
+/// The returned pointer references static arena memory with `size_of::<TopoStateArena>()` bytes.
+/// Callers must ensure synchronized access across threads.
 #[no_mangle]
 pub unsafe extern "C" fn toposnail_arena_new() -> *mut TopoStateArena {
-    #[cfg(feature = "std")]
-    {
-        let layout = std::alloc::Layout::new::<TopoStateArena>();
-        let ptr = std::alloc::alloc_zeroed(layout) as *mut TopoStateArena;
-        if !ptr.is_null() {
-            (*ptr).grid_z = MAX_GRID_Z as u32;
-            (*ptr).grid_y = MAX_GRID_Y as u32;
-            (*ptr).grid_x = MAX_GRID_X as u32;
-            (*ptr).total_voxels = TOTAL_VOXELS as u32;
-            (*ptr).total_nodes = TOTAL_NODES as u32;
-            (*ptr).vol_fraction = 0.25f32;
-            for x in (*ptr).rho.iter_mut() {
-                *x = 0.25f32;
-            }
-            for x in (*ptr).cascade_registers.iter_mut() {
-                *x = 0.35355339f32;
-            }
-        }
-        ptr
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        static mut STATIC_ARENA: TopoStateArena = TopoStateArena::new_const();
-        &raw mut STATIC_ARENA
-    }
+    let ptr = &raw mut STATIC_ARENA;
+    (*ptr).reset(MAX_GRID_Z as u32, MAX_GRID_Y as u32, MAX_GRID_X as u32, 0.25);
+    ptr
 }
 
+/// Frees arena resources (no-op for static allocation-free arena).
+///
+/// # Safety
+/// `_arena` may be null or must point to a valid `TopoStateArena`.
 #[no_mangle]
-pub unsafe extern "C" fn toposnail_arena_free(arena: *mut TopoStateArena) {
-    #[cfg(feature = "std")]
-    {
-        if !arena.is_null() {
-            std::alloc::dealloc(arena as *mut u8, std::alloc::Layout::new::<TopoStateArena>());
-        }
-    }
-    #[cfg(not(feature = "std"))]
-    {
-        let _ = arena;
-    }
-}
+pub unsafe extern "C" fn toposnail_arena_free(_arena: *mut TopoStateArena) {}
 
+/// Resets arena state and dimensions.
+///
+/// # Safety
+/// If non-null, `arena` must point to a valid, writable `TopoStateArena`.
 #[no_mangle]
 pub unsafe extern "C" fn toposnail_arena_reset(
     arena: *mut TopoStateArena,
@@ -560,11 +791,17 @@ pub unsafe extern "C" fn toposnail_arena_reset(
     0
 }
 
+/// Returns the size of `TopoStateArena` in bytes.
 #[no_mangle]
-pub unsafe extern "C" fn toposnail_get_arena_size_bytes() -> usize {
+pub extern "C" fn toposnail_get_arena_size_bytes() -> usize {
     core::mem::size_of::<TopoStateArena>()
 }
 
+/// C-ABI wrapper for computing spatial MAD floor.
+///
+/// # Safety
+/// `salience` must point to at least `total_voxels` valid f32 values, and
+/// `clock_mask` (if non-null) must point to at least `total_voxels` valid u8 values.
 #[no_mangle]
 pub unsafe extern "C" fn compute_spatial_mad_floor_256_c(
     salience: *const f32,
@@ -574,6 +811,13 @@ pub unsafe extern "C" fn compute_spatial_mad_floor_256_c(
     compute_spatial_mad_floor_256(salience, clock_mask, total_voxels)
 }
 
+/// Rotates 6x6 Kelvin-Mandel stiffness matrix in f32.
+///
+/// # Safety
+/// `r3_in` must point to 9 f32 elements (3x3 rotation matrix).
+/// `c_vti_in` must point to 36 f32 elements (6x6 stiffness matrix).
+/// `c_rot_out` must point to 36 writable f32 elements.
+/// `ortho_err_out`, if non-null, must point to 1 writable f32.
 #[no_mangle]
 pub unsafe extern "C" fn so6_rotate_stiffness_f32(
     r3_in: *const f32,
@@ -585,19 +829,19 @@ pub unsafe extern "C" fn so6_rotate_stiffness_f32(
         return -1;
     }
     let mut r3 = [0.0f32; 9];
-    for i in 0..9 {
-        r3[i] = *r3_in.add(i);
+    for (i, val) in r3.iter_mut().enumerate() {
+        *val = *r3_in.add(i);
     }
     let mut c_vti = [0.0f32; 36];
-    for i in 0..36 {
-        c_vti[i] = *c_vti_in.add(i);
+    for (i, val) in c_vti.iter_mut().enumerate() {
+        *val = *c_vti_in.add(i);
     }
     let mut m6 = [0.0f32; 36];
     build_so6_kelvin_rotor(&r3, &mut m6);
     let mut c_rot = [0.0f32; 36];
     rotate_stiffness_6x6(&m6, &c_vti, &mut c_rot);
-    for i in 0..36 {
-        *c_rot_out.add(i) = c_rot[i];
+    for (i, &val) in c_rot.iter().enumerate() {
+        *c_rot_out.add(i) = val;
     }
     if !ortho_err_out.is_null() {
         *ortho_err_out = check_so6_orthogonality(&m6);
@@ -605,6 +849,11 @@ pub unsafe extern "C" fn so6_rotate_stiffness_f32(
     0
 }
 
+/// Evaluates skew-symmetric bilinear triad operator in f32.
+///
+/// # Safety
+/// `u`, `v`, and `out` must point to at least `dim` valid f32 values.
+/// `w`, if non-null, must point to at least `dim * dim * dim` valid f32 values.
 #[no_mangle]
 pub unsafe extern "C" fn skew_symmetric_triad_operator_f32(
     u: *const f32,
@@ -620,7 +869,7 @@ pub unsafe extern "C" fn skew_symmetric_triad_operator_f32(
     let mut b_uv = [0.0f32; CASCADE_DIM];
 
     if !w.is_null() {
-        for k in 0..d {
+        for (k, b_val) in b_uv.iter_mut().enumerate().take(d) {
             let mut sum_k = 0.0f32;
             for i in 0..d {
                 let ui = *u.add(i);
@@ -631,27 +880,33 @@ pub unsafe extern "C" fn skew_symmetric_triad_operator_f32(
                     sum_k += ui * vj * (w_ijk - w_ikj);
                 }
             }
-            b_uv[k] = sum_k;
+            *b_val = sum_k;
             *out.add(k) = sum_k;
         }
     } else {
-        for k in 0..d {
+        for (k, b_val) in b_uv.iter_mut().enumerate().take(d) {
             let j1 = (k + 1) % d;
             let j2 = (k + d - 1) % d;
             let val = *u.add(k) * (*v.add(j1) - *v.add(j2));
-            b_uv[k] = val;
+            *b_val = val;
             *out.add(k) = val;
         }
     }
 
     // Return inner product <v, B_W(u, v)> (must be <= 1.0e-8 for Theorem 2.3 tangent orthogonality)
     let mut inner = 0.0f32;
-    for k in 0..d {
-        inner += *v.add(k) * b_uv[k];
+    for (k, &b_val) in b_uv.iter().enumerate().take(d) {
+        inner += *v.add(k) * b_val;
     }
     inner
 }
 
+/// Advances SlowFastTriadCascade on S^{D-1} with radial norm ULP polish.
+///
+/// # Safety
+/// `u`, `v_in`, and `v_out` must point to at least CASCADE_DIM (8) valid f32 values.
+/// `w_rec`, if non-null, must point to at least 512 valid f32 values.
+/// `radial_drift_out`, if non-null, must point to 1 writable f32.
 #[no_mangle]
 pub unsafe extern "C" fn skew_symmetric_triad_cascade_step_f32(
     u: *const f32,
@@ -673,9 +928,9 @@ pub unsafe extern "C" fn skew_symmetric_triad_cascade_step_f32(
 
     let mut v = [0.0f32; CASCADE_DIM];
     let mut u_vec = [0.0f32; CASCADE_DIM];
-    for i in 0..CASCADE_DIM {
-        v[i] = *v_in.add(i);
-        u_vec[i] = *u.add(i);
+    for (i, (vi, ui)) in v.iter_mut().zip(u_vec.iter_mut()).enumerate() {
+        *vi = *v_in.add(i);
+        *ui = *u.add(i);
     }
 
     let target_sq = eval_norm_sq(&v);
@@ -696,26 +951,25 @@ pub unsafe extern "C" fn skew_symmetric_triad_cascade_step_f32(
     for _step in 0..steps {
         let mut b_uv = [0.0f32; CASCADE_DIM];
         if has_w {
-            for k in 0..CASCADE_DIM {
+            for (k, b_val) in b_uv.iter_mut().enumerate() {
                 let mut sum_k = 0.0f32;
-                for i in 0..CASCADE_DIM {
-                    let ui = u_vec[i];
+                for (i, &ui) in u_vec.iter().enumerate() {
                     if ui == 0.0 {
                         continue;
                     }
-                    for j in 0..CASCADE_DIM {
+                    for (j, &vj) in v.iter().enumerate() {
                         let w_ijk = *w_rec.add(i * 64 + j * 8 + k);
                         let w_ikj = *w_rec.add(i * 64 + k * 8 + j);
-                        sum_k += ui * v[j] * (w_ijk - w_ikj);
+                        sum_k += ui * vj * (w_ijk - w_ikj);
                     }
                 }
-                b_uv[k] = sum_k;
+                *b_val = sum_k;
             }
         } else {
-            for k in 0..CASCADE_DIM {
+            for (k, b_val) in b_uv.iter_mut().enumerate() {
                 let j1 = (k + 1) % CASCADE_DIM;
                 let j2 = (k + CASCADE_DIM - 1) % CASCADE_DIM;
-                b_uv[k] = u_vec[k] * (v[j1] - v[j2]);
+                *b_val = u_vec[k] * (v[j1] - v[j2]);
             }
         }
 
@@ -753,12 +1007,12 @@ pub unsafe extern "C" fn skew_symmetric_triad_cascade_step_f32(
     // Exact IEEE-754 float32 radial norm ULP polish strictly on final step (Theorem 2.6)
     exact_sphere_norm_ulp_polish(&mut v, target_sq);
 
-    for i in 0..CASCADE_DIM {
-        *v_out.add(i) = v[i];
+    for (i, &vi) in v.iter().enumerate() {
+        *v_out.add(i) = vi;
     }
 
     let final_sq = eval_norm_sq(&v);
-    let drift = (final_sq - target_sq).abs();
+    let drift = abs_f32(final_sq - target_sq);
     if !radial_drift_out.is_null() {
         *radial_drift_out = drift;
     }
@@ -767,6 +1021,16 @@ pub unsafe extern "C" fn skew_symmetric_triad_cascade_step_f32(
 
 // --- Fused EBE Anisotropic Strain & SO(6) Rotor SIMD Kernel ---
 
+/// Fused element-by-element anisotropic strain energy and SO(6) Kelvin-Mandel rotor evaluation.
+///
+/// # Safety
+/// `rho` and `u_strain_out` must point to at least `grid_z * grid_y * grid_x` f32 elements.
+/// `disp_nodal` must point to at least `(grid_z + 1) * (grid_y + 1) * (grid_x + 1) * 3` f32 elements.
+/// `angles` (if non-null) must point to at least `grid_z * grid_y * grid_x * 3` f32 elements.
+/// `c_tti_base` (if non-null) must point to at least 36 f32 elements.
+/// `sigma_vm_out` (if non-null) must point to at least `grid_z * grid_y * grid_x` f32 elements.
+/// `force_nodal_out` (if non-null) must point to at least `(grid_z + 1) * (grid_y + 1) * (grid_x + 1) * 3` f32 elements.
+/// `so6_ortho_err_out` (if non-null) must point to 1 writable f32.
 #[no_mangle]
 pub unsafe extern "C" fn ebe_anisotropic_strain_and_so6_rotor_f32(
     rho: *const f32,
@@ -791,8 +1055,8 @@ pub unsafe extern "C" fn ebe_anisotropic_strain_and_so6_rotor_f32(
 
     let base_c = if !c_tti_base.is_null() {
         let mut b = [0.0f32; 36];
-        for i in 0..36 {
-            b[i] = *c_tti_base.add(i);
+        for (i, val) in b.iter_mut().enumerate() {
+            *val = *c_tti_base.add(i);
         }
         b
     } else {
@@ -939,9 +1203,9 @@ pub unsafe extern "C" fn ebe_anisotropic_strain_and_so6_rotor_f32(
 
                 // Stress sigma_KM = C_rot * eps_KM
                 let mut sig_km = [0.0f32; 6];
-                for i in 0..6 {
+                for (i, sig_val) in sig_km.iter_mut().enumerate() {
                     let r = i * 6;
-                    sig_km[i] = c_ref[r] * eps_km[0]
+                    *sig_val = c_ref[r] * eps_km[0]
                         + c_ref[r + 1] * eps_km[1]
                         + c_ref[r + 2] * eps_km[2]
                         + c_ref[r + 3] * eps_km[3]
@@ -1062,7 +1326,7 @@ pub fn check_so6_orthogonality_f64(m6: &[f64; 36]) -> f64 {
                 sum += m6[k * 6 + i] * m6[k * 6 + j];
             }
             let target = if i == j { 1.0f64 } else { 0.0f64 };
-            let err = (sum - target).abs();
+            let err = abs_f64(sum - target);
             if err > max_err {
                 max_err = err;
             }
@@ -1071,6 +1335,13 @@ pub fn check_so6_orthogonality_f64(m6: &[f64; 36]) -> f64 {
     max_err
 }
 
+/// Rotates 6x6 Kelvin-Mandel stiffness matrix in f64.
+///
+/// # Safety
+/// `r3_in` must point to at least 9 f64 values (3x3 rotation matrix).
+/// `c_vti_in` (if non-null) must point to at least 36 f64 values.
+/// `c_rot_out` must point to at least 36 writable f64 values.
+/// `ortho_err_out` (if non-null) must point to 1 writable f64.
 #[no_mangle]
 pub unsafe extern "C" fn so6_rotate_stiffness_f64(
     r3_in: *const f64,
@@ -1082,16 +1353,16 @@ pub unsafe extern "C" fn so6_rotate_stiffness_f64(
         return -1;
     }
     let mut r3 = [0.0f64; 9];
-    for i in 0..9 {
-        r3[i] = *r3_in.add(i);
+    for (i, val) in r3.iter_mut().enumerate() {
+        *val = *r3_in.add(i);
     }
     let mut m6 = [0.0f64; 36];
     build_so6_kelvin_rotor_f64(&r3, &mut m6);
 
     if !c_vti_in.is_null() {
         let mut c_vti = [0.0f64; 36];
-        for i in 0..36 {
-            c_vti[i] = *c_vti_in.add(i);
+        for (i, val) in c_vti.iter_mut().enumerate() {
+            *val = *c_vti_in.add(i);
         }
         let mut temp = [0.0f64; 36];
         for i in 0..6 {
@@ -1113,8 +1384,8 @@ pub unsafe extern "C" fn so6_rotate_stiffness_f64(
             }
         }
     } else {
-        for i in 0..36 {
-            *c_rot_out.add(i) = m6[i];
+        for (i, &val) in m6.iter().enumerate() {
+            *c_rot_out.add(i) = val;
         }
     }
 
@@ -1124,6 +1395,14 @@ pub unsafe extern "C" fn so6_rotate_stiffness_f64(
     0
 }
 
+/// Beltrami exterior-curl and 3-point discrete Morse checkerboard shielding filter.
+///
+/// # Safety
+/// `u_strain` and `salience_out` must point to at least `grid_z * grid_y * grid_x` f32 values.
+/// `load_dir` (if non-null) must point to at least 3 f32 values.
+/// `m_clock`, `m_koz`, and `m_washout` (if non-null) must point to at least `grid_z * grid_y * grid_x` u8 values.
+/// `mad_floor_out` (if non-null) must point to 1 writable f32.
+/// `checkerboard_mask_out` (if non-null) must point to at least `grid_z * grid_y * grid_x` writable u8 values.
 #[no_mangle]
 pub unsafe extern "C" fn beltrami_morse_checkerboard_shield_f32(
     u_strain: *const f32,
@@ -1326,6 +1605,13 @@ pub unsafe extern "C" fn beltrami_morse_checkerboard_shield_f32(
 
 // --- Measure-Preserving Donor Prune & Triad Kernel ---
 
+/// Measure-preserving donor prune and sensitivity update.
+///
+/// # Safety
+/// `rho_in` and `rho_out` must point to at least `grid_z * grid_y * grid_x` f32 values.
+/// `u_strain` and `salience` (if non-null) must point to at least `grid_z * grid_y * grid_x` f32 values.
+/// `m_solid` and `m_koz` (if non-null) must point to at least `grid_z * grid_y * grid_x` u8 values.
+/// `actual_vol_out` and `binary_crispness_out` (if non-null) must point to 1 writable f32 each.
 #[no_mangle]
 pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
     rho_in: *const f32,
@@ -1356,21 +1642,20 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
     let move_limit = 0.20f32;
     let has_solid = !m_solid.is_null();
     let has_koz = !m_koz.is_null();
-    let is_in_place = rho_in == (rho_out as *const f32);
+    let is_in_place = core::ptr::eq(rho_in, rho_out as *const f32);
 
-    let mut in_place_sens: [core::mem::MaybeUninit<f32>; TOTAL_VOXELS] = unsafe {
-        core::mem::MaybeUninit::uninit().assume_init()
-    };
+    let mut in_place_sens: [core::mem::MaybeUninit<f32>; TOTAL_VOXELS] =
+        [core::mem::MaybeUninit::uninit(); TOTAL_VOXELS];
 
     // Precompute sensitivities and square roots outside the bisection loop
-    for e in 0..total_vox {
+    for (e, slot) in in_place_sens.iter_mut().enumerate().take(total_vox) {
         let is_solid = has_solid && *m_solid.add(e) != 0;
         let is_koz = has_koz && *m_koz.add(e) != 0;
         if is_solid || is_koz {
             if !is_in_place {
                 *rho_out.add(e) = 0.0;
             } else {
-                in_place_sens[e].write(0.0);
+                slot.write(0.0);
             }
             continue;
         }
@@ -1383,7 +1668,7 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
         if !is_in_place {
             *rho_out.add(e) = s_val;
         } else {
-            in_place_sens[e].write(s_val);
+            slot.write(s_val);
         }
     }
 
@@ -1396,7 +1681,7 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
         let inv_sqrt_l = 1.0f32 / fast_sqrt(l_mid);
         let mut cur_vol = 0.0f32;
 
-        for e in 0..total_vox {
+        for (e, slot) in in_place_sens.iter().enumerate().take(total_vox) {
             let r_old = *rho_in.add(e);
             let is_solid = has_solid && *m_solid.add(e) != 0;
             let is_koz = has_koz && *m_koz.add(e) != 0;
@@ -1413,14 +1698,14 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
             let s_val = if !is_in_place {
                 *rho_out.add(e)
             } else {
-                unsafe { in_place_sens[e].assume_init() }
+                unsafe { slot.assume_init() }
             };
             let factor = s_val * inv_sqrt_l;
             let mut r_cand = r_old * factor;
 
             let r_lower = (r_old - move_limit).max(RHO_MIN);
             let r_upper = (r_old + move_limit).min(1.0f32);
-            r_cand = r_cand.max(r_lower).min(r_upper);
+            r_cand = r_cand.clamp(r_lower, r_upper);
 
             cur_vol += r_cand;
         }
@@ -1437,7 +1722,7 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
     let mut final_vol = 0.0f32;
     let mut m_nd_sum = 0.0f32;
 
-    for e in 0..total_vox {
+    for (e, slot) in in_place_sens.iter().enumerate().take(total_vox) {
         let r_old = *rho_in.add(e);
         let is_solid = has_solid && *m_solid.add(e) != 0;
         let is_koz = has_koz && *m_koz.add(e) != 0;
@@ -1456,13 +1741,13 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
         let s_val = if !is_in_place {
             *rho_out.add(e)
         } else {
-            unsafe { in_place_sens[e].assume_init() }
+            unsafe { slot.assume_init() }
         };
         let factor = s_val * inv_sqrt_l;
         let mut r_cand = r_old * factor;
         let r_lower = (r_old - move_limit).max(RHO_MIN);
         let r_upper = (r_old + move_limit).min(1.0f32);
-        r_cand = r_cand.max(r_lower).min(r_upper);
+        r_cand = r_cand.clamp(r_lower, r_upper);
 
         *rho_out.add(e) = r_cand;
         final_vol += r_cand;
@@ -1472,7 +1757,7 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
     // Exact measure-preserving donor proportional reallocation to guarantee |mean(rho) - v_tgt| <= 1.0e-6
     let current_mean = final_vol / (total_vox as f32);
     let vol_diff = v_tgt - current_mean;
-    if vol_diff.abs() > 1.0e-6 {
+    if abs_f32(vol_diff) > 1.0e-6 {
         let mut adjustable_count = 0;
         for e in 0..total_vox {
             let is_solid = !m_solid.is_null() && *m_solid.add(e) != 0;
@@ -1496,7 +1781,7 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
                     adjusted_vol += RHO_MIN;
                     continue;
                 }
-                let val = (*rho_out.add(e) + delta).max(RHO_MIN).min(1.0f32);
+                let val = (*rho_out.add(e) + delta).clamp(RHO_MIN, 1.0f32);
                 *rho_out.add(e) = val;
                 adjusted_vol += val;
                 m_nd_sum += 4.0 * val * (1.0 - val);
@@ -1506,7 +1791,7 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
     }
 
     let actual_vol = final_vol / (total_vox as f32);
-    let binary_crispness = (1.0 - (m_nd_sum / (total_vox as f32))).max(0.0).min(1.0);
+    let binary_crispness = (1.0 - (m_nd_sum / (total_vox as f32))).clamp(0.0, 1.0);
 
     if !actual_vol_out.is_null() {
         *actual_vol_out = actual_vol;
@@ -1519,6 +1804,10 @@ pub unsafe extern "C" fn measure_preserving_donor_prune_and_triad_f32(
 
 // --- Main Optimization Hot Loop Step (Zero Heap Allocations) ---
 
+/// Advances one iteration of the topology optimization loop.
+///
+/// # Safety
+/// If non-null, `arena` must point to a valid, initialized `TopoStateArena`.
 #[no_mangle]
 pub unsafe extern "C" fn toposnail_step_iter(
     arena: *mut TopoStateArena,
@@ -1616,15 +1905,13 @@ pub unsafe extern "C" fn toposnail_step_iter(
         cascade_out.as_mut_ptr(),
         &mut drift,
     );
-    for i in 0..CASCADE_DIM {
-        a.cascade_registers[i] = cascade_out[i];
-    }
+    a.cascade_registers[..CASCADE_DIM].copy_from_slice(&cascade_out[..CASCADE_DIM]);
     a.cascade_radial_drift = drift;
 
     // 5. Compute Step Compliance
     let mut total_comp = 0.0f32;
-    for i in 0..total_vox {
-        total_comp += a.u_strain[i];
+    for &strain in a.u_strain.iter().take(total_vox) {
+        total_comp += strain;
     }
     a.compliance = total_comp;
     a.iteration += 1;
@@ -1693,7 +1980,7 @@ mod tests {
         rotate_stiffness_6x6(&m6, &C_TTI_BASE_DEFAULT, &mut c_rot);
         let tr_base: f32 = (0..6).map(|i| C_TTI_BASE_DEFAULT[i * 6 + i]).sum();
         let tr_rot: f32 = (0..6).map(|i| c_rot[i * 6 + i]).sum();
-        let tr_diff = (tr_rot - tr_base).abs();
+        let tr_diff = abs_f32(tr_rot - tr_base);
         assert!(tr_diff <= 1e-5, "Trace conservation error: {}", tr_diff);
 
         // Double-precision SO(6) rotor orthogonality check (Theorem 2.7 <= 1.14e-13)
@@ -1718,10 +2005,10 @@ mod tests {
     #[test]
     fn test_mad_floor_256() {
         let mut salience = [0.0f32; TOTAL_VOXELS];
-        for i in 0..TOTAL_VOXELS {
-            salience[i] = ((i * 37) % 100) as f32 / 100.0;
+        for (i, val) in salience.iter_mut().enumerate() {
+            *val = ((i * 37) % 100) as f32 / 100.0;
         }
-        let floor = compute_spatial_mad_floor_256(salience.as_ptr(), core::ptr::null(), TOTAL_VOXELS);
+        let floor = unsafe { compute_spatial_mad_floor_256(salience.as_ptr(), core::ptr::null(), TOTAL_VOXELS) };
         assert!(floor > 0.0, "MAD floor must be positive");
     }
 
@@ -1757,5 +2044,29 @@ mod tests {
             assert_eq!((*arena).iteration, 1);
             toposnail_arena_free(arena);
         }
+    }
+
+    #[test]
+    fn test_ulp_polish_zero_preservation() {
+        let mut v = [0.0f32; CASCADE_DIM];
+        v[0] = 0.6f32;
+        v[1] = 0.8f32;
+        // coordinates 2..8 are strictly 0.0
+        exact_sphere_norm_ulp_polish(&mut v, 1.0f32);
+        for (i, &vi) in v.iter().enumerate().skip(2) {
+            assert_eq!(vi, 0.0f32, "Zero coordinate {} was perturbed!", i);
+        }
+    }
+
+    #[test]
+    fn test_fast_sqrt_quad_simd() {
+        assert_eq!(fast_sqrt(0.0), 0.0);
+        assert_eq!(fast_sqrt(-1.0), 0.0);
+        assert_eq!(fast_sqrt(4.0), 2.0);
+        assert_eq!(fast_sqrt(16.0), 4.0);
+        assert!(fast_sqrt(f32::INFINITY).is_infinite());
+        // Subnormal test
+        let subnormal = f32::from_bits(0x0000_0100);
+        assert!(fast_sqrt(subnormal) > 0.0);
     }
 }
