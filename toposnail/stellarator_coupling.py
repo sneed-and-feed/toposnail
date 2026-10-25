@@ -651,9 +651,12 @@ def run_stellarator_bionic_coupling(
     audit = opt.verify_formal_theorems()
     so6_rotor_residual = float(audit["thm27"]["trace_drift"])
 
+    import time
+
     # 7. Compile Summary Report
     summary: Dict[str, Any] = {
         "scenario_id": scenario.scenario_id,
+        "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "grid_shape": list(resolution),
         "mhd_family": family,
         "tau0": tau0,

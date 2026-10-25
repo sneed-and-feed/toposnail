@@ -2,7 +2,7 @@
   "benchmark_suite": "TopoSnail Reference-Free Blind CAD Ingestion & Intrinsic Physics/Manifold Benchmark",
   "reference_free": true,
   "zero_example_model_used": true,
-  "timestamp": "2026-10-24T03:29:30Z",
+  "timestamp": "2026-10-25T21:29:22Z",
   "grid_shape": [
     32,
     24,
@@ -13,7 +13,7 @@
   "toposnail_parts_passed_8_of_8": 5,
   "toposnail_pass_rate_pct": 100.0,
   "all_passed": true,
-  "elapsed_sec": 65.085,
+  "elapsed_sec": 51.549,
   "solver_aggregates": {
     "TopoSnail": {
       "solver": "TopoSnail",
@@ -65,7 +65,7 @@
       "part_id": "blind_01_asymmetric_l_bracket",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_01_asymmetric_l_bracket.stl",
       "file_format": "STL",
-      "elapsed_sec": 13.732,
+      "elapsed_sec": 10.926,
       "input_mesh_stats": {
         "vertices": 3368,
         "faces": 6720,
@@ -441,7 +441,7 @@
       "part_id": "blind_02_three_ear_bellcrank",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_02_three_ear_bellcrank.stl",
       "file_format": "STL",
-      "elapsed_sec": 13.51,
+      "elapsed_sec": 10.322,
       "input_mesh_stats": {
         "vertices": 2106,
         "faces": 4208,
@@ -817,7 +817,7 @@
       "part_id": "blind_03_flanged_torque_arm",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_03_flanged_torque_arm.stl",
       "file_format": "STL",
-      "elapsed_sec": 11.701,
+      "elapsed_sec": 9.62,
       "input_mesh_stats": {
         "vertices": 2980,
         "faces": 5952,
@@ -1193,7 +1193,7 @@
       "part_id": "blind_04_twin_bore_pillow_block",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_04_twin_bore_pillow_block.stl",
       "file_format": "STL",
-      "elapsed_sec": 12.88,
+      "elapsed_sec": 9.808,
       "input_mesh_stats": {
         "vertices": 2218,
         "faces": 4432,
@@ -1569,7 +1569,7 @@
       "part_id": "blind_05_tri_mount_bulkhead_yoke",
       "file_path": "C:\\Users\\x\\Documents\\antigravity\\toposnail\\results\\blind_cad_inputs\\blind_05_tri_mount_bulkhead_yoke.stl",
       "file_format": "STL",
-      "elapsed_sec": 13.262,
+      "elapsed_sec": 10.872,
       "input_mesh_stats": {
         "vertices": 2674,
         "faces": 5344,

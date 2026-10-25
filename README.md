@@ -57,22 +57,22 @@ Every cold-loaded part is audited against **8 intrinsic physical, topological, a
 
 | Gate ID | Intrinsic Physical or Topological Law | Mathematical Criterion | Corpus Pass Rate |
 | :--- | :--- | :--- | :--- |
-| **G1** | **Stage 1 Self-Baseline Stiffness Efficiency** | Specific stiffness gain $\eta_{\mathrm{stiff}} > 1.35\times$ (`2.298x` mean across corpus) | **5/5 (100%)** |
+| **G1** | **Stage 1 Self-Baseline Stiffness Efficiency** | Specific stiffness gain $\eta_{\mathrm{stiff}} > 1.35\times$ (`2.282x` mean across corpus) | **5/5 (100%)** |
 | **G2** | **Fastener Bore Clearance (`Omega_KOZ`)** | `100.0%` unobstructed cylindrical ray and triangle clearance through every detected bore | **5/5 (100%)** |
 | **G3** | **Boss Interface Preservation (`Omega_solid`)** | `100.0%` solid voxel retention (`0.000` datum erosion) across all recognized boss collars | **5/5 (100%)** |
 | **G4** | **Single Load-Bearing Connected Component** | $\beta_0 = 1$ connecting `100%` of support bosses to `100%` of loaded bosses (`0` islands) | **5/5 (100%)** |
-| **G5** | **True Equilibrium Residual Admissibility** | Recomputed equilibrium residual $r_{\mathrm{eq}} \le 5.0\times 10^{-2}$ (`<= 3.01e-4` achieved) | **5/5 (100%)** |
+| **G5** | **True Equilibrium Residual Admissibility** | Recomputed equilibrium residual $r_{\mathrm{eq}} \le 5.0\times 10^{-2}$ (`<= 1.73e-4` achieved) | **5/5 (100%)** |
 | **G6** | **Strict 4-Stage Volume Monotonicity** | $V_{\mathrm{S1}} > V_{\mathrm{S2}} > V_{\mathrm{S3}} > V_{\mathrm{S4}}$ and Stage 4 mass within $\pm 1.5\%$ of `V_budget` | **5/5 (100%)** |
-| **G7** | **Zero Trapped Cavities & LPBF Crispness** | $\beta_2 = 0$ sealed internal cavities, `0.0%` checkerboards, and `98.6%--99.3%` binary crispness | **5/5 (100%)** |
+| **G7** | **Zero Trapped Cavities & LPBF Crispness** | $\beta_2 = 0$ sealed internal cavities, `0.0%` checkerboards, and `98.5%--99.5%` binary crispness | **5/5 (100%)** |
 | **G8** | **Watertight 2-Manifold STL & Bionic Genus** | `boundary_edges == 0`, `non_manifold_edges == 0`, `min_dot > 0.05`, and $\beta_1(\mathrm{S4}) > \beta_1(\mathrm{S1})$ | **5/5 (100%)** |
 
 | Blind CAD Part ID | Recognized Bores | Stiffness Gain `eta_stiff` | Binary Crispness | Bore Clearance | Boss Retention | Equilibrium `r_eq` | Topological Genus $\beta_1(\mathrm{S1}\to\mathrm{S4})$ | Intrinsic Gates |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| `blind_01_asymmetric_l_bracket` | `3` (`2 X`, `1 Y`) | `1.935x` | `98.6%` | `100.0%` | `100.0%` | `2.57e-04` | `3 -> 10` | **8/8 PASS** |
-| `blind_02_three_ear_bellcrank` | `3` (`3 Z`) | `2.376x` | `99.0%` | `100.0%` | `100.0%` | `1.43e-04` | `3 -> 9` | **8/8 PASS** |
-| `blind_03_flanged_torque_arm` | `3` (`1 Y`, `2 Z`) | `2.735x` | `98.9%` | `100.0%` | `100.0%` | `9.97e-05` | `3 -> 7` | **8/8 PASS** |
-| `blind_04_twin_bore_pillow_block` | `3` (`1 Y`, `2 Z`) | `2.713x` | `99.3%` | `100.0%` | `100.0%` | `9.76e-05` | `3 -> 9` | **8/8 PASS** |
-| `blind_05_tri_mount_bulkhead_yoke` | `4` (`1 Y`, `3 Z`) | `1.729x` | `98.7%` | `100.0%` | `100.0%` | `3.01e-04` | `4 -> 16` | **8/8 PASS** |
+| `blind_01_asymmetric_l_bracket` | `3` (`2 X`, `1 Y`) | `1.885x` | `98.5%` | `100.0%` | `100.0%` | `1.73e-04` | `3 -> 10` | **8/8 PASS** |
+| `blind_02_three_ear_bellcrank` | `3` (`3 Z`) | `2.372x` | `99.1%` | `100.0%` | `100.0%` | `1.46e-04` | `3 -> 9` | **8/8 PASS** |
+| `blind_03_flanged_torque_arm` | `3` (`1 Y`, `2 Z`) | `2.734x` | `98.9%` | `100.0%` | `100.0%` | `9.37e-05` | `3 -> 7` | **8/8 PASS** |
+| `blind_04_twin_bore_pillow_block` | `3` (`1 Y`, `2 Z`) | `2.718x` | `99.5%` | `100.0%` | `100.0%` | `9.81e-05` | `3 -> 9` | **8/8 PASS** |
+| `blind_05_tri_mount_bulkhead_yoke` | `4` (`1 Y`, `3 Z`) | `1.701x` | `99.4%` | `100.0%` | `100.0%` | `1.26e-04` | `4 -> 16` | **8/8 PASS** |
 
 ---
 
@@ -143,7 +143,7 @@ All scenarios operate on standard grids $(Z=32, Y=24, X=24)$ totaling $18,432$ h
 3. **`03_trabecular_femur_anisotropic_so6`**: Proximal femur under joint compression and abductor reaction (volume budget 0.28). Co-optimizes outer cortical shell and internal $\mathrm{SO}(6)$ trabecular orientation.
 4. **`04_regenerative_thruster_gimbal_thermo`**: Rocket thruster mount combining axial thrust with $1,200\text{ K}$ nozzle thermal gradient, preserving an open $\beta_1$ cooling jacket (volume budget 0.30).
 5. **`05_lpbf_self_draining_bridge_arch`**: LPBF bridge arch with dihedral D4 symmetry and build-direction overhang telemetry ($\le 45^\circ$), guaranteeing zero trapped $\beta_2$ powder cavities (volume budget 0.24).
-6. **`06_stellarator_modular_coil_divertor`** (`toposnail/stellarator_coupling.py`): Closed-loop `bmhd` to `toposnail` multi-physics coupling piping 3D non-stellarator-symmetric MHD Lorentz forces ($\mathbf J \times \mathbf B = \nabla p$, `tau0 = 0.38`) and $2000\text{ K}$ ($\Delta T = 1200\text{ K}$) stepped-pressure Beltrami divertor scrape-off layer heat-flux tensors directly into 3D anisotropic TTI thermo-elastic topology optimization ($\boldsymbol\sigma_{\mathrm{therm}} = \mathbf C_{\mathrm{TTI}} : \boldsymbol\alpha \Delta T$), achieving **86.55% compliance reduction** (`J / J_SIMP = 0.1345`), **99.70% binary crispness**, strictly `0` trapped `beta_2` cavities (`b2 == 0`), and 4-stage `.STL`/`.OBJ` export (`results/stellarator_bionic_coupling_summary.json`).
+6. **`06_stellarator_modular_coil_divertor`** (`toposnail/stellarator_coupling.py`): Closed-loop `bmhd` to `toposnail` multi-physics coupling piping 3D non-stellarator-symmetric MHD Lorentz forces ($\mathbf J \times \mathbf B = \nabla p$, `tau0 = 0.38`) and $2000\text{ K}$ ($\Delta T = 1200\text{ K}$) stepped-pressure Beltrami divertor scrape-off layer heat-flux tensors directly into 3D anisotropic TTI thermo-elastic topology optimization ($\boldsymbol\sigma_{\mathrm{therm}} = \mathbf C_{\mathrm{TTI}} : \boldsymbol\alpha \Delta T$), achieving **86.53% compliance reduction** (`J / J_SIMP = 0.1347`), **99.70% binary crispness**, strictly `0` trapped `beta_2` cavities (`b2 == 0`), and 4-stage `.STL`/`.OBJ` export (`results/stellarator_bionic_coupling_summary.json`).
 
 ---
 
@@ -186,7 +186,7 @@ TopoSnail provides dual execution backends: an out-of-core vectorized NumPy solv
 - **Static Arena Footprint**: $1,472,448\text{ bytes}$ ($1.40\text{ MB}$, strictly $< 1.50\text{ MB}$) in `TopoStateArena` (64-byte cache-line aligned).
 - **Broadcom BCM2712 Cortex-A76 Cache Telemetry (`results/bcm2712_cache_receipts.json`)**: **0.04601% LLd cache miss rate** (`< 0.100%` target) across 50,000,000 memory references (68.02% L1d hit rate, 32.60% L2 hit rate, 99.79% L3 hit rate, zero L3 capacity evictions).
 - **Active Engine Heap**: Zero (`0`) dynamic heap allocations during optimization iterations (`toposnail_rs.dll` PE import audit verified).
-- **Python Peak Heap**: $4.874\text{ MB}$ (strictly $< 35.0\text{ MB}$ envelope).
+- **Python Peak Heap**: $6.567\text{ MB}$ (strictly $< 35.0\text{ MB}$ envelope).
 
 ---
 

@@ -1,5 +1,6 @@
 {
   "scenario_id": "06_stellarator_modular_coil_divertor",
+  "timestamp_utc": "2026-10-25T21:31:20Z",
   "grid_shape": [
     32,
     24,
@@ -9,16 +10,16 @@
   "tau0": 0.38,
   "b2_trapped_cavities": 0,
   "compliance_initial": 0.020687469771893664,
-  "compliance_final": 0.0027816648964659337,
-  "compliance_reduction_ratio": 0.13446133950344905,
-  "equilibrium_residual": 8.87e-05,
+  "compliance_final": 0.0027862927600287757,
+  "compliance_reduction_ratio": 0.13468504320495872,
+  "equilibrium_residual": 9.3e-05,
   "so6_rotor_drift": 7.105427357601002e-15,
   "peak_divertor_temp_k": 1200.0,
   "bernoulli_jump_residual": 0.0,
   "kam_admissible": false,
   "min_kam_diophantine_gap": 0.0,
-  "volume_fraction": 0.2574228048324585,
-  "binary_crispness": 0.997010231949389,
+  "volume_fraction": 0.24685154855251312,
+  "binary_crispness": 0.99697749549523,
   "checkerboard_defect_pct": 0.0,
   "overhang_defect_pct": 0.0,
   "mesh_files": {

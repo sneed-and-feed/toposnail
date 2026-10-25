@@ -245,7 +245,7 @@ pub struct TopoStateArena {
 - **Rust Static SRAM Allocation**: $1,472,448\text{ bytes}$ ($1.40\text{ MB}$, strictly $< 1.50\text{ MB}$).
 - **Broadcom BCM2712 Cortex-A76 Cache Telemetry**: Verified **0.04601% LLd cache miss rate** (`< 0.100%` hard limit) across 50,000,000 memory references on Raspberry Pi 5 Cortex-A76 cache geometry (64 KB L1d, 512 KB L2, 4.0 MB L3, zero L3 capacity evictions).
 - **Active Hot-Loop Heap Allocations**: Exactly $0$ dynamic heap allocations during optimization iterations (`toposnail_rs.dll` binary symbol table verified).
-- **Python Peak Heap**: $4.874\text{ MB}$ (strictly $< 35.0\text{ MB}$ envelope).
+- **Python Peak Heap**: $6.567\text{ MB}$ (strictly $< 35.0\text{ MB}$ envelope).
 - **L2/L3 SRAM Cache Residency**: The entire optimization working set remains resident within a 4 MB CPU cache, eliminating intermediate DRAM memory traffic.
 
 ---
@@ -297,7 +297,7 @@ V_{\mathrm{S1}} > V_{\mathrm{S2}} > V_{\mathrm{S3}} > V_{\mathrm{S4}}
 3. **Geodesic Boss-Graph & Analytical 2-Manifold Bionic Sculpting**:
    Active non-occluded inter-boss chords $(i, j) \in E_{\mathrm{boss}}$ and non-collinear boss triplets $(i, j, k)$ drive a 4-stage progression coupled to 3D hexahedral FEA (`solve_blind_cad_3d_hexahedral_fea`) and `BeltramiMorseStrutFilter`.
    Interior L-bracket knees discovered from $\phi_{\mathrm{S1}}(\mathbf x)$ combine with 40-segment CNC toroidal boss cylinders (`make_boss_cylinder_closed`) and coaxial root fillet rings (`make_boss_root_fillet_ring`), raised-cosine waisted hulls (`_add_lofted_web_brick`) in Stage 2, sweeping bowed parabolic/Michell arch chords framing open daylight windows in Stage 3, and bifurcated curved bionic trusses with diagonal Michell X-ties and convex dome end-caps (`make_curved_tube_closed`) in Stage 4, colored by trilinearly sampled 3D FEA von Mises stress (`_sample_fea_von_mises_vertex_colors`).
-   Across all 5 blind corpus parts, this achieves `8/8` intrinsic laws (`2.298x` mean $\eta_{\mathrm{stiff}}$ spanning `1.729x--2.735x`, `100.0%` bore clearance, `100.0%` boss retention, `0` trapped `beta_2` cavities, `0.0%` checkerboards, `98.6%--99.3%` binary crispness (`98.92%` mean), and exact Euler-Poincaré topological genus transitions `beta_1(S1->S4)` of `3->10`, `3->9`, `3->7`, `3->9`, and `4->16`).
+   Across all 5 blind corpus parts, this achieves `8/8` intrinsic laws (`2.282x` mean $\eta_{\mathrm{stiff}}$ spanning `1.701x--2.734x`, `100.0%` bore clearance, `100.0%` boss retention, `0` trapped `beta_2` cavities, `0.0%` checkerboards, `98.5%--99.5%` binary crispness (`99.09%` mean), and exact Euler-Poincaré topological genus transitions `beta_1(S1->S4)` of `3->10`, `3->9`, `3->7`, `3->9`, and `4->16`).
 
 ### 5.3 Closed-Loop Stellarator Modular Coil & Divertor Bionic Synthesis (`toposnail/stellarator_coupling.py`)
 
@@ -318,7 +318,7 @@ Scenario `06_stellarator_modular_coil_divertor` in `toposnail/stellarator_coupli
 ```
 
 3. **Zero Trapped Cavities (`b2 == 0`) & 4-Stage Bionic CAD Export**:
-   `JordanCavityEnforcer` guarantees strictly `0` trapped $\beta_2$ internal voids via 6-way boundary flood filling while preserving open `beta_1` helical cooling channels (`Omega_KOZ`) and divertor strike-plate armor tiles (`Omega_solid`). As recorded in `results/stellarator_bionic_coupling_summary.json`, the coupled solver achieves an **86.55% compliance reduction** (`J / J_SIMP = 0.1345`), **99.70% binary crispness**, `0.0%` checkerboards, equilibrium residual `r_eq = 8.87e-5 <= 1.0e-4`, $\mathrm{SO}(6)$ trace drift `7.11e-15`, and exports 4-stage watertight `.STL` and `.OBJ` CAD meshes (`stellarator_coil_divertor_s1..s4.{stl,obj}`).
+   `JordanCavityEnforcer` guarantees strictly `0` trapped $\beta_2$ internal voids via 6-way boundary flood filling while preserving open `beta_1` helical cooling channels (`Omega_KOZ`) and divertor strike-plate armor tiles (`Omega_solid`). As recorded in `results/stellarator_bionic_coupling_summary.json`, the coupled solver achieves an **86.53% compliance reduction** (`J / J_SIMP = 0.1347`), **99.70% binary crispness**, `0.0%` checkerboards, equilibrium residual `r_eq = 9.30e-5 <= 1.0e-4`, $\mathrm{SO}(6)$ trace drift `7.11e-15`, and exports 4-stage watertight `.STL` and `.OBJ` CAD meshes (`stellarator_coil_divertor_s1..s4.{stl,obj}`).
 
 ---
 

@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-10-24T04:54:13Z",
+  "timestamp": "2026-10-25T21:28:29Z",
   "overall_status": "PASS",
   "official_community_benchmarks": {
     "all_passed": true,
@@ -31,10 +31,10 @@
   },
   "mode_b_summary": {
     "num_scenarios": 5,
-    "peak_heap_mb": 6.565,
+    "peak_heap_mb": 6.567,
     "heap_limit_mb": 35.0,
     "heap_compliant": true,
-    "total_benchmark_time_s": 147.74
+    "total_benchmark_time_s": 235.0
   },
   "formal_theorems_verified": [
     {
